@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, ScreenHeader, ScreenShell, BottomNav, COLOR } from "../shared";
 import { reverseGeocodeCountryAction } from "../actions";
 import { FlagIcon } from "../country-currency-data";
@@ -45,15 +46,17 @@ interface MoreLink {
   label: string;
   description: string;
 }
-const LINKS: MoreLink[] = [
-  { key: "currencies", label: "ניהול מטבעות", description: "הוספה, מחיקה, סדר, מטבע מקומי ומטבע בסיס" },
-  { key: "cards", label: "ניהול כרטיסי אשראי", description: "הוספה, עריכה, מחיקה וכרטיס ראשי" },
-  { key: "backup", label: "גיבוי ושחזור", description: "גיבוי נתוני הארנק, שחזור וייצוא דוח הוצאות" },
-  { key: "documents", label: "מסמכים וביטוח", description: "פוליסת ביטוח, דרכון, כרטיסי טיסה ומלון" },
-  { key: "profile", label: "פרופיל", description: "פרטים אישיים, מדינה, שפה ואיש קשר לחירום" },
-  { key: "settings", label: "הגדרות", description: "מטבע בסיס, יחידות טמפרטורה, התראות ואיפוס" },
-  { key: "help", label: "עזרה", description: "שאלות נפוצות ופנייה לתמיכה" },
-  { key: "about", label: "אודות", description: "גרסה, פרטיות, תנאי שימוש ומקורות מידע" },
+// עודכן: כל שורה מובילה לכתובת-URL אמיתית ונפרדת (לא section-switching
+// פנימי) — כל מסך חייב "כתובת פנימית ברורה" לפי חבילת-העיצוב המחייבת.
+// רכיבי ה-Section עצמם לא שוכתבו, רק מוצגים כעת גם דרך ה-URL הישיר.
+const LINKS: { href: string; label: string; description: string }[] = [
+  { href: "/currencies", label: "ניהול מטבעות", description: "הוספה, מחיקה, סדר, מטבע מקומי ומטבע בסיס" },
+  { href: "/wallet/cards", label: "ניהול כרטיסי אשראי", description: "הוספה, עריכה, מחיקה וכרטיס ראשי" },
+  { href: "/backup", label: "גיבוי ושחזור", description: "גיבוי נתוני הארנק, שחזור וייצוא דוח הוצאות" },
+  { href: "/documents", label: "מסמכים וביטוח", description: "פוליסת ביטוח, דרכון, כרטיסי טיסה ומלון" },
+  { href: "/profile", label: "פרופיל", description: "פרטים אישיים, מדינה, שפה ואיש קשר לחירום" },
+  { href: "/settings", label: "הגדרות", description: "מטבע בסיס, יחידות טמפרטורה, התראות ואיפוס" },
+  { href: "/help", label: "עזרה ואודות", description: "שאלות נפוצות, מדריכים, פנייה לתמיכה וגרסה" },
 ];
 
 function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -81,61 +84,31 @@ function ComingSoonSheet({ label, onClose }: { label: string; onClose: () => voi
 }
 
 export default function MorePreviewScreen() {
-  const [section, setSection] = useState<Section>(null);
-  const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function showToast(message: string, actionLabel?: string, onAction?: () => void) {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ message, actionLabel, onAction });
-    toastTimer.current = setTimeout(() => setToast(null), 4200);
-  }
-
+  const router = useRouter();
   return (
     <ScreenShell>
-      {section === null ? (
-        <>
-          <ScreenHeader title="עוד" subtitle="הגדרות, ניהול ותמיכה" />
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {LINKS.map((link) => (
-              <button key={link.key} type="button" onClick={() => setSection(link.key)} style={{ display: "block", width: "100%", textAlign: "start", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-                <Card style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#fff" }}>{link.label}</div>
-                    <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginTop: "2px" }}>{link.description}</div>
-                  </div>
-                  <ChevronIcon />
-                </Card>
-              </button>
-            ))}
-          </div>
-        </>
-      ) : section === "currencies" ? (
-        <CurrenciesSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : section === "cards" ? (
-        <CardsSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : section === "backup" ? (
-        <BackupSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : section === "documents" ? (
-        <DocumentsSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : section === "profile" ? (
-        <ProfileSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : section === "settings" ? (
-        <SettingsSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : section === "help" ? (
-        <HelpSection onBack={() => setSection(null)} showToast={showToast} />
-      ) : (
-        <AboutSection onBack={() => setSection(null)} />
-      )}
-
-      <BottomNav active="more" />
-      <ToastView toast={toast} />
+      <ScreenHeader title="עוד" subtitle="הגדרות, ניהול ותמיכה" />
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {LINKS.map((link) => (
+          <button key={link.href} type="button" onClick={() => router.push(link.href)} style={{ display: "block", width: "100%", textAlign: "start", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+            <Card style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "14px", fontWeight: 700, color: "#fff" }}>{link.label}</div>
+                <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginTop: "2px" }}>{link.description}</div>
+              </div>
+              <ChevronIcon />
+            </Card>
+          </button>
+        ))}
+      </div>
+      <BottomNav active={null} />
     </ScreenShell>
   );
 }
 
 // ============================== ניהול מטבעות ==============================
 
-function CurrenciesSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
+export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
   const [hydrated, setHydrated] = useState(false);
   const [balances, setBalances] = useState<CurrencyBalance[]>(INITIAL_BALANCES);
   const [baseCurrency, setBaseCurrency] = useState("ILS");
@@ -301,7 +274,7 @@ function CurrenciesSection({ onBack, showToast }: { onBack: () => void; showToas
 
 const CARD_COLORS = ["#6642b9", "#4f8fe0", "#43d6aa", "#e0524a", "#f5a544", "#1c2750"];
 
-function CardsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
+export function CardsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
   const [hydrated, setHydrated] = useState(false);
   const [cards, setCards] = useState<CreditCardInfo[]>([]);
   const [formOpen, setFormOpen] = useState<{ mode: "add" | "edit"; card: CreditCardInfo | null } | null>(null);
@@ -445,7 +418,7 @@ function CardForm({ initial, onClose, onSave }: { initial: CreditCardInfo | null
 
 // ============================== גיבוי ושחזור ==============================
 
-function BackupSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
+export function BackupSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -514,7 +487,7 @@ const DOCUMENT_KIND_LABEL: Record<DocumentEntry["kind"], string> = {
   other: "אחר",
 };
 
-function DocumentsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
+export function DocumentsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
   const [hydrated, setHydrated] = useState(false);
   const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [addOpen, setAddOpen] = useState(false);
@@ -674,7 +647,7 @@ function AddDocumentForm({ onClose, onSave }: { onClose: () => void; onSave: (do
 
 const DEFAULT_PROFILE: ProfileInfo = { name: "", photoDataUrl: null, phone: "", email: "", countryCode: "IL", language: "he", baseCurrency: "ILS", emergencyContactName: "", emergencyContactPhone: "" };
 
-function ProfileSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
+export function ProfileSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
   const [profile, setProfile] = useState<ProfileInfo>(DEFAULT_PROFILE);
   const photoRef = useRef<HTMLInputElement>(null);
 
@@ -741,7 +714,7 @@ interface SettingsData {
 }
 const DEFAULT_SETTINGS: SettingsData = { temperatureUnit: "C" };
 
-function SettingsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
+export function SettingsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
   const [baseCurrency, setBaseCurrency] = useState("ILS");
   const [notifStatus, setNotifStatus] = useState<NotificationPermission | "unsupported">("default");
@@ -832,7 +805,7 @@ const FAQ: { q: string; a: string }[] = [
   { q: "איך משחזרים נתונים לאחר מחיקה או החלפת מכשיר?", a: "דרך עוד ← גיבוי ושחזור: אפשר לגבות לקובץ ולשחזר ממנו בכל שלב." },
 ];
 
-function HelpSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
+export function HelpSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -881,7 +854,7 @@ function HelpSection({ onBack, showToast }: { onBack: () => void; showToast: (m:
 
 // ============================== אודות ==============================
 
-function AboutSection({ onBack }: { onBack: () => void }) {
+export function AboutSection({ onBack }: { onBack: () => void }) {
   const [openSheet, setOpenSheet] = useState<"privacy" | "terms" | null>(null);
   return (
     <>
