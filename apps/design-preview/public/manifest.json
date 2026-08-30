@@ -1,0 +1,15 @@
+{
+  "name": "Trip Master — Design Preview",
+  "short_name": "Trip Preview",
+  "description": "גרסת תצוגה מבודדת של עיצוב האפליקציה",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050f24",
+  "theme_color": "#050f24",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
