@@ -84,7 +84,7 @@ export default function ActivityDetailsScreen() {
         >
           מחק פעילות
         </DangerButton>
-        <PrimaryButton onClick={() => router.push(`/trips/japan-2025/plan/add?day=${date}`)}>ערוך פעילות</PrimaryButton>
+        <PrimaryButton onClick={() => router.push(`/trips/japan-2025/plan/add?day=${date}&id=${activity.id}`)}>ערוך פעילות</PrimaryButton>
       </div>
     </ScreenShell>
   );

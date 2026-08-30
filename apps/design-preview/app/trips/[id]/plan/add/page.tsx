@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Field, PrimaryButton, IconPill, inputStyle, textareaStyle, COLOR, SPACE, PinIcon, SuitcaseIcon, DocumentIcon } from "../../../../design-system";
-import { saveActivity, ALL_TRIP_DATES, type TripActivity } from "../../../../trip-content";
+import { saveActivity, findActivity, ALL_TRIP_DATES, type TripActivity } from "../../../../trip-content";
 import { nextId } from "../../../../wallet-data";
 
 const CATEGORIES: { key: TripActivity["category"]; label: string }[] = [
@@ -17,6 +17,7 @@ const CATEGORIES: { key: TripActivity["category"]; label: string }[] = [
 function AddActivityForm() {
   const router = useRouter();
   const search = useSearchParams();
+  const editId = search.get("id");
   const date = search.get("day") || ALL_TRIP_DATES[0]!;
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<TripActivity["category"]>("אתר");
@@ -26,16 +27,31 @@ function AddActivityForm() {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // עריכה (לא רק הוספה): אם הגענו עם ?id=, טוענים את הפעילות הקיימת
+  // ושומרים תחת אותו id — לפני התיקון הזה "עריכת פעילות" יצרה בטעות
+  // פעילות כפולה חדשה במקום לעדכן את הקיימת. נמצא ונתפס בבדיקה.
+  useEffect(() => {
+    if (!editId) return;
+    const found = findActivity(editId);
+    if (!found) return;
+    setTitle(found.activity.title);
+    setCategory(found.activity.category);
+    setTime(found.activity.time);
+    setDuration(found.activity.durationLabel);
+    setLocation(found.activity.location);
+    setNotes(found.activity.notes);
+  }, [editId]);
+
   function handleSave() {
     if (!title.trim()) return setError("יש להזין שם פעילות");
     setError(null);
-    saveActivity(date, { id: nextId("act"), time, durationLabel: duration, title: title.trim(), category, location, notes });
+    saveActivity(date, { id: editId ?? nextId("act"), time, durationLabel: duration, title: title.trim(), category, location, notes });
     router.back();
   }
 
   return (
     <ScreenShell>
-      <ScreenHeader title="הוספת פעילות" />
+      <ScreenHeader title={editId ? "עריכת פעילות" : "הוספת פעילות"} />
       <Field label="שם הפעילות">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="הכנס שם פעילות" style={inputStyle} />
       </Field>
@@ -65,7 +81,7 @@ function AddActivityForm() {
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="הערות (אופציונלי)" style={textareaStyle} />
       </Field>
       {error ? <div style={{ color: COLOR.danger, fontSize: "12.5px" }}>{error}</div> : null}
-      <PrimaryButton onClick={handleSave}>שמור פעילות</PrimaryButton>
+      <PrimaryButton onClick={handleSave}>{editId ? "עדכן פעילות" : "שמור פעילות"}</PrimaryButton>
     </ScreenShell>
   );
 }
