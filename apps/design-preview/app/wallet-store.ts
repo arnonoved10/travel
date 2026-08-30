@@ -17,6 +17,7 @@ import {
   today,
   INITIAL_BALANCES,
   INITIAL_EXPENSES,
+  INITIAL_CARDS,
   nextId,
   resolveLocalCurrency,
 } from "./wallet-data";
@@ -54,7 +55,7 @@ export function useWalletStore() {
   useEffect(() => {
     setBalances(loadJSON(SK.balances, INITIAL_BALANCES));
     setExpenses(loadJSON(SK.expenses, INITIAL_EXPENSES));
-    setCards(loadJSON(SK.cards, []));
+    setCards(loadJSON(SK.cards, INITIAL_CARDS));
     setAdditions(loadJSON(SK.additions, []));
     setConversions(loadJSON(SK.conversions, []));
     setReceipts(loadJSON(SK.receipts, {}));

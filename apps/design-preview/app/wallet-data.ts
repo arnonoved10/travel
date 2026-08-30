@@ -196,7 +196,22 @@ export const INITIAL_BALANCES: CurrencyBalance[] = [
   { code: "GBP", balance: 620, spent: 0, lastUpdated: today() },
   { code: "CHF", balance: 180, spent: 0, lastUpdated: today() },
 ];
-export const INITIAL_EXPENSES: Expense[] = [];
+// זרעי-דמו תואמים לחבילת-העיצוב המחייבת (מסכים 22-23) — כמו INITIAL_BALANCES,
+// אלה רק ערכי-פתיחה: ברגע שיש state אמיתי ב-localStorage הוא גובר תמיד.
+export const INITIAL_CARDS: CreditCardInfo[] = [
+  { id: "card-visa", nickname: "ויזה ראשית", issuer: "Visa", last4: "4587", currency: "ILS", color: "#7C3AED", isPrimary: true },
+  { id: "card-mc", nickname: "מאסטרקארד", issuer: "Mastercard", last4: "1234", currency: "ILS", color: "#4f8fe0" },
+  { id: "card-amex", nickname: "אמריקן אקספרס", issuer: "Amex", last4: "9876", currency: "ILS", color: "#34D399" },
+  { id: "card-isracard", nickname: "ישראכרט", issuer: "Isracard", last4: "2468", currency: "ILS", color: "#EF4444" },
+];
+export const INITIAL_EXPENSES: Expense[] = [
+  { id: "exp-1", title: "מלון TLV ארנה", category: "מלון", currency: "ILS", amount: 1850, date: "2025-06-15", paymentMethod: "credit", cardId: "card-visa" },
+  { id: "exp-2", title: "כרטיס רכבת", category: "תחבורה", currency: "ILS", amount: 240, date: "2025-06-15", paymentMethod: "cash" },
+  { id: "exp-3", title: "מסעדת רעמן איצ'יראן", merchant: "איצ'יראן", category: "מסעדות", currency: "JPY", amount: 4800, date: "2025-06-15", paymentMethod: "cash" },
+  { id: "exp-4", title: "סופרמרקט", category: "קניות", currency: "ILS", amount: 187, date: "2025-06-14", paymentMethod: "credit", cardId: "card-mc" },
+  { id: "exp-5", title: "תחבורה ציבורית", category: "תחבורה", currency: "ILS", amount: 210, date: "2025-06-14", paymentMethod: "cash" },
+  { id: "exp-6", title: "קפה", category: "מסעדות", currency: "ILS", amount: 32, date: "2025-06-14", paymentMethod: "cash" },
+];
 
 let idCounter = 1000;
 export function nextId(prefix: string) {
@@ -297,7 +312,7 @@ export function readWalletStateFromStorage(): WalletState {
   return {
     balances: loadJSON(SK.balances, INITIAL_BALANCES),
     expenses: loadJSON(SK.expenses, INITIAL_EXPENSES),
-    cards: loadJSON(SK.cards, []),
+    cards: loadJSON(SK.cards, INITIAL_CARDS),
     additions: loadJSON(SK.additions, []),
     conversions: loadJSON(SK.conversions, []),
     receipts: loadJSON(SK.receipts, {}),

@@ -149,19 +149,22 @@ export function TextMuted({ children, style }: { children: ReactNode; style?: CS
 }
 
 /**
- * מציג סכום+סמל-מטבע (למשל "₪ 28,450.75") בתוך עמוד RTL בלי שאלגוריתם
- * ה-bidi יהפוך את סדר סמל/מספר — באג ידוע ומתועד (ר' CONTINUATION.md
- * הישן: "מחרוזת שמערבת קודי-מטבע/מספרים בלי טקסט-עברי עוגן, בתוך container
- * עם direction:rtl"), שאומת כאן שוב בצילום-מסך אמיתי של מסך הארנק. הפתרון:
- * span מבודד-בכיוון (unicodeBidi:isolate + dir=ltr) כדי שהסמל+המספר תמיד
- * יוצגו כיחידה אחת בסדר-הנכון, בלי קשר לכיוון העמוד סביבם.
+ * מבודד מחרוזת (סכום+סמל-מטבע, מספר-טלפון, תאריך לועזי וכו') מכיוון-RTL
+ * של העמוד סביבה — באג ידוע ומתועד (ר' CONTINUATION.md הישן: "מחרוזת
+ * שמערבת קודי-מטבע/מספרים בלי טקסט-עברי עוגן, בתוך container עם
+ * direction:rtl"), שאומת שוב בצילומי-מסך אמיתיים כאן (גם ביתרות-ארנק וגם
+ * במספרי-טלפון במסך אנשי-קשר-לחירום). span מבודד-בכיוון (unicodeBidi:
+ * isolate + dir=ltr) כדי שהתוכן תמיד יוצג בסדר-הנכון, בלי קשר לסביבתו.
  */
-export function Money({ text, style }: { text: string; style?: CSSProperties }) {
+export function Ltr({ text, style }: { text: string; style?: CSSProperties }) {
   return (
     <span dir="ltr" style={{ unicodeBidi: "isolate", ...style }}>
       {text}
     </span>
   );
+}
+export function Money({ text, style }: { text: string; style?: CSSProperties }) {
+  return <Ltr text={text} style={style} />;
 }
 
 type BtnProps = { children: ReactNode; onClick?: () => void; style?: CSSProperties; disabled?: boolean; type?: "button" | "submit" };

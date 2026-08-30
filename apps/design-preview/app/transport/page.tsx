@@ -1,6 +1,6 @@
 "use client";
 
-import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, SecondaryButton, PhoneIcon, CarIcon, COLOR, SPACE } from "../design-system";
+import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, SecondaryButton, Ltr, PhoneIcon, CarIcon, COLOR, SPACE } from "../design-system";
 
 /**
  * מסך "הסעה ותחבורה" (14) — נתוני-דמו מוצהרים (נהג/רכב/כתובת-איסוף);
@@ -31,7 +31,7 @@ export default function TransportScreen() {
         <CarIcon />
         <div>
           <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>טויוטה אלפארד שחור</div>
-          <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>あ 12-34</div>
+          <div style={{ fontSize: "11px", color: COLOR.textSecondary }}><Ltr text="あ 12-34" /></div>
         </div>
       </Card>
 
