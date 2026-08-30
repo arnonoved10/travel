@@ -1,4 +1,4 @@
-import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, DEMO_REFERENCE_DATE } from "./wallet-data";
+import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, DEMO_REFERENCE_DATE, loadJSON, saveJSON, nextId } from "./wallet-data";
 
 /**
  * מאגר-הטיולים המשותף למסכי "דף הבית" / "הטיולים שלי" / "סקירת הטיול" /
@@ -58,4 +58,27 @@ export function tripProgress(trip: DemoTrip, referenceDate = DEMO_REFERENCE_DATE
   const totalDays = daysBetween(trip.startDate, trip.endDate) + 1;
   const dayIndex = Math.min(totalDays, Math.max(1, daysBetween(trip.startDate, referenceDate) + 1));
   return { dayIndex, totalDays };
+}
+
+// ============================== טיולים שנוצרו ע"י המשתמש ==============================
+
+const SK_CUSTOM_TRIPS = "design-preview-custom-trips-v1";
+
+export function loadCustomTrips(): DemoTrip[] {
+  return loadJSON<DemoTrip[]>(SK_CUSTOM_TRIPS, []);
+}
+export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status">): DemoTrip {
+  const trips = loadCustomTrips();
+  const full: DemoTrip = { ...trip, id: nextId("trip"), status: new Date(trip.startDate) > new Date(DEMO_REFERENCE_DATE) ? "upcoming" : "active" };
+  saveJSON(SK_CUSTOM_TRIPS, [...trips, full]);
+  return full;
+}
+export function deleteCustomTrip(id: string) {
+  saveJSON(SK_CUSTOM_TRIPS, loadCustomTrips().filter((t) => t.id !== id));
+}
+export function allTrips(): DemoTrip[] {
+  return [...DEMO_TRIPS, ...loadCustomTrips()];
+}
+export function findAnyTrip(id: string): DemoTrip | null {
+  return allTrips().find((t) => t.id === id) ?? null;
 }

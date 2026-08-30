@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 /**
@@ -10,23 +9,27 @@ import { useRouter } from "next/navigation";
  * מיובא ולא משתנה בשום צורה — "מסך הבית הנוכחי נשאר כפי שהוא".
  */
 
+// עודכן לערכי-הצבע המדויקים של חבילת-העיצוב המחייבת (7 תמונות) — אותם
+// שמות-מפתח כדי לא לשבור מסכים קיימים שכבר צורכים COLOR.* מכאן (map/
+// planner/more), רק ערכי-hex חדשים. purple==primary, purpleDeep==primaryLight
+// (שם-המפתח הישן נשאר, הערך תואם למפרט).
 export const COLOR = {
-  pageBg: "#050f24",
-  cardBg: "#0a1830",
-  cardBorder: "rgba(120, 150, 200, 0.16)",
-  tealCardBg: "linear-gradient(160deg, rgba(5,50,60,0.55), #0a1830)",
-  blueCardBg: "linear-gradient(160deg, rgba(12,40,80,0.55), #0a1830)",
-  turquoise: "#43d6aa",
-  purple: "#8a5adf",
-  purpleDeep: "#6642b9",
-  blueGlow: "rgba(59,130,246,0.16)",
-  purpleGlow: "rgba(138,90,223,0.2)",
-  textPrimary: "#f4f6fb",
-  textSecondary: "#9aa3bd",
-  textMuted: "#6b7290",
-  danger: "#ef6f61",
-  warning: "#f5a544",
-  success: "#43d6aa",
+  pageBg: "#020D1F",
+  cardBg: "#07172D",
+  cardBorder: "#1E3A5F",
+  tealCardBg: "linear-gradient(160deg, rgba(124,58,237,0.18), #0B1D36)",
+  blueCardBg: "linear-gradient(160deg, rgba(124,58,237,0.12), #0B1D36)",
+  turquoise: "#34D399",
+  purple: "#7C3AED",
+  purpleDeep: "#A855F7",
+  blueGlow: "rgba(124,58,237,0.16)",
+  purpleGlow: "rgba(168,85,247,0.2)",
+  textPrimary: "#F8FAFC",
+  textSecondary: "#94A3B8",
+  textMuted: "#7C8BA3",
+  danger: "#EF4444",
+  warning: "#F59E0B",
+  success: "#34D399",
 };
 
 export const NAV_HEIGHT = 64;
@@ -37,7 +40,7 @@ export function Card({ children, style }: { children: React.ReactNode; style?: R
       style={{
         background: COLOR.cardBg,
         border: `1px solid ${COLOR.cardBorder}`,
-        borderRadius: "20px",
+        borderRadius: "16px",
         padding: "13px",
         ...style,
       }}
@@ -127,85 +130,16 @@ export function ScreenHeader({ title, subtitle, action }: { title: string; subti
   );
 }
 
-const NAV_ITEMS = [
-  { href: "/", label: "בית", key: "home" },
-  { href: "/route", label: "מסלול", key: "route" },
-  { href: "/planner", label: "יומן", key: "planner" },
-  { href: "/map", label: "מפה", key: "map" },
-  { href: "/wallet", label: "ארנק", key: "wallet" },
-  { href: "/more", label: "עוד", key: "more" },
-] as const;
-
-/** תפריט-תחתון משותף למסכי-התצוגה החדשים (route/planner/wallet/וכו') —
- * זהה ויזואלית לתפריט של מסך-הבית, אבל רכיב-נפרד: מסך-הבית לא נוגע ולא
- * מייבא מכאן (נשאר בדיוק כפי שהוא, בלי שינוי קוד). קישורי-אמת (Link) —
- * "כל כפתורי הניווט יעבדו ויעברו למסך המתאים". "יומן" נוסף כפריט עצמאי
- * (בקשה מפורשת) — לא עוד תלוי בלחיצה על תחנה במסך-המסלול. מסכים שעדיין לא
- * נבנו (מפה/ארנק/עוד) פשוט לא קיימים עדיין כ-route. */
-export function BottomNav({ active }: { active: "home" | "route" | "planner" | "map" | "wallet" | "more" }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        insetInlineStart: 0,
-        insetInlineEnd: 0,
-        bottom: 0,
-        minHeight: `${NAV_HEIGHT}px`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-around",
-        padding: "4px 4px calc(4px + env(safe-area-inset-bottom))",
-        background: "rgba(10,15,32,0.94)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderTop: "1px solid rgba(255,255,255,0.1)",
-        boxShadow: "0 -8px 24px rgba(0,0,0,0.35)",
-        direction: "ltr",
-        zIndex: 20,
-      }}
-    >
-      {NAV_ITEMS.map((item) => {
-        const isActive = item.key === active;
-        return (
-          <Link
-            key={item.key}
-            href={item.href}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "3px",
-              flex: "1 1 0",
-              minHeight: "54px",
-              padding: "6px 2px",
-              borderRadius: "14px",
-              textDecoration: "none",
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "38px",
-                height: "38px",
-                borderRadius: "13px",
-                background: isActive ? "rgba(138,90,223,0.22)" : "transparent",
-                boxShadow: isActive ? "0 0 0 1px rgba(168,128,245,0.35), 0 0 12px rgba(138,90,223,0.5)" : "none",
-                opacity: isActive ? 1 : 0.72,
-              }}
-            >
-              <IconSlot size={21} />
-            </span>
-            <span style={{ fontSize: "10px", fontWeight: isActive ? 700 : 500, color: isActive ? COLOR.purple : "#a7afc9" }}>{item.label}</span>
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
+/**
+ * עודכן: לא עוד תפריט-6-פריטים ישן (בית/מסלול/יומן/מפה/ארנק/עוד) — חבילת-
+ * העיצוב המחייבת קובעת סרגל-ניווט גלובלי אחד קבוע (בית/הטיולים-שלי/+/
+ * התראות/פרופיל) בכל האפליקציה ("אל תשנה את מיקום סרגל הניווט"). כדי
+ * שמסכים ישנים שעדיין מייבאים BottomNav מכאן (map/planner/more) יציגו
+ * בדיוק אותו סרגל כמו כל שאר האפליקציה — עטיפה דקה סביב הרכיב הגלובלי,
+ * לא מימוש כפול. הפרמטר active מתעלם מערכי-המסכים-הישנים (route/planner/
+ * map/wallet/more אינם עוד לשוניות בסרגל) ומוצג תמיד בלי משבצת פעילה.
+ */
+export { BottomNav } from "./design-system";
 
 /** תג-מצב קטן (מתוכנן/בוצע/בוטל/נדחה, מאושר/ממתין, וכו') — שימוש חוזר בכל
  * מסכי-התצוגה החדשים. */
@@ -248,7 +182,7 @@ export function ScreenShell({ children }: { children: React.ReactNode }) {
         minHeight: "100vh",
         background: `radial-gradient(50rem 26rem at 92% -4%, ${COLOR.blueGlow}, transparent 55%), radial-gradient(40rem 24rem at -6% 40%, ${COLOR.purpleGlow}, transparent 55%), ${COLOR.pageBg}`,
         color: COLOR.textPrimary,
-        fontFamily: "var(--font-rubik), sans-serif",
+        fontFamily: "var(--font-heebo), sans-serif",
         direction: "rtl",
       }}
     >
