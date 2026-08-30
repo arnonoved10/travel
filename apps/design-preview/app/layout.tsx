@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Rubik } from "next/font/google";
+import { Heebo } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "../components/service-worker-registration";
+import { AIAssistant } from "./ai-assistant";
 
-const rubik = Rubik({
+const heebo = Heebo({
   subsets: ["latin", "hebrew"],
-  variable: "--font-rubik",
+  variable: "--font-heebo",
   display: "swap",
 });
 
@@ -17,17 +18,18 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050f24",
+  themeColor: "#020D1F",
   width: "device-width",
   initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="he" dir="rtl" className={rubik.variable}>
+    <html lang="he" dir="rtl" className={heebo.variable}>
       <body>
         <ServiceWorkerRegistration />
         {children}
+        <AIAssistant />
       </body>
     </html>
   );

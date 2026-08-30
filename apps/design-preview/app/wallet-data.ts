@@ -184,11 +184,17 @@ export function saveJSON(key: string, value: unknown) {
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
+// יתרות-פתיחה תואמות את חבילת-העיצוב המחייבת (מסך 16, "הארנק שלי") —
+// נתוני-דמו מוצהרים, לא "נתון דינמי המוצג כקבוע": ברגע שהמשתמש מוסיף/מוציא
+// כסף בפועל, ה-state האמיתי ב-localStorage גובר על הערכים האלה בדיוק כמו
+// קודם (INITIAL_BALANCES משמש רק לזריעה הראשונה כש-localStorage ריק).
 export const INITIAL_BALANCES: CurrencyBalance[] = [
-  { code: "ILS", balance: 0, spent: 0, lastUpdated: today() },
-  { code: "USD", balance: 0, spent: 0, lastUpdated: today() },
-  { code: "EUR", balance: 0, spent: 0, lastUpdated: today() },
-  { code: "THB", balance: 0, spent: 0, lastUpdated: today() },
+  { code: "ILS", balance: 12450, spent: 0, lastUpdated: today() },
+  { code: "JPY", balance: 245200, spent: 0, lastUpdated: today() },
+  { code: "USD", balance: 2340, spent: 0, lastUpdated: today() },
+  { code: "EUR", balance: 1250, spent: 0, lastUpdated: today() },
+  { code: "GBP", balance: 620, spent: 0, lastUpdated: today() },
+  { code: "CHF", balance: 180, spent: 0, lastUpdated: today() },
 ];
 export const INITIAL_EXPENSES: Expense[] = [];
 
@@ -318,20 +324,23 @@ interface TripStopCountry {
   countryCode: string;
   firstDay: string;
 }
+// עודכן להתאים לטיול-הדמו של חבילת-העיצוב המחייבת (7 תמונות): יפן,
+// טוקיו→קיוטו→אוסקה→הירושימה→טוקיו, 15/06/2025-28/06/2025 — בדיוק לפי
+// רשימת-היעדים במסך "שינוי סדר היעדים". מטבע-מקומי לפי-כך מתעדכן אוטומטית
+// ל-JPY (ין יפני) דרך אותה לוגיקה קיימת ב-resolveLocalCurrency, בהתאמה
+// לצילומי-המסך של הארנק שכולם מציגים "יין יפני" כמטבע המקומי.
 export const TRIP_STOP_COUNTRIES: TripStopCountry[] = [
-  { city: "תל אביב", countryCode: "IL", firstDay: "2026-04-30" },
-  { city: "בנגקוק", countryCode: "TH", firstDay: "2026-05-04" },
-  { city: "פטאיה", countryCode: "TH", firstDay: "2026-05-10" },
-  { city: "קוה צ'אנג", countryCode: "TH", firstDay: "2026-05-15" },
-  { city: "בנגקוק", countryCode: "TH", firstDay: "2026-06-20" },
+  { city: "טוקיו", countryCode: "JP", firstDay: "2025-06-15" },
+  { city: "קיוטו", countryCode: "JP", firstDay: "2025-06-18" },
+  { city: "אוסקה", countryCode: "JP", firstDay: "2025-06-21" },
+  { city: "הירושימה", countryCode: "JP", firstDay: "2025-06-23" },
+  { city: "טוקיו", countryCode: "JP", firstDay: "2025-06-26" },
 ];
-export const TRIP_LAST_DAY = "2026-06-22";
+export const TRIP_LAST_DAY = "2025-06-28";
 
-// התאריך האמיתי-הנוכחי (2026-08) חל אחרי סוף הטיול המודגם (יוני 2026), כך
-// שלפי תאריך-מערכת אמיתי לעולם לא תימצא "תחנה פעילה" — בדיוק כמו שעון-הדמו
-// במסך-הבית, שגם הוא עוגן לציר-הזמן-של-הטיול ולא לשעון-האמיתי, כדי שהתכונה
-// תישאר ניתנת-להדגמה. תאריך-הייחוס להלן קבוע בכוונה בתוך טווח שהיית בנגקוק.
-export const DEMO_REFERENCE_DATE = "2026-05-06";
+// תאריך-ייחוס קבוע בתוך שהיית-טוקיו הראשונה, כדי שמסכי-הדמו (בית/ארנק/
+// יומן) תמיד ימצאו "תחנה פעילה" — בלי תלות בשעון-המערכת האמיתי.
+export const DEMO_REFERENCE_DATE = "2025-06-16";
 
 export function activeDestinationCountry(referenceDate: string): { countryCode: string; city: string } | null {
   if (referenceDate < TRIP_STOP_COUNTRIES[0]!.firstDay || referenceDate >= TRIP_LAST_DAY) return null;
