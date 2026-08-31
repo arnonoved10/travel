@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { COLOR, FONT, SPACE, RADIUS, Card, Field, inputStyle, PrimaryButton, ScreenShell } from "../design-system";
+import { AppLogo, COLOR, FONT, SPACE, RADIUS, Card, Field, PrimaryButton, ScreenShell } from "../design-system";
+import { PasswordField, authInputStyle } from "../auth-fields";
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState("");
@@ -69,6 +70,10 @@ export default function RegisterScreen() {
     <ScreenShell noBottomPad>
       <div style={{ minHeight: "80vh", display: "flex", flexDirection: "column", justifyContent: "center", borderRadius: RADIUS.card }}>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: SPACE.lg }}>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <AppLogo size={40} />
+          </div>
+
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: SPACE.xs }}>
             <h1 style={{ ...FONT.h1, margin: 0 }}>יצירת חשבון</h1>
             <p style={{ ...FONT.body, color: COLOR.textSecondary, margin: 0 }}>כמה פרטים ואפשר להתחיל לתכנן</p>
@@ -83,35 +88,13 @@ export default function RegisterScreen() {
                 dir="ltr"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{ ...inputStyle, textAlign: "left" }}
+                style={authInputStyle}
               />
             </Field>
 
-            <Field label="סיסמה (6 תווים לפחות)">
-              <input
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                dir="ltr"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={{ ...inputStyle, textAlign: "left" }}
-              />
-            </Field>
+            <PasswordField label="סיסמה (6 תווים לפחות)" value={password} onChange={setPassword} autoComplete="new-password" minLength={6} />
 
-            <Field label="אימות סיסמה">
-              <input
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                dir="ltr"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                style={{ ...inputStyle, textAlign: "left" }}
-              />
-            </Field>
+            <PasswordField label="אימות סיסמה" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" minLength={6} />
 
             {errorMessage ? (
               <p role="alert" style={{ ...FONT.small, color: COLOR.danger, margin: 0 }}>

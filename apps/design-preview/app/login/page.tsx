@@ -5,7 +5,8 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { COLOR, FONT, SPACE, RADIUS, Card, Field, inputStyle, PrimaryButton, ScreenShell } from "../design-system";
+import { COLOR, FONT, SPACE, RADIUS, Card, Field, PrimaryButton, ScreenShell } from "../design-system";
+import { PasswordField, authInputStyle } from "../auth-fields";
 
 function LoginForm() {
   const router = useRouter();
@@ -65,21 +66,11 @@ function LoginForm() {
             dir="ltr"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ ...inputStyle, textAlign: "left" }}
+            style={authInputStyle}
           />
         </Field>
 
-        <Field label="סיסמה">
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            dir="ltr"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ ...inputStyle, textAlign: "left" }}
-          />
-        </Field>
+        <PasswordField label="סיסמה" value={password} onChange={setPassword} autoComplete="current-password" />
 
         {errorMessage ? (
           <p role="alert" style={{ ...FONT.small, color: COLOR.danger, margin: 0 }}>

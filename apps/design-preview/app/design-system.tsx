@@ -47,7 +47,7 @@ export function ScreenShell({ children, noBottomPad = false }: { children: React
         minHeight: "100vh",
         background: COLOR.bg,
         color: COLOR.textPrimary,
-        fontFamily: "var(--font-heebo), sans-serif",
+        fontFamily: "var(--font-assistant), sans-serif",
         direction: "rtl",
       }}
     >
@@ -746,5 +746,30 @@ export function DropletIcon({ color = COLOR.textSecondary, size = 16 }: { color?
     <svg {...iconProps(color, size)}>
       <path d="M12 3s6 6.5 6 10.5a6 6 0 0 1-12 0C6 9.5 12 3 12 3z" />
     </svg>
+  );
+}
+
+// ============================== לוגו המערכת ==============================
+
+/**
+ * הלוגו הרשמי — אותו סמל ואותה מילת-מותג שמופיעים בכותרת דף-הבית
+ * (mobile-home-mock.tsx). מוגדר כאן כדי שמסכים נוספים יוכלו להשתמש בו
+ * בלי לייבא את מסך-הבית כולו. מזהה-הגרדיאנט שונה במכוון מזה שבדף-הבית,
+ * כדי ששני העותקים לא יתנגשו אם אי-פעם ירונדרו יחד.
+ */
+export function AppLogo({ size = 34 }: { size?: number }) {
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: SPACE.sm, direction: "ltr", fontWeight: 800, fontSize: `${Math.round(size * 0.62)}px`, letterSpacing: "0.02em", color: COLOR.textPrimary }}>
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="app-logo-grad" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stopColor="#4f7fe0" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+        <path d="M3 11 L21 3 L13 21 L11 13 Z" fill="url(#app-logo-grad)" />
+      </svg>
+      TRIP <span style={{ color: COLOR.primaryLight }}>MASTER</span>
+    </span>
   );
 }

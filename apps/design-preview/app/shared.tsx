@@ -182,7 +182,7 @@ export function ScreenShell({ children }: { children: React.ReactNode }) {
         minHeight: "100vh",
         background: `radial-gradient(50rem 26rem at 92% -4%, ${COLOR.blueGlow}, transparent 55%), radial-gradient(40rem 24rem at -6% 40%, ${COLOR.purpleGlow}, transparent 55%), ${COLOR.pageBg}`,
         color: COLOR.textPrimary,
-        fontFamily: "var(--font-heebo), sans-serif",
+        fontFamily: "var(--font-assistant), sans-serif",
         direction: "rtl",
       }}
     >

@@ -1125,7 +1125,7 @@ export function MobileHomeMock() {
         overflowX: "hidden",
         background: `radial-gradient(50rem 26rem at 92% -4%, ${COLOR.blueGlow}, transparent 55%), radial-gradient(40rem 24rem at -6% 40%, ${COLOR.purpleGlow}, transparent 55%), ${COLOR.pageBg}`,
         color: COLOR.textPrimary,
-        fontFamily: "var(--font-rubik), sans-serif",
+        fontFamily: "var(--font-assistant), sans-serif",
         display: "flex",
         flexDirection: "column",
         position: "relative",
