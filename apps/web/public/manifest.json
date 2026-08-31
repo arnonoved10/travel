@@ -1,0 +1,27 @@
+{
+  "name": "מערכת ניהול טיולים",
+  "short_name": "טיולים",
+  "description": "מערכת ניהול טיולים אישית",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#2563eb",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "share_target": {
+    "action": "/api/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        { "name": "file", "accept": ["image/*", "application/pdf"] }
+      ]
+    }
+  }
+}

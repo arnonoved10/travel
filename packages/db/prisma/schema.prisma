@@ -1,0 +1,1662 @@
+// ==========================================================================
+// travel-app — Prisma schema (שלב 0)
+// כל ההחלטות המפורטות ב-01_architecture_v2.md + הבהרות ההודעה השלישית
+// של המשתמש (Planned Activity/Booking/Expense/Payment נפרדים, Place גלובלי
+// + TripPlace, Soft Delete, Audit Log, Time Zones, Base Currency, מקור מידע)
+// ==========================================================================
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/client"
+  // "native" בשביל הרצה מקומית (Windows), "rhel-openssl-3.0.x" בשביל ה-
+  // runtime בפועל של Vercel Serverless Functions — שונה מה-runtime של
+  // מכונת ה-build עצמה, ולכן חייב להיות מפורש כאן ולא מוסק אוטומטית.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  // DATABASE_URL עובר דרך ה-Transaction Pooler של Supabase (IPv4) — לא
+  // חיבור-ישיר. נמצא ואומת 2026-08-27: db.<ref>.supabase.co הישיר עונה רק
+  // ב-IPv6 (אין רשומת A בכלל), ו-Vercel Serverless Functions הן IPv4-בלבד —
+  // כל שאילתה נכשלה עם "Can't reach database server" עד שהוחלף ל-Pooler.
+  url       = env("DATABASE_URL")
+  // DIRECT_URL (ל-migrate/introspect בלבד, לא לשאילתות בזמן-ריצה) — Session
+  // Pooler, גם הוא IPv4, כדי שמיגרציות יעבדו גם מסביבה בלי IPv6.
+  directUrl = env("DIRECT_URL")
+}
+
+// --------------------------------------------------------------------------
+// Enums
+// --------------------------------------------------------------------------
+
+enum TripStatus {
+  planning
+  upcoming
+  active
+  completed
+  archived
+}
+
+// אופציונלי (nullable) — לא משפיע על שום דבר חוץ מהצעות-אריזה
+// (ר' packing-trip-type-suggestions.ts).
+enum TripType {
+  beach
+  ski
+  city
+  nature
+  business
+  road_trip
+  other
+}
+
+// אנום סטטוס משותף ל-PlannedActivity ול-Booking (אותה שפה, טבלאות נפרדות).
+// PlannedActivity בדרך כלל משתמשת רק ב: want_to_book, planned, need_to_book,
+// postponed, cancelled, not_done — כי אין לה עדיין תשלום אמיתי.
+// partially_paid / paid מחושבים בפועל על Booking/Expense מתוך Payment,
+// לא מוזנים ידנית - ראה הערה בהמשך הקובץ.
+enum LifecycleStatus {
+  want_to_book
+  planned
+  need_to_book
+  booked
+  partially_paid
+  paid
+  done
+  not_done
+  postponed
+  cancelled
+}
+
+enum TripPlaceStatus {
+  want_to_go
+  planned
+  visited
+  not_visited
+  favorite
+  dont_return
+}
+
+enum PlaceCategory {
+  hotel
+  restaurant
+  cafe
+  bar
+  mall
+  shop
+  massage
+  attraction
+  entertainment
+  beach
+  nature
+  river
+  waterfall
+  viewpoint
+  market
+  airport
+  port
+  train_station
+  hospital
+  pharmacy
+  chabad_house
+  car_rental_company
+  other
+}
+
+enum BookingType {
+  hotel_stay
+  flight
+  transport
+  car_rental
+  insurance
+  activity_reservation
+  other
+}
+
+enum BookingSource {
+  booking_com
+  agoda
+  hotels_com
+  expedia
+  hotel_website
+  direct
+  agent
+  bolt
+  grab
+  other
+}
+
+enum MealPlan {
+  none
+  breakfast_included
+  breakfast_paid
+  half_board
+  full_board
+  all_inclusive
+}
+
+enum BreakfastPriceUnit {
+  per_person
+  per_room
+  per_day
+  per_stay
+}
+
+enum FlightLegType {
+  outbound
+  return
+  internal
+  connecting
+}
+
+enum TransportMode {
+  taxi
+  private_transfer
+  ferry
+  train
+  bus
+  water_taxi
+  other
+}
+
+enum VehicleType {
+  small
+  sedan
+  large
+  suv
+  minivan
+  van
+  luxury
+  vip
+  other
+}
+
+enum RentalVehicleType {
+  car
+  motorbike
+  scooter
+  bicycle
+  jet_ski
+  other
+}
+
+enum BenefitType {
+  breakfast
+  airport_transfer
+  early_checkin
+  late_checkout
+  room_upgrade
+  lounge_access
+  parking
+  wifi
+  pool_access
+  gym
+  spa
+  hotel_credit
+  meals
+  drinks
+  free_cancellation
+  taxes_included
+  other
+}
+
+// לא אכיפה ב-DB יותר (ראה Expense.category למטה) — נשאר כאן רק כתיעוד
+// הערכים המוצעים כברירת מחדל ב-UI. קטגוריות חדשות שהמשתמש מקליד נשמרות
+// כטקסט חופשי ב-Expense.category, בלי migration. הוחלט 2026-08-15 לפי
+// בקשה מפורשת: "דינמי... אם נחליט להוסיף הוצאות נוספות שלא חשבנו עליהן".
+enum ExpenseCategorySuggestion {
+  hotel
+  flight
+  transport
+  car_rental
+  food
+  cafe
+  bar
+  massage
+  shopping
+  fruit
+  attraction
+  insurance
+  tip
+  other
+}
+
+// למי ניתן הטיפ — רלוונטי רק כש-Expense.category = tip (סעיף "טיפים" בהבהרות)
+enum TipCategory {
+  cleaner
+  bellboy
+  waiter
+  driver
+  masseur
+  guide
+  hotel_staff
+  other
+}
+
+enum PaymentMethod {
+  cash
+  credit_card
+  debit_card
+  digital_wallet
+  bank_transfer
+  other
+}
+
+enum WalletTxType {
+  cash_payment_out
+  top_up
+  exchange_out
+  exchange_in
+  refund_in
+  deposit_out
+  deposit_return_in
+  adjustment
+}
+
+enum DocumentEntityType {
+  booking
+  expense
+  payment
+  hotel_stay
+  flight
+  transport_booking
+  insurance
+  activity_reservation
+  car_rental
+  place
+  planned_activity
+  trip
+  trip_day
+  other
+}
+
+enum DocumentType {
+  booking_confirmation
+  receipt
+  invoice
+  payment_confirmation
+  voucher
+  ticket
+  policy
+  contract
+  screenshot
+  image
+  pdf
+  passport_copy
+  other
+}
+
+enum OcrStatus {
+  pending
+  parsed
+  needs_confirmation
+  confirmed
+  failed
+}
+
+enum ContactCategory {
+  hotel
+  driver
+  taxi_company
+  insurance
+  rental_company
+  airline
+  ferry
+  guide
+  agent
+  attraction
+  other
+}
+
+enum LoyaltyProgramType {
+  airline
+  hotel
+  car_rental
+  other
+}
+
+enum StatusHistoryEntityType {
+  planned_activity
+  booking
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+  status_change
+}
+
+enum IntegrationService {
+  booking_com
+  agoda
+  hotels_com
+  expedia
+  bolt
+  grab
+  airline
+  car_rental_company
+  insurance_company
+  other
+}
+
+enum IntegrationType {
+  manual_link
+  oauth_data_portability
+}
+
+// מקור הנתון בכל שדה/רשומה — חובה כדי לדעת מה נכתב ע"י מי (סעיף 11 בהבהרות)
+enum DataSource {
+  manual
+  document
+  ocr
+  api
+  imported
+  ai_suggested
+}
+
+enum NotificationEventType {
+  flight_approaching
+  need_to_leave_for_airport
+  taxi_approaching
+  checkout_approaching
+  unpaid_booking
+  night_without_hotel
+  activity_not_booked
+  deposit_due_return
+  insurance_ending
+  overdue_not_marked_done
+  flight_checkin_open
+}
+
+enum TravelMode {
+  walk
+  taxi
+  public_transport
+  rental_car
+  other
+}
+
+enum ChecklistListType {
+  packing
+  before_trip
+}
+
+// --------------------------------------------------------------------------
+// Currency — טבלת מטבעות מרכזית (המלצה מאושרת)
+// --------------------------------------------------------------------------
+
+model Currency {
+  code          String @id // ISO 4217, e.g. "USD", "ILS", "THB"
+  name          String
+  symbol        String
+  decimalDigits Int    @default(2)
+
+  trips Trip[] // צד הפוך של Trip.baseCurrency
+
+  @@map("currencies")
+}
+
+// --------------------------------------------------------------------------
+// User / Trip / Trip Day
+// --------------------------------------------------------------------------
+
+model User {
+  id                     String    @id @default(uuid())
+  email                  String    @unique
+  displayName            String?
+  defaultCurrencyCode    String?
+  locale                 String    @default("he")
+  // מתי המשתמש אישר את התקנון/הסכם השימוש/מדיניות הפרטיות (אישור אחד משותף
+  // לשלושתם, מוצג כ-checkbox יחיד בהרשמה — ראה apps/web/app/register/page.tsx).
+  // null = טרם אישר (למשל משתמשי Mock/דמו). אין ניהול גרסאות מסמכים בשלב זה —
+  // אם התוכן ישתנה מהותית בעתיד, ההנחה היא שתתווסף דרישת אישור-מחדש נפרדת.
+  legalConsentAcceptedAt DateTime?
+  // מתי המשתמש סיים/דילג על מסך ההדרכה הראשוני (apps/web/app/onboarding) —
+  // null = עדיין לא, ה-gate ב-app/(app)/layout.tsx מפנה אליו. אותה סמנטיקה
+  // בדיוק כמו legalConsentAcceptedAt.
+  onboardingCompletedAt  DateTime?
+  createdAt              DateTime  @default(now())
+
+  trips               Trip[]
+  paymentCards        PaymentCard[]
+  integrationAccounts IntegrationAccount[]
+  places              Place[]
+  contacts            Contact[]
+  loyaltyPrograms     LoyaltyProgram[]
+  sharedInboxItems    SharedInboxItem[]
+  pushSubscriptions   PushSubscription[]
+
+  @@map("users")
+}
+
+// --------------------------------------------------------------------------
+// PushSubscription — מנוי Web Push אמיתי (לא ה-Notification API המקומי
+// הקיים, שרק פועל כשהדף פתוח — ר' ההערה ב-notification-preferences-section.tsx)
+// --------------------------------------------------------------------------
+
+// כל דפדפן/מכשיר שהמשתמש הפעיל בו התראות-דחיפה מקבל מנוי נפרד (endpoint
+// ייחודי) — כדי שהתראה תגיע לכל המכשירים שהוא הפעיל בהם, לא רק לאחד.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+model Trip {
+  id               String     @id @default(uuid())
+  userId           String
+  name             String
+  status           TripStatus @default(planning)
+  startDate        DateTime   @db.Date
+  endDate          DateTime   @db.Date
+  baseCurrencyCode String? // מטבע הבסיס לדוחות (סעיף 9 בהבהרות) — לא מחליף מטבעות מקוריים
+  primaryTimezone  String? // IANA tz של יעד הטיול, ברירת מחדל לישויות שלא צריכות דיוק פר-רגל
+  tripType         TripType?
+  coverImageUrl    String?
+  notes            String?
+  // הערות רפואיות אישיות למצב חירום — אופציונלי, המשתמש בוחר אם למלא (סעיף 21.3 באפיון)
+  medicalNotes     String?
+  // תוקף הדרכון — אופציונלי, מזין המשתמש; מזין את בדיקת "תוקף-דרכון קרוב לפוג"
+  // ב-gap-detection.ts (כלל 6-החודשים הנפוץ, לא נאכף ולא ממציאים ברירת מחדל).
+  passportExpiryDate DateTime? @db.Date
+  // תוקף רישיון-נהיגה בינלאומי — אופציונלי, רלוונטי רק כשיש השכרת-רכב בטיול
+  // (נבדק ב-gap-detection.ts, לא מוצג אם אין השכרת-רכב בכלל).
+  internationalDrivingPermitExpiryDate DateTime? @db.Date
+  // תוקף רישיון-הנהיגה הישראלי (הבסיסי) — נדרש לצד הרישיון הבינלאומי, אותה
+  // רלוונטיות בדיוק (רק כשיש השכרת-רכב בטיול).
+  israeliDrivingLicenseExpiryDate DateTime? @db.Date
+  // "בדקתי דרישות-ויזה ליעדים בטיול" — checkbox שהמשתמש מסמן בעצמו. המערכת
+  // לעולם לא קובעת בעצמה אם צריך ויזה (אין מקור-מידע רשמי אמין לזה, ר' ההערה
+  // ב-gap-detection.ts) — זו רק תזכורת-לבדוק, לא תשובה.
+  visaRequirementsChecked Boolean @default(false)
+  // תקציב — תמיד ב-₪ (לא במטבע הטיול), כדי לאפשר סכימה אחת גם כשההוצאות
+  // בכמה מטבעות; ההמרה בפועל נעשית ב-apps/web/lib/budget.ts דרך אותו
+  // CurrencyRateProvider (בנק ישראל+Frankfurter) שכבר משמש לשווי הארנקים.
+  totalBudgetAmount Decimal? @db.Decimal(12, 2)
+  dailyBudgetAmount Decimal? @db.Decimal(12, 2)
+  deletedAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  user                    User                     @relation(fields: [userId], references: [id])
+  baseCurrency            Currency?                @relation(fields: [baseCurrencyCode], references: [code])
+  days                    TripDay[]
+  countries               TripCountry[]
+  cities                  TripCity[]
+  dateChangeLogs          TripDateChangeLog[]
+  places                  TripPlace[]
+  plannedActivities       PlannedActivity[]
+  bookings                Booking[]
+  expenses                Expense[]
+  wallets                 Wallet[]
+  currencyExchanges       CurrencyExchange[]
+  deposits                Deposit[]
+  refunds                 Refund[]
+  documents               Document[]
+  contacts                Contact[]
+  settings                TripSettings?
+  notificationPreferences NotificationPreference[]
+  companions              TripCompanion[]
+  budgetCategoryLimits    BudgetCategoryLimit[]
+  checklistItems          ChecklistItem[]
+  shareLinks              TripShareLink[]
+  companionPolls          CompanionPoll[]
+  placeRecommendations    PlaceRecommendation[]
+
+  @@index([userId, status])
+  @@map("trips")
+}
+
+model TripDay {
+  id           String   @id @default(uuid())
+  tripId       String
+  calendarDate DateTime @db.Date
+  dayIndex     Int?
+  notes        String?
+
+  trip  Trip   @relation(fields: [tripId], references: [id])
+  route Route?
+
+  @@unique([tripId, calendarDate])
+  @@map("trip_days")
+}
+
+model TripCountry {
+  id          String @id @default(uuid())
+  tripId      String
+  countryName String
+  orderIndex  Int    @default(0)
+
+  trip   Trip       @relation(fields: [tripId], references: [id])
+  cities TripCity[]
+
+  @@index([tripId])
+  @@map("trip_countries")
+}
+
+model TripCity {
+  id         String  @id @default(uuid())
+  tripId     String
+  countryId  String?
+  cityName   String
+  orderIndex Int     @default(0)
+
+  trip    Trip         @relation(fields: [tripId], references: [id])
+  country TripCountry? @relation(fields: [countryId], references: [id])
+
+  @@index([tripId])
+  @@map("trip_cities")
+}
+
+model TripDateChangeLog {
+  id           String   @id @default(uuid())
+  tripId       String
+  oldStartDate DateTime @db.Date
+  oldEndDate   DateTime @db.Date
+  newStartDate DateTime @db.Date
+  newEndDate   DateTime @db.Date
+  changedAt    DateTime @default(now())
+  impactReport Json?
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId])
+  @@map("trip_date_change_logs")
+}
+
+model TripSettings {
+  id                                  String  @id @default(uuid())
+  tripId                              String  @unique
+  airportLeadTimeInternationalMinutes Int     @default(180)
+  airportLeadTimeDomesticMinutes      Int     @default(120)
+  statusColors                        Json?
+  defaultCurrencyCode                 String?
+  nearMeDefaultRadiusM                Int     @default(1000)
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@map("trip_settings")
+}
+
+// תקציב לפי קטגוריה (Expense.category — טקסט חופשי, ר' ExpenseCategorySuggestion).
+// limitAmount תמיד ב-₪, כמו Trip.totalBudgetAmount/dailyBudgetAmount למעלה.
+model BudgetCategoryLimit {
+  id          String   @id @default(uuid())
+  tripId      String
+  category    String
+  limitAmount Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@unique([tripId, category])
+  @@map("budget_category_limits")
+}
+
+model TripCompanion {
+  id          String    @id @default(uuid())
+  tripId      String
+  displayName String
+  relation    String?
+  notes       String?
+  deletedAt   DateTime?
+
+  trip                Trip                 @relation(fields: [tripId], references: [id])
+  bookingParticipants BookingParticipant[]
+  payments            Payment[]
+  expenseParticipants ExpenseParticipant[]
+  pollVotes           CompanionPollVote[]
+
+  @@index([tripId])
+  @@map("trip_companions")
+}
+
+// הצבעות בין המלווים ("איפה אוכלים הערב") — proxy voting: בעל החשבון מזין
+// את ההצבעות בעצמו (TripCompanion אין להן חשבון/התחברות משלהן). קליל
+// בכוונה — אין isClosed/סגירת-סקר ב-v1, הסקר תמיד פתוח לשינוי הצבעה.
+model CompanionPoll {
+  id        String   @id @default(uuid())
+  tripId    String
+  question  String
+  createdAt DateTime @default(now())
+
+  trip    Trip                  @relation(fields: [tripId], references: [id])
+  options CompanionPollOption[]
+  votes   CompanionPollVote[]
+
+  @@index([tripId])
+  @@map("companion_polls")
+}
+
+model CompanionPollOption {
+  id         String @id @default(uuid())
+  pollId     String
+  text       String
+  orderIndex Int    @default(0)
+
+  poll  CompanionPoll       @relation(fields: [pollId], references: [id])
+  votes CompanionPollVote[]
+
+  @@index([pollId])
+  @@map("companion_poll_options")
+}
+
+// pollId מוכפל מעל optionId (במקום רק optionId) כדי לאכוף "הצבעה אחת
+// פר-מלווה-פר-סקר" ישירות דרך unique([pollId, companionId]) — לא רק
+// "לא-פעם-יותר-לאותה-אפשרות".
+model CompanionPollVote {
+  id          String @id @default(uuid())
+  pollId      String
+  optionId    String
+  companionId String
+
+  poll      CompanionPoll       @relation(fields: [pollId], references: [id])
+  option    CompanionPollOption @relation(fields: [optionId], references: [id])
+  companion TripCompanion       @relation(fields: [companionId], references: [id])
+
+  @@unique([pollId, companionId])
+  @@index([optionId])
+  @@map("companion_poll_votes")
+}
+
+// Cache של תוצאות Google Places — כדי לא לקרוא ל-API בתשלום בכל טעינת-דף.
+// "רענון" (generateRecommendationsAction) הוא מחיקה+יצירה-מחדש לפי scopeLabel,
+// לא upsert מורכב — ר' place-recommendation-repository.ts.
+model PlaceRecommendation {
+  id               String   @id @default(uuid())
+  tripId           String
+  scopeLabel       String
+  category         String?
+  name             String
+  address          String?
+  rating           Decimal? @db.Decimal(2, 1)
+  userRatingsTotal Int?
+  mapsUrl          String
+  photoUrl         String?
+  createdAt        DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId])
+  @@map("place_recommendations")
+}
+
+// קישור-שיתוף לתצוגה ציבורית קריאה-בלבד של המסלול (חלק H) — "חי" = לו"ז
+// מתעדכן, לא מיקום-GPS. token אקראי-בלתי-ניתן-לניחוש, לא tripId עצמו —
+// זו נקודת-הכניסה הציבורית היחידה שלא עוברת דרך getCurrentUser()+RLS
+// (המסך ב-app/shared/[token]/ נמצא מחוץ ל-(app)/ בכוונה, ר' DECISIONS.md).
+// revokedAt לא null = מבוטל; לא מוחקים כדי לשמר audit trail של קישורים ישנים.
+model TripShareLink {
+  id        String    @id @default(uuid())
+  tripId    String
+  token     String    @unique
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId])
+  @@map("trip_share_links")
+}
+
+// שני הצ'קליסטים (רשימת אריזה + לפני הטיול) חולקים מבנה זהה (פריט+וי) —
+// listType מבחין ביניהם במקום שני מודלים כמעט-זהים.
+model ChecklistItem {
+  id         String            @id @default(uuid())
+  tripId     String
+  listType   ChecklistListType
+  name       String
+  category   String? // רלוונטי בעיקר לרשימת אריזה (למשל "בגדים"/"מסמכים")
+  quantity   Int?
+  isDone     Boolean           @default(false)
+  orderIndex Int               @default(0)
+  deletedAt  DateTime?
+  createdAt  DateTime          @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId, listType])
+  @@map("checklist_items")
+}
+
+// --------------------------------------------------------------------------
+// Place (גלובלי, חוצה טיולים) + TripPlace (קשר פר-טיול)
+// --------------------------------------------------------------------------
+
+model Place {
+  id              String        @id @default(uuid())
+  // חובה לבידוד משתמשים (RLS) — ספריית Places היא אישית, לא משותפת בין משתמשים,
+  // גם אם היום קיים משתמש אחד בלבד. תוקן לפי דרישת RLS מפורשת.
+  userId          String
+  name            String
+  category        PlaceCategory
+  address         String?
+  country         String?
+  city            String?
+  lat             Float?
+  lng             Float?
+  // הערה: PostGIS geography(Point) יתווסף כעמודה נוספת + GiST index בפריסה
+  // בפועל על Supabase (לא זמין בסביבת הפיתוח המקומית של השלב הזה — ראה דוח שלב 0)
+  officialWebsite String?
+  phone           String?
+  whatsapp        String?
+  email           String?
+  openingHours    Json?
+  generalNotes    String?
+  isFavorite      Boolean       @default(false)
+  dontReturn      Boolean       @default(false)
+  personalRating  Int?
+  mapLink         String?
+  websiteLink     String?
+  extraLinks      Json?
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id])
+  tripPlaces        TripPlace[]
+  plannedActivities PlannedActivity[]
+  bookings          Booking[]
+  expenses          Expense[]
+  routeStopsPickup  RouteStop[]       @relation("RouteStopPlace")
+
+  @@index([userId, category])
+  @@map("places")
+}
+
+model TripPlace {
+  id        String          @id @default(uuid())
+  tripId    String
+  placeId   String
+  status    TripPlaceStatus @default(want_to_go)
+  notes     String?
+  deletedAt DateTime?
+  createdAt DateTime        @default(now())
+
+  trip  Trip  @relation(fields: [tripId], references: [id])
+  place Place @relation(fields: [placeId], references: [id])
+
+  @@unique([tripId, placeId])
+  @@map("trip_places")
+}
+
+// --------------------------------------------------------------------------
+// Planned Activity — רצון/תוכנית, לא בהכרח כסף (נפרד לגמרי מ-Booking)
+// --------------------------------------------------------------------------
+
+model PlannedActivity {
+  id                       String          @id @default(uuid())
+  tripId                   String
+  placeId                  String?
+  bookingId                String?         @unique // מתמלא כשהתוכנית "מתבגרת" להזמנה אמיתית
+  name                     String
+  activityType             String?
+  plannedAt                DateTime?
+  plannedTimezone          String?
+  estimatedDurationMinutes Int?
+  estimatedPrice           Decimal?        @db.Decimal(12, 2)
+  estimatedCurrencyCode    String?
+  notes                    String?
+  link                     String?
+  status                   LifecycleStatus @default(want_to_book)
+  personalRating           Int?
+  dataSource               DataSource      @default(manual)
+  isConfirmed              Boolean         @default(true)
+  deletedAt                DateTime?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  trip       Trip        @relation(fields: [tripId], references: [id])
+  place      Place?      @relation(fields: [placeId], references: [id])
+  booking    Booking?    @relation(fields: [bookingId], references: [id])
+  expenses   Expense[]
+  routeStops RouteStop[]
+
+  @@index([tripId, status])
+  @@index([tripId, plannedAt])
+  @@map("planned_activities")
+}
+
+// --------------------------------------------------------------------------
+// Booking (+ פירוט לפי סוג) — מחויבות מסחרית אמיתית
+// --------------------------------------------------------------------------
+
+model Booking {
+  id                 String          @id @default(uuid())
+  tripId             String
+  placeId            String?
+  bookingType        BookingType
+  status             LifecycleStatus @default(need_to_book)
+  agreedPrice        Decimal?        @db.Decimal(12, 2)
+  agreedCurrencyCode String?
+  // External Reference — מוכן מראש לאינטגרציות עתידיות (סעיף 7 בהבהרות)
+  source             BookingSource?
+  sourceOther        String?
+  providerName       String?
+  externalBookingId  String?
+  confirmationNumber String?
+  bookingLink        String?
+  manageBookingLink  String?
+  cancellationPolicy String?
+  phone              String?
+  whatsapp           String?
+  email              String?
+  website            String?
+  notes              String?
+  dataSource         DataSource      @default(manual)
+  isConfirmed        Boolean         @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  trip             Trip                 @relation(fields: [tripId], references: [id])
+  place            Place?               @relation(fields: [placeId], references: [id])
+  plannedActivity  PlannedActivity?
+  hotelStay        HotelStay?
+  flight           Flight?
+  transportBooking TransportBooking?
+  carRental        CarRental?
+  insurance        Insurance?
+  activityReservation ActivityReservation?
+  benefits         BookingBenefit[]
+  expenses         Expense[]
+  payments         Payment[]
+  deposits         Deposit[]
+  participants     BookingParticipant[]
+  routeStops       RouteStop[]
+
+  @@index([tripId, bookingType])
+  @@index([tripId, status])
+  @@index([placeId])
+  @@map("bookings")
+}
+
+model BookingParticipant {
+  id          String @id @default(uuid())
+  bookingId   String
+  companionId String
+
+  booking   Booking       @relation(fields: [bookingId], references: [id])
+  companion TripCompanion @relation(fields: [companionId], references: [id])
+
+  @@unique([bookingId, companionId])
+  @@map("booking_participants")
+}
+
+model HotelStay {
+  id                 String              @id @default(uuid())
+  bookingId          String              @unique
+  hotelName          String
+  address            String?
+  lat                Float?
+  lng                Float?
+  checkInDate        DateTime            @db.Date
+  checkOutDate       DateTime            @db.Date
+  nights             Int?
+  checkInTime        String?
+  checkOutTime       String?
+  timezone           String?
+  earlyCheckIn       Boolean             @default(false)
+  earlyCheckInCost   Decimal?            @db.Decimal(12, 2)
+  lateCheckOut       Boolean             @default(false)
+  lateCheckOutCost   Decimal?            @db.Decimal(12, 2)
+  roomType           String?
+  bedType            String?
+  floor              String?
+  view               String?
+  smoking            Boolean?
+  guestsCount        Int?
+  pricePerNight      Decimal?            @db.Decimal(12, 2)
+  mealPlan           MealPlan            @default(none)
+  breakfastPrice     Decimal?            @db.Decimal(12, 2)
+  breakfastPriceUnit BreakfastPriceUnit?
+  breakfastHours     String?
+  breakfastLocation  String?
+  personalRating     Int?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([checkInDate, checkOutDate])
+  @@map("hotel_stays")
+}
+
+model Flight {
+  id                String        @id @default(uuid())
+  bookingId         String        @unique
+  airline           String
+  flightNumber      String?
+  departureAirport  String
+  arrivalAirport    String
+  departureTerminal String?
+  arrivalTerminal   String?
+  departureAt       DateTime // UTC instant — מקור האמת לחישובים/טיימרים
+  departureTimezone String // IANA, למשל "Asia/Jerusalem" — לתצוגת שעה מקומית נכונה
+  arrivalAt         DateTime
+  arrivalTimezone   String
+  durationMinutes   Int? // cache, מחושב מ-(arrivalAt - departureAt) ב-UTC
+  seat              String?
+  baggage           String?
+  legType           FlightLegType @default(outbound)
+  // נשמרים רק כשהמשתמש מזין אותם בפועל דרך AirportTimingCalculator — מזינים
+  // את התראת "זמן לצאת לשדה" (need_to_leave_for_airport). בלי שניהם, ההתראה
+  // הזו פשוט מדולגת — לא ממציאים ברירת-מחדל לזמן-נסיעה לשדה.
+  airportArrivalLeadMinutes  Int?
+  travelTimeToAirportMinutes Int?
+  // חלון-פתיחת-צ'ק-אין לפני ההמראה (שעות) — נשמר רק כשהמשתמש בוחר בפועל
+  // (CheckInWindowPicker), משתנה בין חברות-תעופה, לא ממציאים ברירת מחדל אחידה.
+  checkInWindowHours Int?
+  // סטטוס טיסה חי (Aviationstack) — נשמר רק כתוצאה מבדיקה מפורשת שהמשתמש
+  // הפעיל (checkFlightStatusAction), לעולם לא ברירת-מחדל מומצאת. null = עדיין
+  // לא נבדק. ר' apps/web/lib/flight-status/.
+  liveStatus          String?
+  liveDelayMinutes    Int?
+  liveStatusCheckedAt DateTime?
+
+  booking                 Booking             @relation(fields: [bookingId], references: [id])
+  linkedTransportBookings TransportBooking[]  @relation("TransportPickupFlight")
+
+  @@index([departureAt])
+  @@map("flights")
+}
+
+model TransportBooking {
+  id                       String        @id @default(uuid())
+  bookingId                String        @unique
+  mode                     TransportMode
+  pickupText               String?
+  pickupLat                Float?
+  pickupLng                Float?
+  dropoffText              String?
+  dropoffLat               Float?
+  dropoffLng               Float?
+  pickupAt                 DateTime
+  pickupTimezone           String
+  etaAt                    DateTime?
+  etaTimezone              String?
+  estimatedDurationMinutes Int?
+  passengersCount          Int?
+  luggageCount             Int?
+  vehicleType              VehicleType?
+  driverName               String?
+  companyName              String?
+  // רלוונטי בעיקר למעבורות — האם ומה בדיוק עולה איתך על הסיפון (סעיף 10 באפיון)
+  vehicleOnBoard           String?
+  seat                     String?
+  tollFees                 Decimal?      @db.Decimal(12, 2)
+  parkingFees              Decimal?      @db.Decimal(12, 2)
+  personalRating           Int?
+  selectedQuoteId          String?       @unique
+  // קישור מפורש (לא ניחוש לפי תאריך) להסעה-מטיסה ספציפית — מזין את הודעת
+  // "שלח לנהג" עם מספר-טיסה/סטטוס-חי/שעת-נחיתה אמיתיים כשקיים.
+  linkedFlightId           String?
+
+  booking       Booking          @relation(fields: [bookingId], references: [id])
+  selectedQuote TransportQuote?  @relation("SelectedQuote", fields: [selectedQuoteId], references: [id])
+  quotes        TransportQuote[] @relation("QuotesForBooking")
+  linkedFlight  Flight?          @relation("TransportPickupFlight", fields: [linkedFlightId], references: [id])
+
+  @@index([pickupAt])
+  // תוקן drift: האינדקס הזה כבר קיים ב-DB בפועל (מיגרציה 20260824090000)
+  // אבל היה חסר מהסכימה עצמה — מוסיף אותו בחזרה כדי שהסכימה תשקף מציאות.
+  @@index([linkedFlightId])
+  @@map("transport_bookings")
+}
+
+model TransportQuote {
+  id                 String       @id @default(uuid())
+  tripId             String
+  transportBookingId String?
+  provider           String
+  price              Decimal      @db.Decimal(12, 2)
+  currencyCode       String
+  vehicleType        VehicleType?
+  terms              String?
+  notes              String?
+  isSelected         Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+
+  transportBooking TransportBooking? @relation("QuotesForBooking", fields: [transportBookingId], references: [id])
+  selectedFor      TransportBooking? @relation("SelectedQuote")
+
+  @@index([tripId])
+  @@index([transportBookingId])
+  @@map("transport_quotes")
+}
+
+model CarRental {
+  id                  String            @id @default(uuid())
+  bookingId           String            @unique
+  vehicleType         RentalVehicleType
+  companyName         String
+  model               String?
+  licensePlate        String?
+  pickupLocationText  String?
+  pickupAt            DateTime
+  pickupTimezone      String
+  dropoffLocationText String?
+  dropoffAt           DateTime?
+  dropoffTimezone     String?
+  driverRequirements  String?
+  insuranceIncluded   Boolean           @default(false)
+  depositAmount       Decimal?          @db.Decimal(12, 2)
+  depositCurrencyCode String?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([pickupAt])
+  @@map("car_rentals")
+}
+
+model Insurance {
+  id                    String   @id @default(uuid())
+  bookingId             String   @unique
+  company               String
+  policyType            String?
+  startDate             DateTime @db.Date
+  endDate               DateTime @db.Date
+  policyNumber          String?
+  insuredNumber         String?
+  coverageNotes         String?
+  extensions            String?
+  deductible            Decimal? @db.Decimal(12, 2)
+  emergencyPhone        String?
+  emergencyWhatsapp     String?
+  emergencyEmail        String?
+  emergencyWebsite      String?
+  emergencyInstructions String?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([endDate])
+  @@map("insurances")
+}
+
+model ActivityReservation {
+  id                  String   @id @default(uuid())
+  bookingId           String   @unique
+  venueName           String
+  activityDate        DateTime @db.Date
+  activityTime        String?
+  ticketType          String?
+  confirmationDetails String?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([activityDate])
+  @@map("activity_reservations")
+}
+
+model BookingBenefit {
+  id                String       @id @default(uuid())
+  bookingId         String
+  benefitName       String
+  benefitType       BenefitType?
+  notes             String?
+  valueAmount       Decimal?     @db.Decimal(12, 2)
+  valueCurrencyCode String?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@map("booking_benefits")
+}
+
+// --------------------------------------------------------------------------
+// Expense / Payment — נפרדים מ-Booking (סעיף 12 בהבהרות)
+// --------------------------------------------------------------------------
+
+model Expense {
+  id                        String       @id @default(uuid())
+  tripId                    String
+  bookingId                 String?
+  plannedActivityId         String?
+  placeId                   String?
+  // טקסט חופשי בכוונה, לא enum — ראה ExpenseCategorySuggestion למעלה.
+  category                  String
+  description               String?
+  itemName                  String?
+  quantity                  Int?
+  amount                    Decimal      @db.Decimal(12, 2)
+  currencyCode              String
+  baseCurrencyAmount        Decimal?     @db.Decimal(12, 2) // cache בלבד, לא מחליף amount המקורי
+  baseCurrencyRateUsed      Decimal?     @db.Decimal(18, 8)
+  baseCurrencyRateFetchedAt DateTime?
+  expenseAt                 DateTime
+  timezone                  String?
+  personalRating            Int?
+  // רלוונטי רק כש-category = tip — סעיף "טיפים" בהבהרות
+  tipRecipient              String?
+  tipCategory               TipCategory?
+  notes                     String?
+  dataSource                DataSource   @default(manual)
+  isConfirmed               Boolean      @default(true)
+  deletedAt                 DateTime?
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+
+  trip            Trip                 @relation(fields: [tripId], references: [id])
+  booking         Booking?             @relation(fields: [bookingId], references: [id])
+  plannedActivity PlannedActivity?     @relation(fields: [plannedActivityId], references: [id])
+  place           Place?               @relation(fields: [placeId], references: [id])
+  payments        Payment[]
+  refunds         Refund[]
+  participants    ExpenseParticipant[]
+
+  @@index([tripId, category])
+  @@index([tripId, expenseAt])
+  @@index([bookingId])
+  @@index([placeId])
+  @@index([plannedActivityId])
+  @@map("expenses")
+}
+
+// מי משתתף בהוצאה משותפת, לצורך "סגירת חשבונות" (חלק F/G) — רק הוצאות עם
+// משתתפים נבחרים-במפורש נכללות בחישוב היתרות (ר' computeSettleUp).
+// בעל החשבון עצמו אינו שורה כאן (הוא מובלע תמיד) — רק המלווים (TripCompanion).
+model ExpenseParticipant {
+  id          String @id @default(uuid())
+  expenseId   String
+  companionId String
+
+  expense   Expense       @relation(fields: [expenseId], references: [id])
+  companion TripCompanion @relation(fields: [companionId], references: [id])
+
+  @@unique([expenseId, companionId])
+  @@map("expense_participants")
+}
+
+model Payment {
+  id                      String        @id @default(uuid())
+  expenseId               String?
+  bookingId               String?
+  amount                  Decimal       @db.Decimal(12, 2)
+  currencyCode            String
+  baseCurrencyAmount      Decimal?      @db.Decimal(12, 2)
+  baseCurrencyRateUsed    Decimal?      @db.Decimal(18, 8)
+  paymentAt               DateTime
+  timezone                String?
+  paymentMethod           PaymentMethod
+  cardId                  String?
+  // פירוט כרטיס אשראי (רלוונטי רק כש-paymentMethod = credit_card) — סעיף 10 בהבהרות
+  cardChargedAmount       Decimal?      @db.Decimal(12, 2)
+  cardChargedCurrencyCode String?
+  cardExchangeRate        Decimal?      @db.Decimal(18, 8)
+  cardFeeAmount           Decimal?      @db.Decimal(12, 2)
+  // שער שוק להשוואה בלבד — לא משפיע על הסכום שנרשם בפועל
+  marketReferenceRate     Decimal?      @db.Decimal(18, 8)
+  marketRateSource        String?
+  marketRateFetchedAt     DateTime?
+  paidByCompanionId       String?
+  notes                   String?
+  dataSource              DataSource    @default(manual)
+  deletedAt               DateTime?
+  createdAt               DateTime      @default(now())
+
+  expense            Expense?            @relation(fields: [expenseId], references: [id])
+  booking            Booking?            @relation(fields: [bookingId], references: [id])
+  card               PaymentCard?        @relation(fields: [cardId], references: [id])
+  paidByCompanion    TripCompanion?      @relation(fields: [paidByCompanionId], references: [id])
+  walletTransactions WalletTransaction[]
+
+  @@index([expenseId])
+  @@index([bookingId])
+  @@index([cardId])
+  @@index([paidByCompanionId])
+  @@map("payments")
+}
+
+model PaymentCard {
+  id                  String  @id @default(uuid())
+  userId              String
+  cardName            String
+  defaultCurrencyCode String?
+
+  user     User      @relation(fields: [userId], references: [id])
+  payments Payment[]
+
+  @@index([userId])
+  @@map("payment_cards")
+}
+
+// --------------------------------------------------------------------------
+// Wallet / Currency Exchange / Deposit / Refund
+// --------------------------------------------------------------------------
+
+model Wallet {
+  id           String  @id @default(uuid())
+  tripId       String
+  currencyCode String
+  // הסכום ההתחלתי-האמיתי, ברגע שהארנק נוצר — נקבע פעם אחת ולעולם לא משתנה אחר-כך,
+  // גם כשעושים top-up נוסף מאוחר יותר (בשונה מ-initialAmount, ר' למטה).
+  openingBalance Decimal @default(0) @db.Decimal(12, 2)
+  // "סה"כ שהופקד אי-פעם" — גדל עם כל top-up נוסף, לא נשאר קפוא כמו openingBalance.
+  // gap-detection.ts ודשבורד "% מנוצל" נשענים במכוון על המשמעות המצטברת הזו.
+  initialAmount  Decimal @default(0) @db.Decimal(12, 2)
+  currentBalance Decimal @default(0) @db.Decimal(12, 2)
+
+  trip         Trip                @relation(fields: [tripId], references: [id])
+  transactions WalletTransaction[]
+
+  @@unique([tripId, currencyCode])
+  @@map("wallets")
+}
+
+// טבלה מצטברת בלבד (append-only) — לא נמחקת, גם לא ב-soft delete
+model WalletTransaction {
+  id                String       @id @default(uuid())
+  walletId          String
+  type              WalletTxType
+  amount            Decimal      @db.Decimal(12, 2)
+  relatedPaymentId  String?
+  relatedExchangeId String?
+  relatedDepositId  String?
+  txAt              DateTime
+  notes             String?
+  createdAt         DateTime     @default(now())
+
+  wallet          Wallet            @relation(fields: [walletId], references: [id])
+  relatedPayment  Payment?          @relation(fields: [relatedPaymentId], references: [id])
+  relatedExchange CurrencyExchange? @relation(fields: [relatedExchangeId], references: [id])
+  relatedDeposit  Deposit?          @relation(fields: [relatedDepositId], references: [id])
+
+  @@index([walletId, txAt])
+  @@index([relatedPaymentId])
+  @@index([relatedExchangeId])
+  @@index([relatedDepositId])
+  @@map("wallet_transactions")
+}
+
+model CurrencyExchange {
+  id                   String    @id @default(uuid())
+  tripId               String
+  givenAmount          Decimal   @db.Decimal(12, 2)
+  givenCurrencyCode    String
+  receivedAmount       Decimal   @db.Decimal(12, 2)
+  receivedCurrencyCode String
+  actualRate           Decimal   @db.Decimal(18, 8)
+  feeAmount            Decimal?  @db.Decimal(12, 2)
+  locationName         String?
+  locationLat          Float?
+  locationLng          Float?
+  exchangeAt           DateTime
+  timezone             String?
+  notes                String?
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+
+  trip               Trip                @relation(fields: [tripId], references: [id])
+  walletTransactions WalletTransaction[]
+
+  @@index([tripId, exchangeAt])
+  @@map("currency_exchanges")
+}
+
+model Deposit {
+  id                 String    @id @default(uuid())
+  tripId             String
+  bookingId          String?
+  amount             Decimal   @db.Decimal(12, 2)
+  currencyCode       String
+  paidTo             String?
+  reason             String?
+  expectedReturnDate DateTime? @db.Date
+  isReturned         Boolean   @default(false)
+  returnedAmount     Decimal?  @db.Decimal(12, 2)
+  returnedDate       DateTime? @db.Date
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+
+  trip               Trip                @relation(fields: [tripId], references: [id])
+  booking            Booking?            @relation(fields: [bookingId], references: [id])
+  walletTransactions WalletTransaction[]
+
+  @@index([tripId, isReturned])
+  @@index([bookingId])
+  @@map("deposits")
+}
+
+model Refund {
+  id              String    @id @default(uuid())
+  tripId          String
+  sourceExpenseId String
+  sourcePaymentId String?
+  amount          Decimal   @db.Decimal(12, 2)
+  currencyCode    String
+  reason          String?
+  // isReceived=true (ברירת מחדל, מתאים לכל השורות ההיסטוריות): refundAt הוא
+  // תאריך הקבלה בפועל. isReceived=false (החזר צפוי/ממתין): refundAt הוא
+  // התאריך הצפוי, והארנק מזוכה רק כש-markRefundReceived רץ בפועל.
+  refundAt        DateTime
+  isReceived      Boolean   @default(true)
+  notes           String?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  trip          Trip    @relation(fields: [tripId], references: [id])
+  sourceExpense Expense @relation(fields: [sourceExpenseId], references: [id])
+
+  @@index([tripId, isReceived])
+  @@index([sourceExpenseId])
+  @@index([sourcePaymentId])
+  @@map("refunds")
+}
+
+// --------------------------------------------------------------------------
+// Document — מנגנון כללי, פולימורפי (סעיף 6 בהבהרות)
+// --------------------------------------------------------------------------
+
+model Document {
+  id           String             @id @default(uuid())
+  // null כש-entityType="place" — Place הוא ישות גלובלית (לא שייכת לטיול
+  // ספציפי, ר' place-repository.ts), אז מסמך/תמונה שלו לא יכול להיות
+  // משויך לטיול קונקרטי. כל שאר סוגי הישות (הזמנה/הוצאה/תכנון/וכו') הם
+  // תמיד פר-טיול, tripId שם נשאר חובה בפועל (אוכף באפליקציה, לא ב-DB).
+  tripId       String?
+  entityType   DocumentEntityType
+  entityId     String
+  documentType DocumentType
+  fileUrl      String
+  fileName     String?
+  mimeType     String?
+  uploadedAt   DateTime           @default(now())
+  ocrStatus    OcrStatus          @default(pending)
+  notes        String?
+  deletedAt    DateTime?
+
+  trip            Trip?                    @relation(fields: [tripId], references: [id])
+  extractedFields DocumentExtractedField[]
+
+  @@index([entityType, entityId])
+  @@index([tripId])
+  @@map("documents")
+}
+
+// entityId פולימורפי (Booking, Expense, Place, PlannedActivity, HotelStay,
+// Flight, TransportBooking, Insurance, Payment, Trip, TripDay, לפי entityType) —
+// כל השאילתות אליו הן ב-entityId ישירות, בלי relation מוגדר בסכימה. בעבר
+// היו כאן שתי @relation-ים ("רכות" לפי הכוונה בהערה המקורית) ל-Booking/Expense
+// — אבל Prisma תמיד מייצר מהן FK constraint אמיתי ואוכף ב-DB, לא "רך" בכלל,
+// ומכיוון ששני ה-FK-ים חלו יחד על אותה עמודה, שום שורה לא יכלה לספק את שניהם
+// בו-זמנית (entityId לא יכול להיות גם bookings.id וגם expenses.id) — התוצאה:
+// היה בלתי-אפשרי להכניס שורת documents אחת, לאף entityType, אף פעם (אומת:
+// 0 מסמכים בפרודקשן). הוסרו ב-20260828, ר' המיגרציה המתאימה.
+
+model DocumentExtractedField {
+  id              String     @id @default(uuid())
+  documentId      String
+  fieldName       String
+  extractedValue  String?
+  confidenceScore Float?
+  dataSource      DataSource @default(ocr)
+  isConfirmed     Boolean    @default(false)
+  confirmedValue  String?
+  confirmedAt     DateTime?
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@index([documentId])
+  @@map("document_extracted_fields")
+}
+
+// --------------------------------------------------------------------------
+// Contact / Status History / Audit Log
+// --------------------------------------------------------------------------
+
+model Contact {
+  id        String           @id @default(uuid())
+  // חובה לבידוד משתמשים (RLS) — גם כשtripId ריק (איש קשר גלובלי, לא קשור לטיול ספציפי).
+  userId    String
+  tripId    String?
+  name      String
+  company   String?
+  role      String?
+  phone     String?
+  whatsapp  String?
+  email     String?
+  website   String?
+  category  ContactCategory?
+  notes     String?
+  deletedAt DateTime?
+
+  user User  @relation(fields: [userId], references: [id])
+  trip Trip? @relation(fields: [tripId], references: [id])
+
+  @@index([userId, tripId, category])
+  @@map("contacts")
+}
+
+// גלובלי פר-משתמש (לא פר-טיול) — אותו עיקרון כמו Contact/PaymentCard: כרטיס-
+// מועדון אחד (טיסות תכופות/מלונות) משמש בכמה טיולים.
+model LoyaltyProgram {
+  id             String              @id @default(uuid())
+  userId         String
+  programName    String
+  programType    LoyaltyProgramType?
+  memberNumber   String?
+  currentBalance Int?
+  tierStatus     String?
+  notes          String?
+  deletedAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("loyalty_programs")
+}
+
+// append-only — עוקב אחרי מעברי סטטוס לצורך "תכנון מול ביצוע"
+model StatusHistory {
+  id         String                  @id @default(uuid())
+  // מוזן ישירות (denormalized) כדי לאפשר RLS פשוט על טבלה פולימורפית —
+  // בלי זה אין דרך יעילה לבדוק בעלות בלי תלות בכל סוג ישות אפשרי.
+  userId     String
+  entityType StatusHistoryEntityType
+  entityId   String
+  oldStatus  String?
+  newStatus  String
+  changedAt  DateTime                @default(now())
+  changedBy  String?
+  reason     String?
+  note       String?
+
+  @@index([entityType, entityId, changedAt])
+  @@index([userId])
+  @@map("status_history")
+}
+
+// append-only — נשמר גם אחרי Soft Delete של הרשומה המקורית (טבלה נפרדת,
+// לא מושפעת מ-deletedAt של הישות עצמה)
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?
+  entityType String
+  entityId   String
+  fieldName  String
+  oldValue   String?
+  newValue   String?
+  action     AuditAction
+  changedAt  DateTime    @default(now())
+
+  @@index([entityType, entityId, changedAt])
+  @@map("audit_log")
+}
+
+// --------------------------------------------------------------------------
+// Integration Account — שכבת חיבורים חיצוניים (abstraction בלבד בשלב 0)
+// --------------------------------------------------------------------------
+
+model IntegrationAccount {
+  id               String             @id @default(uuid())
+  userId           String
+  serviceName      IntegrationService
+  integrationType  IntegrationType    @default(manual_link)
+  appLink          String?
+  websiteLink      String?
+  accountLink      String?
+  bookingsLink     String?
+  emailOrUsername  String?
+  oauthProvider    String?
+  oauthSecretRef   String? // הפניה לסוד בכספת (Supabase Vault) — לעולם לא הטוקן עצמו
+  oauthScope       String?
+  oauthConnectedAt DateTime?
+  oauthExpiresAt   DateTime?
+  notes            String?
+  deletedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, serviceName])
+  @@map("integration_accounts")
+}
+
+// --------------------------------------------------------------------------
+// SharedInboxItem — קליטת "שתף" מהטלפון (PWA share_target), לפני שיוך
+// --------------------------------------------------------------------------
+
+// תא-קליטה זמני: כשמשתפים תמונה/מסמך (או טקסט/קישור) מאפליקציה אחרת בטלפון
+// (כמו Gmail) אל Trip Master דרך כפתור השיתוף הטבעי של המערכת, עדיין לא ידוע
+// לאיזה טיול/הזמנה זה שייך — הפריט נשמר כאן עד שהמשתמש משייך אותו במסך
+// /share-inbox, ואז נמחק (הופך ל-Document אמיתי). לכן אין deletedAt/restore —
+// זו תיבת-קליטה זמנית, לא רשומה היסטורית.
+model SharedInboxItem {
+  id          String   @id @default(uuid())
+  userId      String
+  // כמו Document.fileUrl — data: URI במצב Mock. יכול להיות null אם שותף רק
+  // טקסט/קישור בלי קובץ (למשל שיתוף URL בלי צילום מסך) — לא ניתן להפוך
+  // לישות Document אמיתית (fileUrl שם הוא חובה), מוצג במסך השיוך כמידע בלבד.
+  fileUrl     String?
+  fileName    String?
+  mimeType    String?
+  sharedTitle String?
+  sharedText  String?
+  sharedUrl   String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("shared_inbox_items")
+}
+
+// --------------------------------------------------------------------------
+// Route / Route Stop — מסלול יומי
+// --------------------------------------------------------------------------
+
+model Route {
+  id        String   @id @default(uuid())
+  tripDayId String   @unique
+  createdAt DateTime @default(now())
+
+  tripDay TripDay     @relation(fields: [tripDayId], references: [id])
+  stops   RouteStop[]
+
+  @@map("routes")
+}
+
+model RouteStop {
+  id                 String      @id @default(uuid())
+  routeId            String
+  placeId            String?
+  bookingId          String?
+  plannedActivityId  String?
+  orderIndex         Int
+  plannedDepartureAt DateTime?
+  plannedArrivalAt   DateTime?
+  timezone           String?
+  distanceKm         Decimal?    @db.Decimal(8, 2)
+  travelTimeMinutes  Int?
+  travelMode         TravelMode?
+
+  route           Route            @relation(fields: [routeId], references: [id])
+  place           Place?           @relation("RouteStopPlace", fields: [placeId], references: [id])
+  booking         Booking?         @relation(fields: [bookingId], references: [id])
+  plannedActivity PlannedActivity? @relation(fields: [plannedActivityId], references: [id])
+
+  @@index([routeId, orderIndex])
+  @@index([placeId])
+  @@index([bookingId])
+  @@index([plannedActivityId])
+  @@map("route_stops")
+}
+
+// --------------------------------------------------------------------------
+// Notification Preference (הטבלה קיימת משלב 0; מנוע השליחה בפועל — שלב 6)
+// --------------------------------------------------------------------------
+
+model NotificationPreference {
+  id              String                @id @default(uuid())
+  tripId          String
+  eventType       NotificationEventType
+  leadTimeMinutes Int?
+  isEnabled       Boolean               @default(true)
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@unique([tripId, eventType])
+  @@map("notification_preferences")
+}
+
+// --------------------------------------------------------------------------
+// Weather — Cache בלבד. לא נתוני משתמש (לא ב-RLS לפי משתמש, ראה rls_policies.sql).
+// המפתח הוא מיקום+זמן, לא ישות ספציפית — Trip/TripDay/Place/PlannedActivity/
+// Route/RouteStop/HotelStay/TransportBooking/Flight כולם פותרים ל-lat/lng+שעה
+// (ברמת האפליקציה) ואז שואלים את ה-cache. כך אין כפילות נתונים לכל ישות בנפרד.
+// המימוש בפועל (Provider אמיתי) מתוכנן לשלב מאוחר יותר — ראה 01_architecture_v2.md.
+// --------------------------------------------------------------------------
+
+model WeatherForecastSnapshot {
+  id                              String    @id @default(uuid())
+  latRounded                      Float // מעוגל (~2 ספרות) כדי לאפשר שימוש חוזר ב-cache למיקומים קרובים
+  lngRounded                      Float
+  timezone                        String // IANA — קריטי להצגת הזמן המקומי הנכון (סעיף 30 בהבהרות)
+  forecastAt                      DateTime // הרגע שהתחזית מתייחסת אליו (UTC instant)
+  retrievedAt                     DateTime  @default(now()) // מתי נשלף בפועל מה-provider
+  provider                        String // שם ה-provider בפועל — לא נעול לספק יחיד בסכימה
+  isCurrentConditions             Boolean   @default(false) // true = תנאים "עכשיו", false = תחזית עתידית
+  temperatureC                    Float?
+  feelsLikeC                      Float?
+  minTemperatureC                 Float?
+  maxTemperatureC                 Float?
+  condition                       String? // כפי שהספק מחזיר (טקסט/קוד) — לא מתורגם/מומצא בסכימה
+  conditionIcon                   String?
+  precipitationProbabilityPercent Float?
+  precipitationAmountMm           Float?
+  humidityPercent                 Float?
+  windSpeedKph                    Float?
+  windDirectionDeg                Float?
+  uvIndex                         Float?
+  visibilityKm                    Float?
+  sunrise                         DateTime?
+  sunset                          DateTime?
+  rawResponse                     Json? // תשובת ה-provider הגולמית — לדיבוג/שדרוג, לא מקור להצגה ב-UI
+
+  @@index([latRounded, lngRounded, forecastAt])
+  @@map("weather_forecast_snapshots")
+}
+
+model WeatherAlert {
+  id          String    @id @default(uuid())
+  latRounded  Float
+  lngRounded  Float
+  provider    String
+  severity    String?
+  title       String
+  description String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  retrievedAt DateTime  @default(now())
+
+  @@index([latRounded, lngRounded, startsAt])
+  @@map("weather_alerts")
+}

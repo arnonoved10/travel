@@ -1,0 +1,20 @@
+{
+  "name": "@travel-app/db",
+  "private": true,
+  "version": "0.1.0",
+  "main": "generated/client/index.js",
+  "types": "generated/client/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "validate": "prisma validate",
+    "format": "prisma format",
+    "typecheck": "echo \"(db package has no app TypeScript source yet)\""
+  },
+  "dependencies": {
+    "@prisma/client": "^6.3.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.3.1"
+  }
+}

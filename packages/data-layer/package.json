@@ -1,0 +1,21 @@
+{
+  "name": "@travel-app/data-layer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
+    "@travel-app/db": "*",
+    "@travel-app/shared-types": "*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "^3.0.4"
+  }
+}

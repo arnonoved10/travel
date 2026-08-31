@@ -1,0 +1,129 @@
+.dashboard {
+  --color-bg: #050814;
+  --color-bg-elevated: #090e1d;
+  --color-text-primary: #f7f8ff;
+  --color-text-secondary: #c0c7dc;
+  --color-text-muted: #7f8aa7;
+  --color-surface: rgba(255, 255, 255, 0.045);
+  --color-surface-elevated: rgba(19, 27, 50, 0.94);
+  --color-glass: rgba(13, 20, 40, 0.86);
+  --color-border: rgba(151, 167, 214, 0.13);
+  --shadow-color: 230deg 70% 2%;
+  /* צפיפות מוגברת לדשבורד עצמו בלבד (לא גלובלי) — אותו מנגנון בדיוק כמו
+     data-density="compact" (globals.css), רק ממוסגר לעמוד הזה: לפי המוקאפ
+     הדשבורד צריך להיות הרבה יותר צפוף מהגרסה הקודמת. */
+  --space-unit: 0.8;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  min-height: 100vh;
+  margin-inline: calc(var(--space-5) * -1);
+  padding-inline: var(--space-5);
+  padding-bottom: 2rem;
+  color: var(--color-text-primary);
+  background:
+    radial-gradient(circle at 78% 3%, rgba(82, 82, 255, 0.16), transparent 24rem),
+    radial-gradient(circle at 15% 38%, rgba(0, 194, 255, 0.08), transparent 28rem),
+    linear-gradient(180deg, #070b18 0%, #050814 45%, #070a15 100%);
+}
+
+.introGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 0.625rem;
+}
+
+.walletSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sectionHeading h2 {
+  margin: 0.2rem 0 0;
+  font: var(--text-h2);
+}
+
+.eyebrow {
+  color: #8792ad;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sectionLink {
+  color: #aeb8ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.featureGrid {
+  display: grid;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+/* דשבורד-מובייל ייעודי (לא כיווץ-CSS של גרסת-המחשב) — אותם נתונים/פעולות,
+   הרכב-מסך ומבנה-כרטיסים שונים. אותו breakpoint בדיוק כמו app-sidebar/
+   app-bottom-nav (globals.css) כדי שהמעבר בין הגרסאות יהיה עקבי בכל האתר. */
+.desktopOnly,
+.mobileOnly {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+@media (min-width: 900px) {
+  .mobileOnly {
+    display: none;
+  }
+}
+@media (max-width: 899px) {
+  .desktopOnly {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .dashboard {
+    gap: 1rem;
+    margin-inline: calc(var(--space-4) * -1);
+    padding-inline: var(--space-4);
+    /* חייב לפנות מקום ל: תפריט-תחתון + שני הכפתורים-הצפים (הוספה-מהירה,
+       עוזר-AI) שיושבים מעליו — ר' --bottom-nav-safe-height (globals.css).
+       בלי זה הכרטיס האחרון בעמוד נחבא מאחורי הכפתורים (בקשת משתמש: "הכפתורים
+       מסתירים תוכן"). */
+    padding-bottom: calc(var(--bottom-nav-safe-height) + 5rem);
+    background:
+      radial-gradient(circle at 90% 0%, rgba(100, 77, 255, 0.2), transparent 18rem),
+      #050814;
+  }
+
+  .introGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionHeading {
+    align-items: flex-start;
+  }
+
+  .sectionLink {
+    max-width: 8rem;
+    text-align: end;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard {
+    margin-inline: calc(var(--space-3) * -1);
+    padding-inline: var(--space-3);
+  }
+}
