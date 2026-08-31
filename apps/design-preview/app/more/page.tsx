@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, ScreenHeader, ScreenShell, BottomNav, COLOR } from "../shared";
+import { LegacyCard, LegacyScreenHeader, LegacyScreenShell, LegacyBottomNav, LEGACY_COLOR } from "../route/legacy-shared";
 import { reverseGeocodeCountryAction } from "../actions";
 import { FlagIcon } from "../country-currency-data";
 import { CountryPickerButton, CurrencyPickerButton, AddCurrencySheet } from "../pickers";
@@ -83,26 +84,34 @@ function ComingSoonSheet({ label, onClose }: { label: string; onClose: () => voi
   );
 }
 
+function LegacyChevronIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: LEGACY_COLOR.textMuted }}>
+      <path d="M15 5 8 12l7 7" />
+    </svg>
+  );
+}
+
 export default function MorePreviewScreen() {
   const router = useRouter();
   return (
-    <ScreenShell>
-      <ScreenHeader title="עוד" subtitle="הגדרות, ניהול ותמיכה" />
+    <LegacyScreenShell>
+      <LegacyScreenHeader title="עוד" subtitle="הגדרות, ניהול ותמיכה" />
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {LINKS.map((link) => (
           <button key={link.href} type="button" onClick={() => router.push(link.href)} style={{ display: "block", width: "100%", textAlign: "start", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-            <Card style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <LegacyCard style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "#fff" }}>{link.label}</div>
-                <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginTop: "2px" }}>{link.description}</div>
+                <div style={{ fontSize: "11.5px", color: LEGACY_COLOR.textSecondary, marginTop: "2px" }}>{link.description}</div>
               </div>
-              <ChevronIcon />
-            </Card>
+              <LegacyChevronIcon />
+            </LegacyCard>
           </button>
         ))}
       </div>
-      <BottomNav active={null} />
-    </ScreenShell>
+      <LegacyBottomNav active="more" />
+    </LegacyScreenShell>
   );
 }
 
