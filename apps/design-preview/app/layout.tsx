@@ -1,13 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Heebo } from "next/font/google";
+import { Assistant } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "../components/service-worker-registration";
-import { AIAssistant } from "./ai-assistant";
+import { AIAssistantGate } from "./ai-assistant-gate";
 
-const heebo = Heebo({
+const assistant = Assistant({
   subsets: ["latin", "hebrew"],
-  variable: "--font-heebo",
+  variable: "--font-assistant",
   display: "swap",
 });
 
@@ -25,11 +25,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="he" dir="rtl" className={heebo.variable}>
+    <html lang="he" dir="rtl" className={assistant.variable}>
       <body>
         <ServiceWorkerRegistration />
         {children}
-        <AIAssistant />
+        <AIAssistantGate />
       </body>
     </html>
   );
