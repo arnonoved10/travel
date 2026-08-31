@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ScreenShell, BottomNav, Card, DangerButton, ChevronIcon, COLOR, SPACE } from "../design-system";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { ProfileSection } from "../more/page";
 import { ToastBar } from "../toast-bar";
 
@@ -26,6 +27,26 @@ export default function ProfileScreen() {
     setToast({ message });
     timer.current = setTimeout(() => setToast(null), 4200);
   }
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // התנתקות אמיתית מול Supabase. ה-proxy יזהה שאין יותר session ויחסום
+  // את המסכים ממילא, אבל מפנים מיד ל-/login כדי לא להשאיר מסך תקוע לרגע.
+  async function handleSignOut() {
+    setIsSigningOut(true);
+    try {
+      const { error } = await createSupabaseBrowserClient().auth.signOut();
+      if (error) {
+        showToast('ההתנתקות נכשלה: ' + error.message);
+        setIsSigningOut(false);
+        return;
+      }
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "שגיאה לא צפויה בהתנתקות");
+      setIsSigningOut(false);
+    }
+  }
   return (
     <ScreenShell>
       <ProfileSection onBack={() => router.push("/")} showToast={showToast} />
@@ -39,7 +60,9 @@ export default function ProfileScreen() {
         ))}
       </div>
 
-      <DangerButton onClick={() => showToast("אין חשבון מחובר במצב-דמו זה")}>התנתק מהחשבון</DangerButton>
+      <DangerButton onClick={handleSignOut} disabled={isSigningOut}>
+        {isSigningOut ? "מתנתק..." : "התנתק מהחשבון"}
+      </DangerButton>
 
       <ToastBar toast={toast} />
       <BottomNav active="profile" />

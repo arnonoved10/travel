@@ -17,3 +17,4 @@ coverage/
 .shared-inbox-cache/
 .vercel
 .claude/
+.env*
