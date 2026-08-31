@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ScreenShell, ScreenHeader, PrimaryButton, Money, COLOR, SPACE, RADIUS } from "../../design-system";
+import { ScreenShell, ScreenHeader, PrimaryButton, COLOR, SPACE, RADIUS } from "../../design-system";
 import { CurrencyPickerButton } from "../../pickers";
 import { MONEY_SOURCE_LABEL, formatMoney, today, type MoneySource } from "../../wallet-data";
 import { useWalletStore } from "../../wallet-store";
@@ -31,9 +31,24 @@ export default function AddMoneyScreen() {
       <CurrencyPickerButton selectedCode={currency} onSelect={(c) => setCurrency(c)} />
 
       <div style={{ textAlign: "center", padding: `${SPACE.xl}px 0` }}>
-        <div style={{ fontSize: "36px", fontWeight: 700, color: COLOR.textPrimary }}>
-          <Money text={formatMoney(amount, currency)} />
-        </div>
+        <input
+          type="number"
+          inputMode="decimal"
+          value={amount || ""}
+          onChange={(e) => setAmount(Number(e.target.value) || 0)}
+          placeholder="0"
+          style={{
+            width: "100%",
+            textAlign: "center",
+            fontSize: "36px",
+            fontWeight: 700,
+            color: COLOR.textPrimary,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+          }}
+        />
+        {amount > 0 ? <div style={{ fontSize: "13px", color: COLOR.textSecondary, marginTop: SPACE.xs }}>{formatMoney(amount, currency)}</div> : null}
       </div>
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
