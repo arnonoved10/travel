@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ScreenShell, ScreenHeader, Card, IconPill, PrimaryButton, Money, PlusIcon, SuitcaseIcon, DocumentIcon, COLOR, SPACE } from "../../../design-system";
+import { ScreenShell, ScreenHeader, Card, IconPill, PrimaryButton, Money, PlusIcon, SuitcaseIcon, DocumentIcon, TrashIcon, COLOR, SPACE } from "../../../design-system";
 import { FlagIcon } from "../../../country-currency-data";
 import { primaryCountryForCurrency, formatMoney, currencyMeta } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
@@ -17,8 +17,8 @@ export default function CurrencyDetailsScreen() {
   const balance = store.balanceOf(code);
   const country = primaryCountryForCurrency(code);
   const recent = [
-    ...store.additions.filter((a) => a.currency === code).map((a) => ({ id: a.id, label: currencyMeta(a.currency).name, amount: a.amount, date: a.date })),
-    ...store.expenses.filter((e) => e.currency === code).map((e) => ({ id: e.id, label: e.title, amount: -e.amount, date: e.date })),
+    ...store.additions.filter((a) => a.currency === code).map((a) => ({ id: a.id, label: currencyMeta(a.currency).name, amount: a.amount, date: a.date, kind: "addition" as const })),
+    ...store.expenses.filter((e) => e.currency === code).map((e) => ({ id: e.id, label: e.title, amount: -e.amount, date: e.date, kind: "expense" as const })),
   ]
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .slice(0, 8);
@@ -48,11 +48,23 @@ export default function CurrencyDetailsScreen() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs }}>
             {recent.map((item) => (
-              <div key={item.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 4px" }}>
+              <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px" }}>
                 <span style={{ fontSize: "12.5px", color: COLOR.textPrimary }}>{item.label}</span>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: item.amount >= 0 ? COLOR.success : COLOR.danger }}>
-                  <Money text={`${item.amount >= 0 ? "+" : ""}${formatMoney(item.amount, code)}`} />
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: item.amount >= 0 ? COLOR.success : COLOR.danger }}>
+                    <Money text={`${item.amount >= 0 ? "+" : ""}${formatMoney(item.amount, code)}`} />
+                  </span>
+                  {item.kind === "addition" ? (
+                    <button
+                      type="button"
+                      onClick={() => store.deleteAddition(item.id)}
+                      aria-label="ביטול ההפקדה הזו"
+                      style={{ width: "26px", height: "26px", borderRadius: "8px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                    >
+                      <TrashIcon size={14} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>

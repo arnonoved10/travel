@@ -45,6 +45,7 @@ export function useWalletStore() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDeleteExpense = useRef<{ tx: Expense; index: number } | null>(null);
   const pendingDeleteCard = useRef<{ card: CreditCardInfo; index: number } | null>(null);
+  const pendingDeleteAddition = useRef<{ addition: MoneyAddition; index: number } | null>(null);
 
   function showToast(message: string, actionLabel?: string, onAction?: () => void) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -137,6 +138,28 @@ export function useWalletStore() {
     adjustBalance(currency, amount);
     setAdditions((prev) => [{ id: nextId("add"), currency, amount, source, date, note: note || undefined }, ...prev]);
     showToast(`נוספו ${formatMoney(amount, currency)} ליתרת ${currencyMeta(currency).name}`);
+  }
+  /** מבטלת הפקדה ספציפית שנרשמה בטעות (למשל במטבע הלא-נכון) — מסירה אותה
+   * ומחזירה את היתרה למצב שהיה לפני ההפקדה, עם אפשרות "בטל" (undo) באותו
+   * דפוס כמו deleteExpense. אחרי הביטול אפשר להפקיד מחדש דרך addMoney. */
+  function deleteAddition(id: string) {
+    const idx = additions.findIndex((a) => a.id === id);
+    if (idx === -1) return;
+    const addition = additions[idx]!;
+    pendingDeleteAddition.current = { addition, index: idx };
+    setAdditions((prev) => prev.filter((a) => a.id !== id));
+    adjustBalance(addition.currency, -addition.amount);
+    showToast(`ההפקדה של ${formatMoney(addition.amount, addition.currency)} בוטלה`, "בטל", () => {
+      const pending = pendingDeleteAddition.current;
+      if (!pending) return;
+      setAdditions((prev) => {
+        const arr = [...prev];
+        arr.splice(pending.index, 0, pending.addition);
+        return arr;
+      });
+      adjustBalance(pending.addition.currency, pending.addition.amount);
+      setToast(null);
+    });
   }
   function reduceMoney(currency: string, amount: number, note: string): boolean {
     const bal = balanceOf(currency);
@@ -274,6 +297,7 @@ export function useWalletStore() {
     balanceOf,
     adjustBalance,
     addMoney,
+    deleteAddition,
     reduceMoney,
     convertCurrency,
     saveExpense,
