@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Card, IconSlot, ScreenHeader, ScreenShell, StatusChip, BottomNav, COLOR } from "../shared";
+import { LegacyCard as Card, LegacyIconSlot as IconSlot, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyStatusChip as StatusChip, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR } from "../route/legacy-shared";
 import { getDemoWeatherAction, type DemoWeatherResult } from "../actions";
+
+// שוחזר במדויק מנקודת-השמירה a2b2501 (לפני משימת 38-המסכים), לפי אישור
+// המשתמש מול original_planner.png. משתמש ברכיבים המבודדים שכבר נוצרו
+// למסך /route (legacy-shared.tsx) — אותו מקור a2b2501 בדיוק, לא כפילות
+// חדשה — במקום ../shared, כדי לא לגעת במערכת-העיצוב המשותפת.
 
 // אייקוני-מזג-אוויר איכותיים ואחידים (לא אימוג'י, לא ריבוע-ריק) — ממופים
 // ממחרוזת ה-condition שמחזיר Open-Meteo (כבר בעברית, ר' wmo-codes.ts).
