@@ -92,8 +92,10 @@ export default function AddExpenseScreen() {
       <PillTabs options={METHOD_TABS} value={method} onChange={setMethod} />
 
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-        <CurrencyPickerButton selectedCode={currency} onSelect={setCurrency} />
-        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
+        <div style={{ width: "140px", flexShrink: 0 }}>
+          <CurrencyPickerButton selectedCode={currency} onSelect={setCurrency} priorityCodes={store.balances.map((b) => b.code)} />
+        </div>
+        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
       </div>
 
       <div>

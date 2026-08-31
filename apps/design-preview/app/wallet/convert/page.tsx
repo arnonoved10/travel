@@ -36,7 +36,7 @@ export default function ConvertScreen() {
       <Card>
         <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: SPACE.sm }}>מהם</div>
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-          <CurrencyPickerButton selectedCode={from} onSelect={setFrom} />
+          <CurrencyPickerButton selectedCode={from} onSelect={setFrom} priorityCodes={store.balances.map((b) => b.code)} />
           <input type="number" value={fromAmount} onChange={(e) => setFromAmount(Number(e.target.value))} style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
         </div>
       </Card>
@@ -58,7 +58,7 @@ export default function ConvertScreen() {
       <Card>
         <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: SPACE.sm }}>אל</div>
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-          <CurrencyPickerButton selectedCode={to} onSelect={setTo} />
+          <CurrencyPickerButton selectedCode={to} onSelect={setTo} priorityCodes={store.balances.map((b) => b.code)} />
           <input type="number" value={effectiveToAmount || ""} onChange={(e) => setToAmount(Number(e.target.value))} style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
         </div>
       </Card>

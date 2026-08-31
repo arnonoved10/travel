@@ -28,7 +28,7 @@ export default function AddMoneyScreen() {
   return (
     <ScreenShell>
       <ScreenHeader title="הוספת כסף" />
-      <CurrencyPickerButton selectedCode={currency} onSelect={(c) => setCurrency(c)} />
+      <CurrencyPickerButton selectedCode={currency} onSelect={(c) => setCurrency(c)} priorityCodes={store.balances.map((b) => b.code)} />
 
       <div style={{ textAlign: "center", padding: `${SPACE.xl}px 0` }}>
         <input

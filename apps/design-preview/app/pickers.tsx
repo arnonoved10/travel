@@ -116,7 +116,22 @@ export function CountryPickerSheet({ onClose, onSelect }: { onClose: () => void;
 
 // ============================== בחירת מטבע ==============================
 
-export function CurrencyPickerButton({ selectedCode, onSelect, options, placeholder = "בחירת מטבע", testId }: { selectedCode: string | null; onSelect: (code: string) => void; options?: string[]; placeholder?: string; testId?: string }) {
+export function CurrencyPickerButton({
+  selectedCode,
+  onSelect,
+  options,
+  priorityCodes,
+  placeholder = "בחירת מטבע",
+  testId,
+}: {
+  selectedCode: string | null;
+  onSelect: (code: string) => void;
+  options?: string[];
+  /** מטבעות שכבר קיימים בארנק — מוצגים ראשונים ברשימה, לפני שאר המטבעות. */
+  priorityCodes?: string[];
+  placeholder?: string;
+  testId?: string;
+}) {
   const [open, setOpen] = useState(false);
   const meta = selectedCode ? currencyMeta(selectedCode) : null;
   const country = selectedCode ? Object.values(COUNTRIES).find((c) => c.currencyCodes[0] === selectedCode) : null;
@@ -143,6 +158,7 @@ export function CurrencyPickerButton({ selectedCode, onSelect, options, placehol
       {open ? (
         <CurrencyPickerSheet
           options={options}
+          priorityCodes={priorityCodes}
           onClose={() => setOpen(false)}
           onSelect={(code) => {
             onSelect(code);
@@ -154,18 +170,35 @@ export function CurrencyPickerButton({ selectedCode, onSelect, options, placehol
   );
 }
 
-export function CurrencyPickerSheet({ onClose, onSelect, options }: { onClose: () => void; onSelect: (code: string) => void; options?: string[] }) {
+export function CurrencyPickerSheet({
+  onClose,
+  onSelect,
+  options,
+  priorityCodes,
+}: {
+  onClose: () => void;
+  onSelect: (code: string) => void;
+  options?: string[];
+  /** מטבעות שכבר קיימים בארנק — מוצגים ראשונים ברשימה, לפני שאר המטבעות. */
+  priorityCodes?: string[];
+}) {
   const [query, setQuery] = useState("");
   const allCodes = options ?? Object.keys(CURRENCY_META).filter((c) => CURRENCY_META[c]?.code === c);
   const uniqueCodes = Array.from(new Set(allCodes));
+  const prioritySet = new Set(priorityCodes ?? []);
   const results = useMemo(() => {
     const q = normalize(query);
     const list = uniqueCodes
       .map((code) => ({ code, meta: currencyMeta(code), country: Object.values(COUNTRIES).find((c) => c.currencyCodes[0] === code) }))
       .filter((row) => !q || normalize(row.code).includes(q) || normalize(row.meta.name).includes(q) || (row.country && (normalize(row.country.nameHe).includes(q) || normalize(row.country.nameEn).includes(q))));
-    return list.sort((a, b) => a.code.localeCompare(b.code));
+    return list.sort((a, b) => {
+      const aPriority = prioritySet.has(a.code) ? 0 : 1;
+      const bPriority = prioritySet.has(b.code) ? 0 : 1;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return a.code.localeCompare(b.code);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, options?.join(",")]);
+  }, [query, options?.join(","), priorityCodes?.join(",")]);
   return (
     <PickerSheet title="בחירת מטבע" onClose={onClose}>
       <SearchBox value={query} onChange={setQuery} placeholder="חיפוש מטבע לפי קוד, שם או מדינה..." />
