@@ -3,11 +3,13 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { AppLogo, COLOR, FONT, SPACE, RADIUS, Card, Field, PrimaryButton, ScreenShell } from "../design-system";
 import { PasswordField, authInputStyle } from "../auth-fields";
 
 export default function RegisterScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -50,13 +52,17 @@ export default function RegisterScreen() {
         return;
       }
 
-      // הפרויקט מוגדר עם אישור-אימייל חובה, ולכן ברוב המקרים אין session
-      // מיד אחרי ההרשמה. לא מניחים כניסה אוטומטית — אומרים מה קרה בפועל.
-      setSuccessMessage(
-        data.session
-          ? "נרשמתם והתחברתם בהצלחה."
-          : "נרשמתם בהצלחה! שלחנו לכם מייל אימות — יש ללחוץ על הקישור שבו לפני ההתחברות.",
-      );
+      // כשאישור-האימייל מכובה ב-Supabase, ההרשמה מחזירה session מיד
+      // ואפשר להכניס את המשתמש ישר לאפליקציה בלי שום מסך ביניים.
+      if (data.session) {
+        router.push("/");
+        router.refresh();
+        return;
+      }
+
+      // אין session — סימן שדרישת אישור-האימייל עדיין דלוקה בפרויקט.
+      // לא מעמידים פנים שנכנסנו; אומרים מה באמת צריך לקרות.
+      setSuccessMessage("נרשמתם בהצלחה! שלחנו לכם מייל אימות — יש ללחוץ על הקישור שבו לפני ההתחברות.");
       setPassword("");
       setConfirmPassword("");
     } catch (error) {
