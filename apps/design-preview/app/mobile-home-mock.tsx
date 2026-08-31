@@ -1057,6 +1057,26 @@ export function MobileHomeMock() {
     return () => clearInterval(id);
   }, []);
 
+  // מיקום עוזר ה-AI בדף הבית בלבד: האזור הפנוי בשורת הכותרת העליונה
+  // (בין קבוצת הפעמון/פרופיל לקבוצת הלוגו/המבורגר), כי המיקום הקבוע
+  // בפינה הימנית-תחתונה חופף לכרטיס "כמעט מוכנים לטיול" בתחתית הדף.
+  useEffect(() => {
+    const btn = document.querySelector<HTMLButtonElement>('button[aria-label="עוזר AI"]');
+    if (!btn) return;
+    const original = btn.getAttribute("style");
+    btn.style.width = "34px";
+    btn.style.height = "34px";
+    btn.style.bottom = "auto";
+    btn.style.insetInlineStart = "auto";
+    btn.style.insetInlineEnd = "auto";
+    btn.style.left = "123px";
+    btn.style.top = "33px";
+    return () => {
+      if (original) btn.setAttribute("style", original);
+      else btn.removeAttribute("style");
+    };
+  }, []);
+
   const nearestTimerEvent = useMemo(() => {
     const upcoming = HOME_TIMER_EVENTS.filter((e) => e.offsetMinutes - demoClock > -5);
     if (upcoming.length === 0) return null;
