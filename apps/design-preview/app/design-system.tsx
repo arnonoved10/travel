@@ -484,9 +484,9 @@ export function HomeIcon({ color = COLOR.textSecondary }: { color?: string }) {
     </svg>
   );
 }
-export function SuitcaseIcon({ color = COLOR.textSecondary }: { color?: string }) {
+export function SuitcaseIcon({ color = COLOR.textSecondary, size = 22 }: { color?: string; size?: number }) {
   return (
-    <svg {...iconProps(color)}>
+    <svg {...iconProps(color, size)}>
       <rect x="3.5" y="7.5" width="17" height="12" rx="2" />
       <path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" />
       <path d="M3.5 13h17" />
