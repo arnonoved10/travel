@@ -141,11 +141,11 @@ export function AIAssistant() {
           alignItems: "center",
           justifyContent: "center",
           cursor: "pointer",
-          boxShadow: `0 6px 20px ${COLOR.primary}66`,
+          boxShadow: `0 6px 20px ${COLOR.primary}66, 0 0 0 1.5px rgba(255,255,255,0.35) inset`,
           zIndex: 30,
         }}
       >
-        <SparkleIcon />
+        <SparkleIcon size={26} />
       </button>
 
       {open ? (
