@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   correctCurrencyExchangeInputSchema,
+  correctWalletTopUpInputSchema,
   createCurrencyExchangeInputSchema,
   createDepositInputSchema,
   createExpenseInputSchema,
@@ -113,6 +114,40 @@ export async function reconcileWalletAction(
   logger.info("wallet reconciled", { walletId: wallet.id, tripId });
 
   revalidatePath(`/trips/${tripId}`);
+  return {};
+}
+
+export async function correctWalletTopUpAction(
+  tripId: string,
+  transactionId: string,
+  _prevState: FinanceFormState,
+  formData: FormData,
+): Promise<FinanceFormState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  try {
+    await assertTripOwnership(user.id, tripId);
+  } catch {
+    return { formError: "הטיול לא נמצא או שאין לך הרשאה אליו." };
+  }
+
+  const parsed = correctWalletTopUpInputSchema.safeParse({
+    transactionId,
+    correctedAmount: Number(formData.get("correctedAmount")),
+    reason: readOptionalString(formData, "reason"),
+  });
+
+  if (!parsed.success) {
+    return { fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+
+  const financeRepository = await getFinanceRepository();
+  const wallet = await financeRepository.correctWalletTopUp({ input: parsed.data });
+  logger.info("wallet top-up corrected", { walletId: wallet.id, transactionId, tripId });
+
+  revalidatePath(`/trips/${tripId}`);
+  revalidatePath("/", "layout");
   return {};
 }
 

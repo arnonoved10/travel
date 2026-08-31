@@ -1,6 +1,7 @@
 import type {
   BudgetCategoryLimit,
   CorrectCurrencyExchangeInput,
+  CorrectWalletTopUpInput,
   CreateCurrencyExchangeInput,
   CreateDepositInput,
   CreateExpenseInput,
@@ -32,6 +33,14 @@ export interface FinanceRepository {
   topUpWallet(params: { input: CreateWalletInput }): Promise<Wallet>;
   /** מתאים currentBalance לסכום שנספר בפועל, ורושם WalletTransaction מסוג "adjustment" עם ההפרש. */
   reconcileWallet(params: { input: ReconcileWalletInput }): Promise<Wallet>;
+  /**
+   * מתקן/מבטל הפקדה (top_up) ספציפית שנרשמה בטעות (סכום שגוי, או שהופקדה
+   * במטבע הלא-נכון). כמו reconcileWallet ו-correctCurrencyExchange — לא
+   * מוחקת/משכתבת את ה-WalletTransaction המקורי (הטבלה append-only, ר' סכימה),
+   * אלא רושמת תנועת "adjustment" חדשה עם ההפרש. correctedAmount=0 מבטל את
+   * ההפקדה לגמרי; המשתמש מפקיד מחדש בנפרד במטבע הנכון דרך topUpWallet.
+   */
+  correctWalletTopUp(params: { input: CorrectWalletTopUpInput }): Promise<Wallet>;
   /** דוח תנועות מלא לכל ארנקי הטיול, ממוין מהחדש לישן. */
   listWalletTransactions(params: { tripId: string }): Promise<WalletTransaction[]>;
 
@@ -110,6 +119,13 @@ export class WalletNotFoundError extends Error {
   constructor(walletId: string) {
     super(`Wallet ${walletId} not found`);
     this.name = "WalletNotFoundError";
+  }
+}
+
+export class WalletTransactionNotFoundError extends Error {
+  constructor(transactionId: string) {
+    super(`WalletTransaction ${transactionId} not found`);
+    this.name = "WalletTransactionNotFoundError";
   }
 }
 

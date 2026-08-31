@@ -88,6 +88,7 @@ import { SettleUpSection } from "./companions/settle-up-section";
 import { CompanionPollsSection } from "./companions/polls-section";
 import { ShareLinkPanel } from "./sharing/share-link-panel";
 import { ReconcileWalletForm } from "./finances/reconcile-wallet-form";
+import { CorrectWalletTopUpForm } from "./finances/correct-wallet-top-up-form";
 import { ExpenseCreateForm } from "./finances/expense-create-form";
 import { PaymentCreateForm } from "./finances/payment-create-form";
 import { CurrencyExchangeForm } from "./finances/currency-exchange-form";
@@ -1060,10 +1061,15 @@ export default async function TripDetailPage({
                         </summary>
                         <div style={{ marginTop: "0.25rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                           {walletTxHistory.map((tx) => (
-                            <div key={tx.id} style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-                              {tx.amount > 0 ? "+" : ""}
-                              {tx.amount} · {WALLET_TX_TYPE_LABELS[tx.type] ?? tx.type} ·{" "}
-                              {new Date(tx.txAt).toLocaleDateString("he-IL")}
+                            <div key={tx.id}>
+                              <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+                                {tx.amount > 0 ? "+" : ""}
+                                {tx.amount} · {WALLET_TX_TYPE_LABELS[tx.type] ?? tx.type} ·{" "}
+                                {new Date(tx.txAt).toLocaleDateString("he-IL")}
+                              </div>
+                              {tx.type === "top_up" ? (
+                                <CorrectWalletTopUpForm tripId={tripId} transactionId={tx.id} amount={tx.amount} />
+                              ) : null}
                             </div>
                           ))}
                         </div>

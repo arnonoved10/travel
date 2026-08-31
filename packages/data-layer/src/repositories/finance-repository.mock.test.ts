@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MockFinanceRepository } from "./finance-repository.mock";
-import { DepositNotFoundError, ExpenseNotFoundError, WalletNotFoundError } from "./finance-repository";
+import { DepositNotFoundError, ExpenseNotFoundError, WalletNotFoundError, WalletTransactionNotFoundError } from "./finance-repository";
 
 const tripId = "44444444-4444-4444-8444-444444444444";
 
@@ -32,6 +32,45 @@ describe("MockFinanceRepository", () => {
 
     expect(wallet.openingBalance).toBe(5000);
     expect(wallet.initialAmount).toBe(6000);
+  });
+
+  it("cancels a mistaken top-up entirely (corrected to 0), reversing both initialAmount and currentBalance", async () => {
+    await repo.topUpWallet({ input: { tripId, currencyCode: "THB", initialAmount: 5000 } });
+    const topUpTx = (await repo.listWalletTransactions({ tripId })).find((tx) => tx.type === "top_up");
+    expect(topUpTx).toBeDefined();
+
+    const wallet = await repo.correctWalletTopUp({ input: { transactionId: topUpTx!.id, correctedAmount: 0 } });
+    expect(wallet.initialAmount).toBe(0);
+    expect(wallet.currentBalance).toBe(0);
+
+    const txs = await repo.listWalletTransactions({ tripId });
+    expect(txs.filter((tx) => tx.type === "top_up")).toHaveLength(1);
+    expect(txs.some((tx) => tx.type === "adjustment" && tx.amount === -5000)).toBe(true);
+  });
+
+  it("corrects a top-up to a different (non-zero) amount, e.g. fixing a typo", async () => {
+    await repo.topUpWallet({ input: { tripId, currencyCode: "THB", initialAmount: 5000 } });
+    const topUpTx = (await repo.listWalletTransactions({ tripId })).find((tx) => tx.type === "top_up");
+
+    const wallet = await repo.correctWalletTopUp({ input: { transactionId: topUpTx!.id, correctedAmount: 500 } });
+    expect(wallet.currentBalance).toBe(500);
+    expect(wallet.initialAmount).toBe(500);
+  });
+
+  it("throws when correcting a transaction id that doesn't exist", async () => {
+    await expect(
+      repo.correctWalletTopUp({ input: { transactionId: "99999999-9999-4999-8999-999999999999", correctedAmount: 0 } }),
+    ).rejects.toThrow(WalletTransactionNotFoundError);
+  });
+
+  it("throws when trying to correct a non-top_up transaction (e.g. an adjustment)", async () => {
+    const wallet = await repo.topUpWallet({ input: { tripId, currencyCode: "THB", initialAmount: 5000 } });
+    await repo.reconcileWallet({ input: { walletId: wallet.id, actualBalance: 4000 } });
+    const adjustmentTx = (await repo.listWalletTransactions({ tripId })).find((tx) => tx.type === "adjustment");
+
+    await expect(repo.correctWalletTopUp({ input: { transactionId: adjustmentTx!.id, correctedAmount: 0 } })).rejects.toThrow(
+      "ניתן לתקן רק תנועות מסוג הפקדה (top_up)",
+    );
   });
 
   it("reduces the matching wallet balance automatically on a cash payment", async () => {

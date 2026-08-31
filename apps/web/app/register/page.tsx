@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { CSSProperties, FormEvent } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { logger } from "@/lib/logger";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -55,11 +57,14 @@ export default function RegisterPage() {
 
       logger.info("registration succeeded", { email });
       // Supabase עשוי לדרוש אישור אימייל לפני שיש session פעיל — לא מניחים login
-      // מיידי, אלא מודיעים בכנות מה קרה בפועל.
+      // מיידי, אלא מודיעים בכנות מה קרה בפועל. אם "Confirm email" כבוי בפרויקט
+      // Supabase, יש session מיד ומעבירים ישר לאפליקציה (בלי לחכות למייל).
       if (!data.session) {
         setSuccessMessage("נרשמת בהצלחה! בדוק את תיבת הדואר שלך כדי לאשר את החשבון לפני ההתחברות.");
       } else {
         setSuccessMessage("נרשמת והתחברת בהצלחה.");
+        router.push("/dashboard");
+        router.refresh();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "שגיאה לא צפויה בהרשמה";

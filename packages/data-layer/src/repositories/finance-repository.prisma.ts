@@ -3,6 +3,7 @@ import { PrismaClient } from "@travel-app/db";
 import type {
   BudgetCategoryLimit,
   CorrectCurrencyExchangeInput,
+  CorrectWalletTopUpInput,
   CreateCurrencyExchangeInput,
   CreateDepositInput,
   CreateExpenseInput,
@@ -25,6 +26,7 @@ import type {
 } from "@travel-app/shared-types";
 import {
   correctCurrencyExchangeInputSchema,
+  correctWalletTopUpInputSchema,
   createCurrencyExchangeInputSchema,
   createDepositInputSchema,
   createExpenseInputSchema,
@@ -44,6 +46,7 @@ import {
   PaymentNotFoundError,
   RefundNotFoundError,
   WalletNotFoundError,
+  WalletTransactionNotFoundError,
   type FinanceRepository,
 } from "./finance-repository";
 
@@ -304,6 +307,39 @@ export class PrismaFinanceRepository implements FinanceRepository {
       },
     });
     return toWallet(row);
+  }
+
+  async correctWalletTopUp({ input }: { input: CorrectWalletTopUpInput }): Promise<Wallet> {
+    const parsed = correctWalletTopUpInputSchema.parse(input);
+    const existing = await this.prisma.walletTransaction.findUnique({ where: { id: parsed.transactionId } });
+    if (!existing) throw new WalletTransactionNotFoundError(parsed.transactionId);
+    if (existing.type !== "top_up") throw new Error("ניתן לתקן רק תנועות מסוג הפקדה (top_up)");
+
+    const oldAmount = Number(existing.amount);
+    const delta = parsed.correctedAmount - oldAmount;
+
+    const wallet = await this.prisma.$transaction(async (tx) => {
+      const updatedWallet = await tx.wallet.update({
+        where: { id: existing.walletId },
+        data: { initialAmount: { increment: delta }, currentBalance: { increment: delta } },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: existing.walletId,
+          type: "adjustment",
+          amount: delta,
+          notes:
+            parsed.reason ??
+            (parsed.correctedAmount === 0
+              ? `ביטול הפקדה שגויה של ${oldAmount}`
+              : `תיקון הפקדה: מ-${oldAmount} ל-${parsed.correctedAmount}`),
+          txAt: new Date(),
+        },
+      });
+      return updatedWallet;
+    });
+
+    return toWallet(wallet);
   }
 
   async listWalletTransactions({ tripId }: { tripId: string }): Promise<WalletTransaction[]> {

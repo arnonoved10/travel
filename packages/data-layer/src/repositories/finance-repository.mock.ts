@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   BudgetCategoryLimit,
   CorrectCurrencyExchangeInput,
+  CorrectWalletTopUpInput,
   CreateCurrencyExchangeInput,
   CreateDepositInput,
   CreateExpenseInput,
@@ -24,6 +25,7 @@ import type {
 } from "@travel-app/shared-types";
 import {
   correctCurrencyExchangeInputSchema,
+  correctWalletTopUpInputSchema,
   createCurrencyExchangeInputSchema,
   createDepositInputSchema,
   createExpenseInputSchema,
@@ -43,6 +45,7 @@ import {
   PaymentNotFoundError,
   RefundNotFoundError,
   WalletNotFoundError,
+  WalletTransactionNotFoundError,
   type FinanceRepository,
 } from "./finance-repository";
 
@@ -186,6 +189,32 @@ export class MockFinanceRepository implements FinanceRepository {
     const updated: Wallet = { ...existing, currentBalance: parsed.actualBalance };
     this.wallets.set(existing.id, updated);
     this.recordWalletTx(existing.id, "adjustment", delta, parsed.reason ?? `התאמה ל-${parsed.actualBalance} לפי ספירה בפועל`);
+    return updated;
+  }
+
+  async correctWalletTopUp({ input }: { input: CorrectWalletTopUpInput }): Promise<Wallet> {
+    const parsed = correctWalletTopUpInputSchema.parse(input);
+    const existingTx = this.walletTransactions.get(parsed.transactionId);
+    if (!existingTx) throw new WalletTransactionNotFoundError(parsed.transactionId);
+    if (existingTx.type !== "top_up") throw new Error("ניתן לתקן רק תנועות מסוג הפקדה (top_up)");
+
+    const wallet = this.wallets.get(existingTx.walletId);
+    if (!wallet) throw new WalletNotFoundError(existingTx.walletId);
+
+    const oldAmount = existingTx.amount;
+    const delta = parsed.correctedAmount - oldAmount;
+    const updated: Wallet = {
+      ...wallet,
+      initialAmount: wallet.initialAmount + delta,
+      currentBalance: wallet.currentBalance + delta,
+    };
+    this.wallets.set(wallet.id, updated);
+    this.recordWalletTx(
+      wallet.id,
+      "adjustment",
+      delta,
+      parsed.reason ?? (parsed.correctedAmount === 0 ? `ביטול הפקדה שגויה של ${oldAmount}` : `תיקון הפקדה: מ-${oldAmount} ל-${parsed.correctedAmount}`),
+    );
     return updated;
   }
 
