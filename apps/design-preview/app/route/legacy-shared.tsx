@@ -33,7 +33,7 @@ export const LEGACY_COLOR = {
   success: "#43d6aa",
 };
 
-const LEGACY_NAV_HEIGHT = 64;
+export const LEGACY_NAV_HEIGHT = 64;
 
 export function LegacyCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (

@@ -3,8 +3,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { COLOR, BottomNav, NAV_HEIGHT } from "../shared";
+import { LEGACY_COLOR as COLOR, LegacyBottomNav as BottomNav, LEGACY_NAV_HEIGHT as NAV_HEIGHT } from "../route/legacy-shared";
 import type { MapPoint, MapRouteSegment, TransportMarker } from "./leaflet-map-inner";
+
+// שוחזר לעיצוב-המקורי מ-a2b2501 (לפי אישור מול original_map.png): הקובץ
+// עצמו כלל לא שונה במשימת 38-המסכים (זהה-בייטים ל-a2b2501) — רק שורת
+// הייבוא הוחלפה מ-../shared (שעבר לפלטת-הצבעים/נאב החדשים) לרכיבים
+// המבודדים שכבר נוצרו למסך /route, כדי לא לגעת במערכת-העיצוב המשותפת.
 
 /**
  * מסך מפה (design-preview בלבד) — גרסה שנייה: מפה אמיתית ואינטראקטיבית
@@ -536,6 +541,31 @@ export default function MapPreviewScreen() {
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // תיקון-מקומי למסך הזה בלבד: כרטיס-ההסעה הנשלף בתחתית משתמש ב-
+  // z-index:1500 (בכוונה, כדי לכסות את פקדי-הבקרה הפנימיים של Leaflet —
+  // ר' הערה למעלה), ולכן חוסם גם את כפתור עוזר-ה-AI הגלובלי (z-index:30,
+  // מוגדר ב-ai-assistant.tsx המשותף) שנמצא באותו אזור-מסך. לא נוגעים
+  // ב-ai-assistant.tsx (קובץ משותף לכל האפליקציה) — במקום זאת, כל עוד
+  // מסך-המפה הזה מותקן, מזיזים את הכפתור-הגלובלי-עצמו (DOM element אחד,
+  // לא רכיב חדש) לפינה פנויה בראש-המפה (אין שם סמנים/פקדים — פקדי-הזום
+  // בתחתית-שמאל, מיקום/מסך-מלא בתחתית-ימין), ומקטינים אותו מעט. בעת
+  // עזיבת המסך משוחזר הסגנון-המקורי במדויק כדי שלא להשפיע על שום מסך אחר.
+  useEffect(() => {
+    const btn = document.querySelector<HTMLButtonElement>('button[aria-label="עוזר AI"]');
+    if (!btn) return;
+    const original = btn.getAttribute("style");
+    btn.style.width = "40px";
+    btn.style.height = "40px";
+    btn.style.bottom = "auto";
+    btn.style.top = "115px";
+    btn.style.insetInlineStart = "14px";
+    return () => {
+      if (original) btn.setAttribute("style", original);
+      else btn.removeAttribute("style");
+    };
+  }, []);
+
   function toggleFullscreen() {
     if (document.fullscreenElement) {
       document.exitFullscreen();
@@ -758,7 +788,7 @@ export default function MapPreviewScreen() {
   const sheetTranslatePx = sheetTranslate * (sheetOpenPx - sheetPeekPx);
 
   return (
-    <div ref={pageWrapRef} style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-rubik), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
+    <div ref={pageWrapRef} style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-heebo), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
       {/* כותרת */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px 4px", flexShrink: 0 }}>
         <Link href="/route" aria-label="חזרה" style={{ width: "34px", height: "34px", borderRadius: "50%", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, textDecoration: "none" }}>
