@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ScreenShell, BottomNav, Card, DangerButton, ChevronIcon, COLOR, SPACE } from "../design-system";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { signOutCurrentUser } from "../auth-session";
 import { ProfileSection } from "../more/page";
 import { ToastBar } from "../toast-bar";
 
@@ -34,9 +34,9 @@ export default function ProfileScreen() {
   async function handleSignOut() {
     setIsSigningOut(true);
     try {
-      const { error } = await createSupabaseBrowserClient().auth.signOut();
-      if (error) {
-        showToast('ההתנתקות נכשלה: ' + error.message);
+      const errorMessage = await signOutCurrentUser();
+      if (errorMessage) {
+        showToast('ההתנתקות נכשלה: ' + errorMessage);
         setIsSigningOut(false);
         return;
       }

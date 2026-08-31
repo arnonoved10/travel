@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoWeatherAction, getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 
 // שעון אמיתי לפי אזור-זמן — לא זמן קבוע. מתעדכן כל 30 שניות (מספיק לתצוגת
@@ -964,6 +966,19 @@ function RideStatusCard({ event, demoClock, onOpenDetail }: { event: HomeTimerEv
 }
 
 export function MobileHomeMock() {
+  const router = useRouter();
+  const currentUser = useCurrentUser();
+
+  // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
+  async function handleSignOut() {
+    const errorMessage = await signOutCurrentUser();
+    if (errorMessage) {
+      showToast('ההתנתקות נכשלה: ' + errorMessage);
+      return;
+    }
+    router.push('/login');
+    router.refresh();
+  }
   const [chatOpen, setChatOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [aiPressed, setAiPressed] = useState(false);
@@ -1275,8 +1290,8 @@ export function MobileHomeMock() {
                         <PersonIcon color="#fff" />
                       </span>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>דני לוי</div>
-                        <div style={{ fontSize: "11px", color: COLOR.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>dani@example.com</div>
+                        <div style={{ fontWeight: 800, fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser?.displayName ?? ""}</div>
+                        <div style={{ fontSize: "11px", color: COLOR.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser?.email ?? ""}</div>
                       </div>
                     </div>
                     <div style={{ height: 1, background: COLOR.cardBorder, margin: "4px 0 10px" }} />
@@ -1289,6 +1304,7 @@ export function MobileHomeMock() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => void handleSignOut()}
                       style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "9px 8px", borderRadius: "10px", border: "none", background: "transparent", color: COLOR.danger, fontSize: "13px", fontWeight: 700, cursor: "pointer", textAlign: "start" }}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={COLOR.danger} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1310,7 +1326,7 @@ export function MobileHomeMock() {
             בהמתנה לחבילת-האייקונים החדשה, לא הוחלף. */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
           <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {getTimeGreeting(now.getHours())}, דני 👋
+            {getTimeGreeting(now.getHours())}{currentUser ? `, ${currentUser.displayName}` : ""} 👋
           </h1>
           <button
             type="button"
@@ -1810,7 +1826,7 @@ export function MobileHomeMock() {
 
             <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
               <div style={{ alignSelf: "flex-start", maxWidth: "80%", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, borderRadius: "16px 16px 16px 4px", padding: "10px 14px", fontSize: "13px" }}>
-                היי דני! איך אפשר לעזור לך עם הטיול לתאילנד היום? 👋
+                היי{currentUser ? ` ${currentUser.displayName}` : ""}! איך אפשר לעזור לך עם הטיול לתאילנד היום? 👋
               </div>
               <div
                 style={{
@@ -1934,7 +1950,7 @@ export function MobileHomeMock() {
                 type="button"
                 onClick={() => {
                   setSideMenuOpen(false);
-                  showToast("התנתקות אינה זמינה בהדגמה זו");
+                  void handleSignOut();
                 }}
                 style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "10px 8px", borderRadius: "12px", background: "none", border: "none", color: COLOR.danger, fontSize: "13.5px", fontWeight: 700, cursor: "pointer", textAlign: "start" }}
               >
