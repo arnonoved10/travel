@@ -225,13 +225,19 @@ function DailyPlanContent() {
   const search = useSearchParams();
   const [date, setDate] = useState(search.get("day") || today());
   const [activities, setActivities] = useState<TripActivity[]>([]);
+  // city מתחיל ריק ולא cityForDate(date) ישירות בגוף-הרנדור בכוונה: זו
+  // קריאה ל-localStorage, שלא קיים בצד-השרת (SSR) — קריאה ישירה ברנדור
+  // גרמה בפועל ל-hydration mismatch אמיתי (React error #418, נצפה מול
+  // production): השרת מרנדר בלי התוכן (אין localStorage), הלקוח מרנדר
+  // איתו כבר בפאס הראשון. אותה בעיה שכבר נפתרה נכון עבור activities למטה
+  // (state+effect) — city פשוט לא היה עקבי איתה.
+  const [city, setCity] = useState("");
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
 
   useEffect(() => {
     setActivities(activitiesForDate(date));
+    setCity(cityForDate(date));
   }, [date]);
-
-  const city = cityForDate(date);
 
   // מזג-אוויר אמיתי (Open-Meteo) של המיקום האמיתי של התחנה ליום הזה (לפי
   // הקואורדינטות שאותרו כשהתחנה נשמרה) — ולא בנגקוק קבועה. אם לתחנה עוד
