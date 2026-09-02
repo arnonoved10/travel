@@ -9,22 +9,21 @@ import { fetchWeather } from "../weather-client";
  * זהה למקור בדף-הבית ובמסך היומן). ההתראות עצמן (חום קיצוני/גשם) הן דמו
  * מוצהר — אין מקור-התראות-אמיתי מחובר. */
 
-// ניסיון-חוזר יחיד אחרי השהיה קצרה — ראו הערה מקבילה ב-mobile-home-mock.tsx:
-// נצפה בפועל ש-server action שקורא ל-API חיצוני נכשל לפעמים דווקא בקריאה
-// הראשונה אחרי דיפלוי חדש (cold start ב-Vercel), ותמיד מצליח ברגע שהפונקציה
-// כבר "חמה" — בלי זה המסך היה נועל "לא ידוע" על סמך כישלון חד-פעמי וחולף.
-async function fetchWithOneRetry<T>(fn: () => Promise<T | null>): Promise<T | null> {
-  try {
-    const first = await fn();
-    if (first) return first;
-  } catch {
-    // ממשיכים לניסיון השני
-  }
-  await new Promise((r) => setTimeout(r, 1500));
-  try {
-    return await fn();
-  } catch {
-    return null;
+// כמה ניסיונות עם השהיה עולה — ראו הערה מקבילה ב-mobile-home-mock.tsx:
+// גם Route Handler רגיל (לא רק server action) נכשל לפעמים כשקוראים לו
+// כמה פעמים ברצף קצר, ככל הנראה הגבלת-קצב אצל הספק החינמי (Open-Meteo)
+// עצמו — ניסיון בודד לא הספיק תמיד; כמה ניסיונות עם פערים גדלים נותנים
+// סיכוי אמיתי לחלון ההגבלה לחלוף.
+async function fetchWithRetries<T>(fn: () => Promise<T | null>, delaysMs: number[] = [1000, 2000]): Promise<T | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fn();
+      if (res) return res;
+    } catch {
+      // ממשיכים לניסיון הבא
+    }
+    if (attempt >= delaysMs.length) return null;
+    await new Promise((r) => setTimeout(r, delaysMs[attempt]));
   }
 }
 
@@ -32,7 +31,7 @@ export default function WeatherScreen() {
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
 
   useEffect(() => {
-    fetchWithOneRetry(() => fetchWeather()).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
+    fetchWithRetries(() => fetchWeather()).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
   }, []);
 
   return (

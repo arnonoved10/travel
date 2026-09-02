@@ -11,20 +11,22 @@ import { formatMoney, today } from "./wallet-data";
 import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
 import { FlagIcon } from "./country-currency-data";
 
-// עוטפת קריאת server action ב"ניסיון-חוזר יחיד" — ראו הערה בשימוש למטה
-// (cold start ב-Vercel לפעמים מפיל רק את הקריאה הראשונה אחרי דיפלוי).
-async function fetchWithOneRetry<T>(fn: () => Promise<T | null>): Promise<T | null> {
-  try {
-    const first = await fn();
-    if (first) return first;
-  } catch {
-    // ממשיכים לניסיון השני
-  }
-  await new Promise((r) => setTimeout(r, 1500));
-  try {
-    return await fn();
-  } catch {
-    return null;
+// עוטפת קריאה ל-API חיצוני בכמה ניסיונות עם השהיה עולה — ראו הערה בשימוש
+// למטה. נצפה בפועל מול production: גם Route Handler רגיל (לא רק server
+// action) יכול להיכשל זמנית כשקוראים לו כמה פעמים ברצף קצר — ככל הנראה
+// הגבלת-קצב אצל הספק החינמי (Open-Meteo) עצמו, לא באג בקוד. ניסיון בודד
+// לא הספיק תמיד; כמה ניסיונות עם פערים גדלים נותנים סיכוי אמיתי לחלון
+// ההגבלה לחלוף.
+async function fetchWithRetries<T>(fn: () => Promise<T | null>, delaysMs: number[] = [1000, 2000]): Promise<T | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fn();
+      if (res) return res;
+    } catch {
+      // ממשיכים לניסיון הבא
+    }
+    if (attempt >= delaysMs.length) return null;
+    await new Promise((r) => setTimeout(r, delaysMs[attempt]));
   }
 }
 
@@ -1042,10 +1044,10 @@ export function MobileHomeMock() {
     // start בצד Vercel), אך תמיד מצליח ברגע שהפונקציה כבר "חמה" — כמה שניות
     // מספיקות. בלי זה המסך היה מציג "אין חיבור" לצמיתות על סמך כישלון חד-
     // פעמי וחולף, במקום לתת לו הזדמנות שנייה אמיתית.
-    fetchWithOneRetry(() => fetchWeather()).then((res) => {
+    fetchWithRetries(() => fetchWeather()).then((res) => {
       if (!cancelled) setWeather({ status: res ? "success" : "error", data: res });
     });
-    fetchWithOneRetry(getDemoCurrencyRatesAction).then((res) => {
+    fetchWithRetries(getDemoCurrencyRatesAction).then((res) => {
       if (!cancelled) setCurrency({ status: res ? "success" : "error", data: res });
     });
     return () => {
