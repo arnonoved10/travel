@@ -198,34 +198,13 @@ export function defaultCurrencyPriority(localCurrencyCode?: string | null): stri
   return Array.from(new Set(order));
 }
 
-// יתרות-פתיחה תואמות את חבילת-העיצוב המחייבת (מסך 16, "הארנק שלי") —
-// נתוני-דמו מוצהרים, לא "נתון דינמי המוצג כקבוע": ברגע שהמשתמש מוסיף/מוציא
-// כסף בפועל, ה-state האמיתי ב-localStorage גובר על הערכים האלה בדיוק כמו
-// קודם (INITIAL_BALANCES משמש רק לזריעה הראשונה כש-localStorage ריק).
-export const INITIAL_BALANCES: CurrencyBalance[] = [
-  { code: "ILS", balance: 12450, spent: 0, lastUpdated: today() },
-  { code: "JPY", balance: 245200, spent: 0, lastUpdated: today() },
-  { code: "USD", balance: 2340, spent: 0, lastUpdated: today() },
-  { code: "EUR", balance: 1250, spent: 0, lastUpdated: today() },
-  { code: "GBP", balance: 620, spent: 0, lastUpdated: today() },
-  { code: "CHF", balance: 180, spent: 0, lastUpdated: today() },
-];
-// זרעי-דמו תואמים לחבילת-העיצוב המחייבת (מסכים 22-23) — כמו INITIAL_BALANCES,
-// אלה רק ערכי-פתיחה: ברגע שיש state אמיתי ב-localStorage הוא גובר תמיד.
-export const INITIAL_CARDS: CreditCardInfo[] = [
-  { id: "card-visa", nickname: "ויזה ראשית", issuer: "Visa", last4: "4587", currency: "ILS", color: "#7C3AED", isPrimary: true },
-  { id: "card-mc", nickname: "מאסטרקארד", issuer: "Mastercard", last4: "1234", currency: "ILS", color: "#4f8fe0" },
-  { id: "card-amex", nickname: "אמריקן אקספרס", issuer: "Amex", last4: "9876", currency: "ILS", color: "#34D399" },
-  { id: "card-isracard", nickname: "ישראכרט", issuer: "Isracard", last4: "2468", currency: "ILS", color: "#EF4444" },
-];
-export const INITIAL_EXPENSES: Expense[] = [
-  { id: "exp-1", title: "מלון TLV ארנה", category: "מלון", currency: "ILS", amount: 1850, date: "2025-06-15", paymentMethod: "credit", cardId: "card-visa" },
-  { id: "exp-2", title: "כרטיס רכבת", category: "תחבורה", currency: "ILS", amount: 240, date: "2025-06-15", paymentMethod: "cash" },
-  { id: "exp-3", title: "מסעדת רעמן איצ'יראן", merchant: "איצ'יראן", category: "מסעדות", currency: "JPY", amount: 4800, date: "2025-06-15", paymentMethod: "cash" },
-  { id: "exp-4", title: "סופרמרקט", category: "קניות", currency: "ILS", amount: 187, date: "2025-06-14", paymentMethod: "credit", cardId: "card-mc" },
-  { id: "exp-5", title: "תחבורה ציבורית", category: "תחבורה", currency: "ILS", amount: 210, date: "2025-06-14", paymentMethod: "cash" },
-  { id: "exp-6", title: "קפה", category: "מסעדות", currency: "ILS", amount: 32, date: "2025-06-14", paymentMethod: "cash" },
-];
+// לפי בקשה מפורשת: אין יותר יתרות/כרטיסים/הוצאות-דמו שמופיעים מעצמם.
+// ארנק חדש (או אחרי איפוס) מתחיל ריק לגמרי — המשתמש מוסיף בעצמו את מה
+// שבאמת יש לו. הקבועים נשארים ריקים בכוונה (לא נמחקים) כי loadJSON(key,
+// INITIAL_X) עדיין משתמש בהם כברירת-המחדל כש-המפתח חסר.
+export const INITIAL_BALANCES: CurrencyBalance[] = [];
+export const INITIAL_CARDS: CreditCardInfo[] = [];
+export const INITIAL_EXPENSES: Expense[] = [];
 
 // עודכן מ-counter פשוט במשתנה-מודול ל-crypto.randomUUID(): ה-counter
 // התאפס בכל טעינת-דף (משתנה בזיכרון בלבד, לא נשמר), ולכן הפקה חוזרת של
@@ -370,10 +349,6 @@ export const TRIP_STOP_COUNTRIES: TripStopCountry[] = [
 ];
 export const TRIP_LAST_DAY = "2025-06-28";
 
-// תאריך-ייחוס קבוע בתוך שהיית-טוקיו הראשונה, כדי שמסכי-הדמו (בית/ארנק/
-// יומן) תמיד ימצאו "תחנה פעילה" — בלי תלות בשעון-המערכת האמיתי.
-export const DEMO_REFERENCE_DATE = "2025-06-16";
-
 export function activeDestinationCountry(referenceDate: string): { countryCode: string; city: string } | null {
   if (referenceDate < TRIP_STOP_COUNTRIES[0]!.firstDay || referenceDate >= TRIP_LAST_DAY) return null;
   for (let i = 0; i < TRIP_STOP_COUNTRIES.length; i++) {
@@ -403,7 +378,7 @@ export function resolveLocalCurrency(opts: { manualCountryCode: string | null; g
     const country = COUNTRY_BY_CODE[opts.manualCountryCode];
     if (country) return { currencyCode: country.currencyCodes[0]!, countryCode: country.code, source: "manual", sourceLabel: "נבחר ידנית" };
   }
-  const trip = activeDestinationCountry(opts.referenceDate ?? DEMO_REFERENCE_DATE);
+  const trip = activeDestinationCountry(opts.referenceDate ?? today());
   if (trip) {
     const country = COUNTRY_BY_CODE[trip.countryCode];
     if (country) return { currencyCode: country.currencyCodes[0]!, countryCode: country.code, source: "trip", sourceLabel: `לפי יעד הטיול הפעיל (${trip.city})` };

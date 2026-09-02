@@ -134,9 +134,15 @@ function effectiveStatus(trip: DemoTrip, referenceDate: string): TripStatus {
   return trip.status;
 }
 
+// לפי בקשה מפורשת: טיולי-הדמו המובנים (יפן/איטליה/ניו יורק/תאילנד) לא
+// מוצגים מעצמם יותר — ברירת-המחדל כש-SK_HIDDEN_TRIPS עוד לא נקבע היא
+// שכולם מוסתרים, כדי שרשימת "הטיולים שלי" תתחיל ריקה לגמרי והמשתמש יבנה
+// אותה בעצמו. הקבועים עצמם נשארים בקוד (לא נמחקים) בתור עוגן-בטיחות בלבד.
+const ALL_BUILT_IN_TRIP_IDS = DEMO_TRIPS.map((t) => t.id);
+
 export function allTrips(referenceDate = today()): DemoTrip[] {
   const overrides = loadTripOverrides();
-  const hidden = new Set(loadJSON<string[]>(SK_HIDDEN_TRIPS, []));
+  const hidden = new Set(loadJSON<string[]>(SK_HIDDEN_TRIPS, ALL_BUILT_IN_TRIP_IDS));
   return [...DEMO_TRIPS, ...loadCustomTrips()]
     .filter((t) => !hidden.has(t.id))
     .map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t))
@@ -150,9 +156,11 @@ export function findAnyTrip(id: string): DemoTrip | null {
 }
 
 /** הטיול "הפעיל" כרגע לצורך דף-הבית/מסלול/מפה — הראשון עם status==="active",
- * אחרת נופל חזרה לטיול-יפן (תמיד קיים). */
-export function activeTrip(): DemoTrip {
-  return allTrips().find((t) => t.status === "active") ?? findAnyTrip(JAPAN_TRIP.id) ?? JAPAN_TRIP;
+ * או null אם אין טיולים בכלל/אף אחד לא נבחר כפעיל (לא נופל יותר לטיול-דמו
+ * מומצא — המשתמשים שרואים את הבית צריכים לראות רק את הטיול האמיתי שלהם,
+ * או קריאה מפורשת ליצור אחד אם עדיין אין). */
+export function activeTrip(): DemoTrip | null {
+  return allTrips().find((t) => t.status === "active") ?? null;
 }
 
 /** מעביר את "הטיול הפעיל" לטיול אחר — פעולה מפורשת ויחידה שמשנה status

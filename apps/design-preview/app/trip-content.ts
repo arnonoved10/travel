@@ -37,26 +37,11 @@ export interface TripStop {
 const SK_STOPS = "design-preview-trip-stops-v1";
 const SK_ACTIVITIES = "design-preview-trip-activities-v1";
 
-export const DEFAULT_STOPS: TripStop[] = [
-  { id: "stop-tokyo-1", city: "טוקיו", countryCode: "JP", startDate: "2025-06-15", endDate: "2025-06-17", transportToNext: "רכבת שינקנסן · כ-2:15 שעות" },
-  { id: "stop-kyoto", city: "קיוטו", countryCode: "JP", startDate: "2025-06-18", endDate: "2025-06-20", transportToNext: "רכבת · כ-15 דקות" },
-  { id: "stop-osaka", city: "אוסקה", countryCode: "JP", startDate: "2025-06-21", endDate: "2025-06-22", transportToNext: "רכבת שינקנסן · כ-1:45 שעות" },
-  { id: "stop-hiroshima", city: "הירושימה", countryCode: "JP", startDate: "2025-06-23", endDate: "2025-06-25", transportToNext: "רכבת שינקנסן · כ-1:20 שעות" },
-  { id: "stop-tokyo-2", city: "טוקיו", countryCode: "JP", startDate: "2025-06-26", endDate: "2025-06-28", transportToNext: "" },
-];
+// לפי בקשה מפורשת: אין יותר מסלול-דמו שמופיע מעצמו. מסלול חדש (או אחרי
+// איפוס) מתחיל ריק — המשתמש בונה אותו בעצמו דרך "הוספת תחנה".
+export const DEFAULT_STOPS: TripStop[] = [];
 
-const DEFAULT_ACTIVITIES: Record<string, TripActivity[]> = {
-  "2025-06-15": [
-    { id: nextId("act"), time: "09:00", durationLabel: "שעתיים", title: "מקדש סנסו-ג'י", category: "אתר", location: "2 Chome-3-1 Asakusa, Taito City, Tokyo", notes: "אתר היסטורי" },
-    { id: nextId("act"), time: "12:00", durationLabel: "שעה וחצי", title: "שוק אמיוקו", category: "קניות", location: "Ameyoko, Taito City, Tokyo", notes: "שופינג" },
-    { id: nextId("act"), time: "15:00", durationLabel: "שעה", title: "סיור בשינג'וקו", category: "טיול", location: "Shinjuku, Tokyo", notes: "סיור עירוני" },
-    { id: nextId("act"), time: "19:00", durationLabel: "שעתיים", title: "ארוחת ערב בשינג'וקו", category: "אוכל", location: "Shinjuku, Tokyo", notes: "קולינרי" },
-  ],
-  "2025-06-18": [
-    { id: nextId("act"), time: "10:00", durationLabel: "שעתיים", title: "פושימי אינרי טאישה", category: "אתר", location: "Fushimi-ku, Kyoto", notes: "אתר היסטורי" },
-    { id: nextId("act"), time: "14:00", durationLabel: "שעה", title: "גיון ורובע הגיישות", category: "טיול", location: "Gion, Kyoto", notes: "סיור עירוני" },
-  ],
-};
+const DEFAULT_ACTIVITIES: Record<string, TripActivity[]> = {};
 
 export function loadStops(): TripStop[] {
   return loadJSON(SK_STOPS, DEFAULT_STOPS);

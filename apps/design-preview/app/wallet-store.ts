@@ -47,6 +47,7 @@ export function useWalletStore() {
   const pendingDeleteCard = useRef<{ card: CreditCardInfo; index: number } | null>(null);
   const pendingDeleteAddition = useRef<{ addition: MoneyAddition; index: number } | null>(null);
   const pendingDeleteConversion = useRef<{ record: ConversionRecord; index: number } | null>(null);
+  const pendingDeleteBalance = useRef<{ balance: CurrencyBalance; index: number } | null>(null);
 
   function showToast(message: string, actionLabel?: string, onAction?: () => void) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -132,6 +133,25 @@ export function useWalletStore() {
       const arr = [...prev];
       arr[idx] = { ...arr[idx]!, balance: arr[idx]!.balance + delta, spent: arr[idx]!.spent + alsoSpent, lastUpdated: today() };
       return arr;
+    });
+  }
+  /** מסירה מטבע מהארנק לגמרי (לא רק מאפסת יתרה) — עם אפשרות "בטל", כמו
+   * שאר פעולות-המחיקה בארנק. אינה נוגעת בהוצאות/תנועות עבר באותו מטבע. */
+  function removeBalanceCurrency(code: string) {
+    const idx = balances.findIndex((b) => b.code === code);
+    if (idx === -1) return;
+    const balance = balances[idx]!;
+    pendingDeleteBalance.current = { balance, index: idx };
+    setBalances((prev) => prev.filter((b) => b.code !== code));
+    showToast(`מטבע ${currencyMeta(code).name} הוסר מהארנק`, "בטל", () => {
+      const pending = pendingDeleteBalance.current;
+      if (!pending) return;
+      setBalances((prev) => {
+        const arr = [...prev];
+        arr.splice(pending.index, 0, pending.balance);
+        return arr;
+      });
+      setToast(null);
     });
   }
 
@@ -346,6 +366,7 @@ export function useWalletStore() {
     convertAmount,
     balanceOf,
     adjustBalance,
+    removeBalanceCurrency,
     addMoney,
     deleteAddition,
     reduceMoney,

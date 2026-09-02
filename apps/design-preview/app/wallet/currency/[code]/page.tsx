@@ -72,6 +72,18 @@ export default function CurrencyDetailsScreen() {
       </div>
 
       <PrimaryButton onClick={() => router.push("/wallet/history")}>הצג את כל התנועות</PrimaryButton>
+      <button
+        type="button"
+        onClick={() => {
+          if (confirm(`להסיר את ${currencyMeta(code).name} מהארנק?`)) {
+            store.removeBalanceCurrency(code);
+            router.push("/wallet");
+          }
+        }}
+        style={{ width: "100%", padding: "13px", borderRadius: "12px", background: "none", border: `1px solid ${COLOR.danger}55`, color: COLOR.danger, fontSize: "13.5px", fontWeight: 700, cursor: "pointer" }}
+      >
+        הסרת המטבע מהארנק
+      </button>
       <ToastBar toast={store.toast} />
     </ScreenShell>
   );

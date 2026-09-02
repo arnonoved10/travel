@@ -979,10 +979,17 @@ export function MobileHomeMock() {
   // מחושב מהטיול הפעיל האמיתי (כולל עריכות שנשמרו), לא מקבועים.
   const [tripProgress, setTripProgress] = useState<{ dayIndex: number; totalDays: number; daysRemaining: number; percent: number } | null>(null);
   const [activeTripInfo, setActiveTripInfo] = useState<{ name: string; countryCode: string } | null>(null);
+  const [tripChecked, setTripChecked] = useState(false);
   useEffect(() => {
     const trip = activeTrip();
-    setTripProgress(computeTripProgressFor(trip));
-    setActiveTripInfo({ name: trip.name, countryCode: trip.countryCode });
+    if (trip) {
+      setTripProgress(computeTripProgressFor(trip));
+      setActiveTripInfo({ name: trip.name, countryCode: trip.countryCode });
+    } else {
+      setTripProgress(null);
+      setActiveTripInfo(null);
+    }
+    setTripChecked(true);
   }, []);
 
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
@@ -1414,29 +1421,38 @@ export function MobileHomeMock() {
         ) : null}
 
         {/* כרטיס טיול מרכזי + התקדמות — טבעת/בר בטורקיז, "נותרו X ימים" בסגול (בדיוק לפי המוקאפ). לחיץ אמיתית -> מסך המסלול. */}
-        <Link href="/route" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-          <Card style={{ cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-              <span style={{ fontWeight: 800, fontSize: "14px" }}>המסלול שלי</span>
-              <ChevronIcon size={13} color={COLOR.textSecondary} />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Ring percent={tripProgress?.percent ?? 0} size={40} color={COLOR.turquoise} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "15px", fontWeight: 800, marginBottom: "6px" }}>
-                  <span style={{ color: COLOR.turquoise }}>יום {tripProgress?.dayIndex ?? "—"}</span>
-                  <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
-                </div>
-                <div style={{ height: "7px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ width: `${tripProgress?.percent ?? 0}%`, height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
+        {tripChecked && !activeTripInfo ? (
+          <Link href="/trips/new" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+            <Card style={{ cursor: "pointer", textAlign: "center" }}>
+              <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "6px" }}>אין טיול פעיל</div>
+              <div style={{ fontSize: "12px", color: COLOR.textSecondary }}>לחצו כדי ליצור את הטיול הראשון שלכם</div>
+            </Card>
+          </Link>
+        ) : (
+          <Link href="/route" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+            <Card style={{ cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                <span style={{ fontWeight: 800, fontSize: "14px" }}>המסלול שלי</span>
+                <ChevronIcon size={13} color={COLOR.textSecondary} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <Ring percent={tripProgress?.percent ?? 0} size={40} color={COLOR.turquoise} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "15px", fontWeight: 800, marginBottom: "6px" }}>
+                    <span style={{ color: COLOR.turquoise }}>יום {tripProgress?.dayIndex ?? "—"}</span>
+                    <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
+                  </div>
+                  <div style={{ height: "7px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                    <div style={{ width: `${tripProgress?.percent ?? 0}%`, height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
+                  </div>
                 </div>
               </div>
-            </div>
-            <div style={{ textAlign: "end", marginTop: "8px", fontSize: "12px", color: COLOR.textSecondary }}>
-              נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
-            </div>
-          </Card>
-        </Link>
+              <div style={{ textAlign: "end", marginTop: "8px", fontSize: "12px", color: COLOR.textSecondary }}>
+                נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
+              </div>
+            </Card>
+          </Link>
+        )}
 
         {/* ארנק — טבעת-82% בצד ימין, יתרה+סכום-התחלתי בצד שמאל (בדיוק כמו
             בתמונת הייחוס — סדר-DOM הפוך מהכרטיסים האחרים, ר' הערה למעלה).

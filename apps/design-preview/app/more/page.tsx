@@ -756,9 +756,25 @@ export function SettingsSection({ onBack, showToast }: { onBack: () => void; sho
     setNotifStatus(result);
     showToast(result === "granted" ? "ההרשאה להתראות אושרה" : "ההרשאה להתראות לא ניתנה");
   }
+  // מפתחות-localStorage שמוגדרים כקבועים מקומיים בקבצים אחרים (טיולים/
+  // מסלול/הזמנות/אריזה/מעקב-אישי) ולכן לא נכללים ב-ALL_DESIGN_PREVIEW_KEYS
+  // (שמכסה רק את מפתחות SK של wallet-data.ts) — בלעדיהם "איפוס" היה משאיר
+  // מסלול/טיולים ישנים בחוץ, למרות שהארנק כן התאפס. ר' דיווח: "הכנסת מסלול
+  // שלא בחרתי".
+  const OTHER_MODULE_KEYS = [
+    "design-preview-custom-trips-v1",
+    "design-preview-trip-overrides-v1",
+    "design-preview-hidden-trips-v1",
+    "design-preview-trip-stops-v1",
+    "design-preview-trip-activities-v1",
+    "design-preview-bookings-v1",
+    "design-preview-packing-v1",
+    "design-preview-personal-tracker-v1",
+  ];
   function resetDemoData() {
-    for (const key of ALL_DESIGN_PREVIEW_KEYS) localStorage.removeItem(key);
-    showToast("כל נתוני ההדגמה אופסו — טוען מחדש...");
+    if (!confirm("למחוק את כל הנתונים באפליקציה (טיולים, ארנק, הוצאות, מסלול, הזמנות)? לא ניתן לבטל.")) return;
+    for (const key of [...ALL_DESIGN_PREVIEW_KEYS, ...OTHER_MODULE_KEYS]) localStorage.removeItem(key);
+    showToast("כל הנתונים נמחקו — טוען מחדש...");
     setTimeout(() => window.location.reload(), 900);
   }
 
@@ -796,7 +812,7 @@ export function SettingsSection({ onBack, showToast }: { onBack: () => void; sho
         </Card>
       </button>
       <button type="button" onClick={resetDemoData} style={{ padding: "13px", borderRadius: "12px", background: "rgba(239,111,97,0.14)", border: `1px solid ${COLOR.danger}45`, color: COLOR.danger, fontSize: "14px", fontWeight: 800, cursor: "pointer" }}>
-        איפוס כל נתוני ההדגמה
+        מחיקת כל הנתונים שלי
       </button>
 
       {comingSoon ? <ComingSoonSheet label={comingSoon} onClose={() => setComingSoon(null)} /> : null}
