@@ -9,7 +9,10 @@ import { CURRENCY_META, COUNTRY_BY_CODE, type CountryEntry } from "./country-cur
 
 // ============================== טיפוסים ==============================
 
-export type Category = "מלון" | "מסעדות" | "תחבורה" | "פעילויות" | "קניות" | "אחר";
+// לא union סגור עוד: קטגוריה מותאמת-אישית שנוצרת פעם אחת (למשל "מסאז'")
+// נשמרת ונשארת זמינה לבחירה בפעם הבאה — לפי בקשה מפורשת.
+export type Category = string;
+export const BUILTIN_CATEGORIES: Category[] = ["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"];
 export type PaymentMethod = "cash" | "credit" | "debit" | "transfer" | "digital_wallet" | "other";
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: "מזומן",
@@ -163,6 +166,7 @@ export const SK = {
   documents: "design-preview-documents-v1",
   profile: "design-preview-profile-v1",
   settings: "design-preview-settings-v1",
+  customCategories: "design-preview-wallet-custom-categories-v1",
 };
 
 // כל מפתחות ה-localStorage שבשימוש בכל design-preview (ארנק + עוד + מסמכים
@@ -196,6 +200,35 @@ export const nowTime = () => new Date().toTimeString().slice(0, 5);
 export function defaultCurrencyPriority(localCurrencyCode?: string | null): string[] {
   const order = [localCurrencyCode, "USD", "EUR", "ILS"].filter((c): c is string => !!c);
   return Array.from(new Set(order));
+}
+
+/** קטגוריות מותאמות-אישית שנוספו פעם — לדוגמה "מסאז'" — נשמרות כאן כדי
+ * שיהיו זמינות לבחירה בפעם הבאה, לא רק בהוצאה שבה הן נוצרו. */
+export function loadCustomCategories(): Category[] {
+  return loadJSON<Category[]>(SK.customCategories, []);
+}
+export function addCustomCategory(name: Category): Category[] {
+  const trimmed = name.trim();
+  if (!trimmed) return loadCustomCategories();
+  const existing = loadCustomCategories();
+  if (BUILTIN_CATEGORIES.includes(trimmed) || existing.includes(trimmed)) return existing;
+  const next = [...existing, trimmed];
+  saveJSON(SK.customCategories, next);
+  return next;
+}
+export function allCategories(): Category[] {
+  return [...BUILTIN_CATEGORIES, ...loadCustomCategories()];
+}
+
+const CATEGORY_COLOR_PALETTE = ["#4f8fe0", "#43d6aa", "#f5a544", "#8a5adf", "#e0699a", "#e0524a", "#34D399", "#f472b6", "#60a5fa", "#fbbf24"];
+/** צבע לקטגוריה — קבוע לפי השם עבור 6 הקטגוריות המובנות (כדי לא לשנות
+ * את הצבעים הקיימים שכבר מוכרים למשתמש), ונגזר-דטרמיניסטית (לא רנדומלי
+ * מחדש בכל רינדור) עבור כל קטגוריה מותאמת-אישית. */
+export function categoryColor(category: Category, builtin: Record<string, string>): string {
+  if (builtin[category]) return builtin[category]!;
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
+  return CATEGORY_COLOR_PALETTE[hash % CATEGORY_COLOR_PALETTE.length]!;
 }
 
 // לפי בקשה מפורשת: אין יותר יתרות/כרטיסים/הוצאות-דמו שמופיעים מעצמם.

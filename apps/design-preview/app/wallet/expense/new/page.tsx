@@ -5,10 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, IconPill, Field, PrimaryButton, CameraIcon, inputStyle, textareaStyle, COLOR, SPACE } from "../../../design-system";
 import { CurrencyPickerButton } from "../../../pickers";
 import { runDemoReceiptOcrAction } from "../../../actions";
-import { compressImageFile, today, nowTime, defaultCurrencyPriority, type Category, type PaymentMethod, type Expense } from "../../../wallet-data";
+import { compressImageFile, today, nowTime, defaultCurrencyPriority, allCategories, addCustomCategory, categoryColor, type Category, type PaymentMethod, type Expense } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
 
-const CATEGORIES: Category[] = ["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"];
+const CATEGORY_COLOR: Record<string, string> = { מלון: COLOR.primary, מסעדות: COLOR.warning, תחבורה: "#4f8fe0", פעילויות: COLOR.success, קניות: "#e0699a", אחר: COLOR.textSecondary };
 const METHOD_TABS: { key: PaymentMethod; label: string }[] = [
   { key: "cash", label: "מזומן" },
   { key: "credit", label: "כרטיס אשראי" },
@@ -41,6 +41,9 @@ function AddExpenseForm() {
   const [title, setTitle] = useState("");
   const [merchant, setMerchant] = useState("");
   const [category, setCategory] = useState<Category>("אחר");
+  const [categories, setCategories] = useState<Category[]>(["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"]);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [tip, setTip] = useState("");
@@ -63,6 +66,20 @@ function AddExpenseForm() {
       cameraInputRef.current?.click();
     }
   }, []);
+
+  useEffect(() => {
+    setCategories(allCategories());
+  }, []);
+
+  function handleAddCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    addCustomCategory(name);
+    setCategories(allCategories());
+    setCategory(name);
+    setNewCategoryName("");
+    setAddingCategory(false);
+  }
 
   // ברירת-מחדל למטבע: המטבע המקומי של יעד הטיול הפעיל — רק אם המשתמש עוד
   // לא שינה אותו ידנית, ורק ביצירה חדשה (לא דורס עריכה קיימת).
@@ -262,10 +279,38 @@ function AddExpenseForm() {
       <div>
         <div style={{ fontSize: "12.5px", fontWeight: 600, color: COLOR.textSecondary, marginBottom: SPACE.sm }}>קטגוריה</div>
         <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto" }}>
-          {CATEGORIES.map((c) => (
-            <IconPill key={c} label={c} icon={<CameraIcon size={16} color={category === c ? COLOR.primaryLight : COLOR.textSecondary} />} active={category === c} onClick={() => setCategory(c)} />
+          {(categories.includes(category) ? categories : [...categories, category]).map((c) => (
+            <IconPill
+              key={c}
+              label={c}
+              icon={<span aria-hidden style={{ width: "14px", height: "14px", borderRadius: "50%", background: categoryColor(c, CATEGORY_COLOR) }} />}
+              active={category === c}
+              onClick={() => setCategory(c)}
+            />
           ))}
+          <IconPill label="+ חדשה" icon={<span style={{ fontSize: "14px", color: COLOR.textSecondary }}>+</span>} onClick={() => setAddingCategory(true)} />
         </div>
+        {addingCategory ? (
+          <div style={{ display: "flex", gap: SPACE.sm, marginTop: SPACE.sm }}>
+            <input
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="שם קטגוריה חדשה (למשל: מסאז')"
+              autoFocus
+              style={{ ...inputStyle, flex: 1 }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAddCategory();
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleAddCategory}
+              style={{ padding: "0 16px", borderRadius: "12px", background: COLOR.primary, border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+            >
+              הוספה
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <Field label="שם ההוצאה">

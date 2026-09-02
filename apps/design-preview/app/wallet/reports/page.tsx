@@ -1,7 +1,7 @@
 "use client";
 
 import { ScreenShell, ScreenHeader, Card, Money, COLOR, SPACE } from "../../design-system";
-import { formatMoney, type Category } from "../../wallet-data";
+import { formatMoney, categoryColor, type Category } from "../../wallet-data";
 import { useWalletStore } from "../../wallet-store";
 
 const CATEGORY_COLOR: Record<Category, string> = {
@@ -75,7 +75,7 @@ export default function ReportsScreen() {
               const share = totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0;
               return (
                 <div key={cat} style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-                  <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: CATEGORY_COLOR[cat], flexShrink: 0 }} />
+                  <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: categoryColor(cat, CATEGORY_COLOR), flexShrink: 0 }} />
                   <span style={{ fontSize: "12px", color: COLOR.textPrimary, flex: 1 }}>{cat}</span>
                   <span style={{ fontSize: "12px", color: COLOR.textSecondary }}>{share}%</span>
                   <span style={{ fontSize: "12px", fontWeight: 700, color: COLOR.textPrimary, minWidth: "70px", textAlign: "left" }}>

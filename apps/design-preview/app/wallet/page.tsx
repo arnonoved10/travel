@@ -31,6 +31,7 @@ import {
   nextId,
   resolveLocalCurrency,
   defaultCurrencyPriority,
+  categoryColor,
 } from "../wallet-data";
 
 /**
@@ -561,9 +562,10 @@ export default function WalletPreviewScreen() {
             ) : (
               filteredExpenses.map((t) => {
                 const card = cards.find((c) => c.id === t.cardId);
+                const catColor = categoryColor(t.category, CATEGORY_COLOR);
                 return (
                   <Card key={t.id} onClick={() => router.push(`/wallet/expense/new?edit=${t.id}`)} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px", cursor: "pointer" }}>
-                    <span aria-hidden style={{ width: "36px", height: "36px", borderRadius: "10px", background: `${CATEGORY_COLOR[t.category]}22`, border: `1px solid ${CATEGORY_COLOR[t.category]}55`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
+                    <span aria-hidden style={{ width: "36px", height: "36px", borderRadius: "10px", background: `${catColor}22`, border: `1px solid ${catColor}55`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
                       {t.receiptId && receipts[t.receiptId] ? (
                         <button
                           type="button"
