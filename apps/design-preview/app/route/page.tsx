@@ -1,20 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { LegacyCard as Card, LegacyIconSlot as IconSlot, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyStatusChip as StatusChip, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR } from "./legacy-shared";
+import { loadStops, addStop, updateStop, deleteStop, type TripStop, type StopStatus } from "../trip-content";
+import { StopEditSheet } from "./stop-edit-sheet";
 
 /**
- * מסך מסלול (design-preview בלבד) — נתוני-דוגמה קבועים, לא מחובר ל-DB.
- * כל תחנה מקשרת למסך-היומן של היום הראשון שלה (drill-down אמיתי, לא רק
- * ויזואלי) — בדיקת-ניווט אמיתית בין שני המסכים החדשים.
- *
- * שוחזר במדויק מנקודת-השמירה a2b2501 (לפני משימת 38-המסכים), לפי אישור
- * המשתמש מול original_trip.png. משתמש ברכיבים מקומיים-מבודדים
- * (legacy-shared.tsx) במקום ../shared כדי לא לגעת במערכת-העיצוב
- * המשותפת של שאר האפליקציה.
+ * מסך מסלול (design-preview בלבד) — עודכן: היה "נתוני-דוגמה קבועים, לא
+ * מחובר ל-DB" (STOPS קבוע בקוד, בלי שום עריכה אמיתית). עכשיו קורא
+ * מ-trip-content.ts (אותו מקור-אמת שמשמש גם את מסך "שינוי סדר היעדים"
+ * וגם את היומן) — הוספה/עריכה/מחיקה של תחנה נשמרות באמת, ומשתקפות בכל
+ * המסכים האחרים. העיצוב החזותי (כרטיסים/סטטוס/מספור) נשאר בדיוק כפי
+ * שאושר מול original_trip.png — רק מקור-הנתונים והפעולות הפכו לאמיתיים.
  */
-
-type StopStatus = "בוצע" | "מאושר" | "ממתין לאישור";
 
 const STATUS_TONE: Record<StopStatus, "success" | "purple" | "warning"> = {
   בוצע: "success",
@@ -22,63 +22,11 @@ const STATUS_TONE: Record<StopStatus, "success" | "purple" | "warning"> = {
   "ממתין לאישור": "warning",
 };
 
-const STOPS = [
-  {
-    city: "תל אביב",
-    dates: "30 באפריל – 4 במאי",
-    firstDay: "2026-04-30",
-    status: "בוצע" as StopStatus,
-    hotel: null as string | null,
-    attractions: [] as string[],
-    restaurants: [] as string[],
-    travelToNext: "טיסה · כ-6 שעות",
-  },
-  {
-    city: "בנגקוק",
-    dates: "4 – 10 במאי",
-    firstDay: "2026-05-04",
-    status: "מאושר" as StopStatus,
-    hotel: "[דמו] מלון סנטרל בבנגקוק",
-    attractions: ["Wat Arun – מקדש השחר", "שוק ג'אטוצ'אק"],
-    restaurants: ["Sirocco Sky Bar"],
-    travelToNext: "הסעה פרטית · כשעתיים",
-  },
-  {
-    city: "פטאיה",
-    dates: "10 – 15 במאי",
-    firstDay: "2026-05-10",
-    status: "ממתין לאישור" as StopStatus,
-    hotel: "Pattaya Beach Resort",
-    attractions: ["חוף פטאיה", "שוק צף פֿ-פת"],
-    restaurants: ["מסעדת דגים על החוף"],
-    travelToNext: "רכבת · כשעה",
-  },
-  {
-    city: "קוה צ'אנג",
-    dates: "15 – 20 במאי",
-    firstDay: "2026-05-15",
-    status: "מאושר" as StopStatus,
-    hotel: "Koh Chang Paradise Resort",
-    attractions: ["מפל קלונג פלו", "צלילה באי"],
-    restaurants: [],
-    travelToNext: "מעבורת + הסעה · כ-4 שעות",
-  },
-  {
-    city: "בנגקוק",
-    dates: "20 – 22 ביוני",
-    firstDay: "2026-06-20",
-    status: "מאושר" as StopStatus,
-    hotel: "[דמו] מלון סנטרל בבנגקוק",
-    attractions: [],
-    restaurants: [],
-    travelToNext: null,
-  },
-];
-
-function ActionButton({ label }: { label: string }) {
+function ActionButton({ label, onClick }: { label: string; onClick?: () => void }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       style={{
         display: "flex",
         alignItems: "center",
@@ -100,76 +48,114 @@ function ActionButton({ label }: { label: string }) {
   );
 }
 
+function fmtRange(startDate: string, endDate: string): string {
+  const s = new Date(startDate);
+  const e = new Date(endDate);
+  const fmt = (d: Date) => d.toLocaleDateString("he-IL", { day: "numeric", month: "long" });
+  return `${fmt(s)} – ${fmt(e)}`;
+}
+
 export default function RoutePreviewScreen() {
+  const router = useRouter();
+  const [stops, setStops] = useState<TripStop[]>([]);
+  const [editing, setEditing] = useState<{ mode: "add" | "edit"; stop: TripStop | null } | null>(null);
+
+  useEffect(() => {
+    setStops(loadStops());
+  }, []);
+
+  function handleSave(patch: Omit<TripStop, "id">) {
+    if (editing?.mode === "edit" && editing.stop) {
+      updateStop(editing.stop.id, patch);
+    } else {
+      addStop(patch);
+    }
+    setStops(loadStops());
+    setEditing(null);
+  }
+
+  function handleDelete() {
+    if (editing?.mode === "edit" && editing.stop) {
+      deleteStop(editing.stop.id);
+      setStops(loadStops());
+    }
+    setEditing(null);
+  }
+
   return (
     <ScreenShell>
-      <ScreenHeader title="מסלול הטיול" subtitle="[דמו] טיול לתאילנד · 5 תחנות" />
+      <ScreenHeader title="מסלול הטיול" subtitle={`[דמו] ${stops.length} תחנות`} />
 
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        <ActionButton label="הוסף תחנה" />
-        <ActionButton label="שנה סדר תחנות" />
-        <ActionButton label="מעבר למפה" />
+        <ActionButton label="הוסף תחנה" onClick={() => setEditing({ mode: "add", stop: null })} />
+        <ActionButton label="שנה סדר תחנות" onClick={() => router.push("/route/reorder")} />
+        <ActionButton label="מעבר למפה" onClick={() => router.push("/map")} />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {STOPS.map((stop, i) => (
-          <div key={`${stop.city}-${stop.firstDay}`} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <Link href={`/planner?day=${stop.firstDay}&city=${encodeURIComponent(stop.city)}`} style={{ textDecoration: "none", color: "inherit" }}>
-              <Card style={{ cursor: "pointer" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: "26px",
-                        height: "26px",
-                        borderRadius: "50%",
-                        background: "rgba(138,90,223,0.18)",
-                        border: `1px solid ${COLOR.purple}55`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        color: COLOR.purple,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {i + 1}
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, fontSize: "14px", color: "#fff" }}>{stop.city}</div>
-                      <div style={{ fontSize: "11px", color: COLOR.textMuted }}>{stop.dates}</div>
-                    </div>
+        {stops.map((stop, i) => (
+          <div key={stop.id} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <Card>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
+                <Link href={`/planner?day=${stop.startDate}&city=${encodeURIComponent(stop.city)}`} style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                  <span
+                    aria-hidden
+                    style={{
+                      width: "26px",
+                      height: "26px",
+                      borderRadius: "50%",
+                      background: "rgba(138,90,223,0.18)",
+                      border: `1px solid ${COLOR.purple}55`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      color: COLOR.purple,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: "14px", color: "#fff" }}>{stop.city}</div>
+                    <div style={{ fontSize: "11px", color: COLOR.textMuted }}>{fmtRange(stop.startDate, stop.endDate)}</div>
                   </div>
-                  <StatusChip label={stop.status} tone={STATUS_TONE[stop.status]} />
+                </Link>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                  {stop.status ? <StatusChip label={stop.status} tone={STATUS_TONE[stop.status]} /> : null}
+                  <button
+                    type="button"
+                    aria-label={`עריכת ${stop.city}`}
+                    onClick={() => setEditing({ mode: "edit", stop })}
+                    style={{ width: "26px", height: "26px", borderRadius: "8px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: COLOR.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px" }}
+                  >
+                    ✎
+                  </button>
                 </div>
+              </div>
 
-                {stop.hotel ? (
-                  <div style={{ fontSize: "12px", color: COLOR.textSecondary, marginBottom: "6px" }}>
-                    🏨 {stop.hotel}
-                  </div>
-                ) : null}
+              {stop.hotel ? <div style={{ fontSize: "12px", color: COLOR.textSecondary, marginBottom: "6px" }}>🏨 {stop.hotel}</div> : null}
 
-                {stop.attractions.length > 0 || stop.restaurants.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "11.5px", color: COLOR.textSecondary }}>
-                    {stop.attractions.map((a) => (
-                      <div key={a}>· {a}</div>
-                    ))}
-                    {stop.restaurants.map((r) => (
-                      <div key={r}>· {r} (מסעדה)</div>
-                    ))}
-                  </div>
-                ) : null}
-              </Card>
-            </Link>
+              {(stop.attractions && stop.attractions.length > 0) || (stop.restaurants && stop.restaurants.length > 0) ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "11.5px", color: COLOR.textSecondary }}>
+                  {(stop.attractions ?? []).map((a) => (
+                    <div key={a}>· {a}</div>
+                  ))}
+                  {(stop.restaurants ?? []).map((r) => (
+                    <div key={r}>· {r} (מסעדה)</div>
+                  ))}
+                </div>
+              ) : null}
+            </Card>
 
-            {stop.travelToNext ? (
+            {stop.transportToNext ? (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingInlineStart: "34px", fontSize: "11px", color: COLOR.textMuted }}>
                 <span style={{ width: "1px", height: "14px", background: COLOR.cardBorder }} />
-                {stop.travelToNext}
+                {stop.transportToNext}
                 <button
                   type="button"
+                  onClick={() => router.push("/map")}
                   style={{
                     marginInlineStart: "auto",
                     display: "flex",
@@ -193,6 +179,15 @@ export default function RoutePreviewScreen() {
           </div>
         ))}
       </div>
+
+      {editing ? (
+        <StopEditSheet
+          initial={editing.stop}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+          onDelete={editing.mode === "edit" ? handleDelete : undefined}
+        />
+      ) : null}
 
       <BottomNav active="route" />
     </ScreenShell>

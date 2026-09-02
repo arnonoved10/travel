@@ -458,8 +458,8 @@ export default function MapPreviewScreen() {
   const [timerExpanded, setTimerExpanded] = useState(false);
   const [demoClock, setDemoClock] = useState(0);
 
-  const [selectedId, setSelectedId] = useState(INITIAL_STOPS[CURRENT_INDEX].id);
-  const [selectedDate, setSelectedDate] = useState(INITIAL_STOPS[CURRENT_INDEX].dateStart);
+  const [selectedId, setSelectedId] = useState(INITIAL_STOPS[CURRENT_INDEX]!.id);
+  const [selectedDate, setSelectedDate] = useState(INITIAL_STOPS[CURRENT_INDEX]!.dateStart);
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [sheetTranslate, setSheetTranslate] = useState(1); // 0 = open, 1 = peek (normalized)
   const [sheetDragging, setSheetDragging] = useState(false);
@@ -484,7 +484,7 @@ export default function MapPreviewScreen() {
   }, []);
 
   const selectedIndex = Math.max(0, stops.findIndex((s) => s.id === selectedId));
-  const stop = stops[selectedIndex] ?? stops[0];
+  const stop = stops[selectedIndex] ?? stops[0]!;
   const activities = activitiesByStop[stop?.id ?? ""] ?? [];
 
   function showToast(message: string, actionLabel?: string, onAction?: () => void) {
@@ -526,6 +526,7 @@ export default function MapPreviewScreen() {
   }
   function recenter() {
     const cur = stops[CURRENT_INDEX] ?? stops[0];
+    if (!cur) return;
     setSelectedId(cur.id);
     setSelectedDate(cur.dateStart);
     setFlyTarget({ lat: cur.lat, lon: cur.lon, zoom: 9 });
@@ -602,6 +603,7 @@ export default function MapPreviewScreen() {
   function handleDeleteStopConfirm(id: string) {
     const idx = stops.findIndex((s) => s.id === id);
     const s = stops[idx];
+    if (!s) return;
     pendingDeleteStop.current = { stop: s, index: idx };
     setStops((prev) => prev.filter((x) => x.id !== id));
     setDialog(null);
@@ -628,7 +630,7 @@ export default function MapPreviewScreen() {
       const list = prev[stopId] ?? [];
       const idx = list.findIndex((a) => a.id === activityId);
       if (idx === -1) return prev;
-      const copy: Activity = { ...list[idx], id: nextId("act"), title: `${list[idx].title} (עותק)` };
+      const copy: Activity = { ...list[idx]!, id: nextId("act"), title: `${list[idx]!.title} (עותק)` };
       const arr = [...list];
       arr.splice(idx + 1, 0, copy);
       return { ...prev, [stopId]: arr };
@@ -640,8 +642,9 @@ export default function MapPreviewScreen() {
     const list = activitiesByStop[stopId] ?? [];
     const idx = list.findIndex((a) => a.id === activityId);
     const a = list[idx];
+    if (!a) return;
     pendingDeleteActivity.current = { activity: a, index: idx };
-    setActivitiesByStop((prev) => ({ ...prev, [stopId]: prev[stopId].filter((x) => x.id !== activityId) }));
+    setActivitiesByStop((prev) => ({ ...prev, [stopId]: (prev[stopId] ?? []).filter((x) => x.id !== activityId) }));
     setDialog(null);
     showToast(`"${a.title}" נמחקה`, "בטל", () => {
       const pending = pendingDeleteActivity.current;
@@ -1091,7 +1094,7 @@ export default function MapPreviewScreen() {
         <AddStopSheet
           onClose={() => setDialog(null)}
           onAdd={(form) => {
-            const last = stops[stops.length - 1];
+            const last = stops[stops.length - 1] ?? { lat: 0, lon: 0 };
             const newStop: Stop = { id: nextId("stop"), city: form.city, country: form.country, lat: last.lat + (Math.random() - 0.5) * 0.6, lon: last.lon + (Math.random() - 0.5) * 0.6, dateStart: form.dateStart, days: form.days, datesLabel: `${form.days} ימים החל מ-${form.dateStart}`, status: "ממתין לאישור", hotel: form.hotel || null, weather: "—", notes: "" };
             setStops((prev) => [...prev, newStop]);
             setActivitiesByStop((prev) => ({ ...prev, [newStop.id]: [] }));

@@ -6,22 +6,8 @@ import { useRouter } from "next/navigation";
 import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoWeatherAction, getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, DEMO_REFERENCE_DATE } from "./wallet-data";
-
-// התקדמות אמיתית בטיול, מחושבת מ-TRIP_STOP_COUNTRIES/TRIP_LAST_DAY (לא
-// מספרים קבועים) — "היום" לצורך ההדגמה הוא DEMO_REFERENCE_DATE, לא תאריך-
-// אמת, כדי שהדמו תמיד יראה טיול-באמצע בלי תלות בשעון המערכת האמיתי.
-function computeTripProgress() {
-  const start = new Date(TRIP_STOP_COUNTRIES[0]!.firstDay);
-  const end = new Date(TRIP_LAST_DAY);
-  const ref = new Date(DEMO_REFERENCE_DATE);
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const totalDays = Math.round((end.getTime() - start.getTime()) / msPerDay);
-  const currentDay = Math.max(1, Math.round((ref.getTime() - start.getTime()) / msPerDay) + 1);
-  const daysRemaining = Math.max(0, Math.round((end.getTime() - ref.getTime()) / msPerDay));
-  const percent = totalDays > 0 ? Math.min(100, Math.round((currentDay / totalDays) * 100)) : 0;
-  return { totalDays, currentDay, daysRemaining, percent };
-}
+import { formatMoney } from "./wallet-data";
+import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
 
 // שעון אמיתי לפי אזור-זמן — לא זמן קבוע. מתעדכן כל 30 שניות (מספיק לתצוגת
 // שעה, לא צריך רזולוציית-שנייה). אותה שיטה בדיוק כמו WorldClockCard האמיתי
@@ -70,6 +56,7 @@ const COLOR = {
   textMuted: "#6b7290",
   danger: "#ef6f61",
   warning: "#f5a544",
+  success: "#43d6aa",
 };
 
 // דגלים אמיתיים כ-SVG וקטורי (לא אמוג'י) — בכוונה: אמוג'י-דגלים לא מרונדרים
@@ -986,7 +973,13 @@ export function MobileHomeMock() {
   const router = useRouter();
   const currentUser = useCurrentUser();
   const walletStore = useWalletStore();
-  const tripProgress = useMemo(() => computeTripProgress(), []);
+  // נטען בתוך useEffect (לא ישירות ב-render) כי activeTrip()/tripProgress
+  // קוראים מ-localStorage — אותו דפוס-בטיחות-הידרציה כמו useWalletStore.
+  // מחושב מהטיול הפעיל האמיתי (כולל עריכות שנשמרו), לא מקבועים.
+  const [tripProgress, setTripProgress] = useState<{ dayIndex: number; totalDays: number; daysRemaining: number; percent: number } | null>(null);
+  useEffect(() => {
+    setTripProgress(computeTripProgressFor(activeTrip()));
+  }, []);
 
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
   async function handleSignOut() {
@@ -1122,7 +1115,7 @@ export function MobileHomeMock() {
       const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "shortOffset" }).formatToParts(now);
       const tzName = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
       const match = tzName.match(/GMT([+-]\d+)/);
-      return match ? parseInt(match[1], 10) : 0;
+      return match ? parseInt(match[1]!, 10) : 0;
     };
     const diff = offset(zoneB) - offset(zoneA);
     if (diff === 0) return "אין הפרש שעות";
@@ -1410,19 +1403,19 @@ export function MobileHomeMock() {
               <ChevronIcon size={13} color={COLOR.textSecondary} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Ring percent={tripProgress.percent} size={40} color={COLOR.turquoise} />
+              <Ring percent={tripProgress?.percent ?? 0} size={40} color={COLOR.turquoise} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "15px", fontWeight: 800, marginBottom: "6px" }}>
-                  <span style={{ color: COLOR.turquoise }}>יום {tripProgress.currentDay}</span>
-                  <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך {tripProgress.totalDays}</span>
+                  <span style={{ color: COLOR.turquoise }}>יום {tripProgress?.dayIndex ?? "—"}</span>
+                  <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
                 </div>
                 <div style={{ height: "7px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ width: `${tripProgress.percent}%`, height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
+                  <div style={{ width: `${tripProgress?.percent ?? 0}%`, height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
                 </div>
               </div>
             </div>
             <div style={{ textAlign: "end", marginTop: "8px", fontSize: "12px", color: COLOR.textSecondary }}>
-              נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>{tripProgress.daysRemaining}</span> ימים
+              נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
             </div>
           </Card>
         </Link>

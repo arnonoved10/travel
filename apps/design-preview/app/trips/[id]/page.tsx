@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, ElevatedCard, Badge, PrimaryButton, DangerButton, Money, COLOR, SPACE, ShareIcon, SuitcaseIcon, CalendarIcon, ProfileIcon } from "../../design-system";
 import { FlagIcon } from "../../country-currency-data";
-import { findAnyTrip, deleteCustomTrip, type DemoTrip } from "../../trips-data";
+import { findAnyTrip, updateTrip, deleteCustomTrip, type DemoTrip } from "../../trips-data";
 import { loadStops } from "../../trip-content";
+import { DateRangePicker } from "../../date-range-picker";
 
 export default function TripOverviewScreen() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [trip, setTrip] = useState<DemoTrip | null | undefined>(undefined);
   const [cityCount, setCityCount] = useState(0);
+  const [editingDates, setEditingDates] = useState(false);
 
   useEffect(() => {
     setTrip(findAnyTrip(params.id));
@@ -54,12 +56,19 @@ export default function TripOverviewScreen() {
         <span style={{ fontSize: "12px", color: COLOR.textSecondary }}>
           {fmt(trip.startDate)} - {fmt(trip.endDate)}
         </span>
+        <button
+          type="button"
+          onClick={() => setEditingDates(true)}
+          style={{ marginInlineStart: "auto", padding: "5px 10px", borderRadius: "999px", background: `${COLOR.primary}22`, border: `1px solid ${COLOR.primary}55`, color: COLOR.primaryLight, fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+        >
+          עריכת תאריכים
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
         <StatChip icon={<CalendarIcon size={16} />} label={`${trip.nights} לילות`} />
         <StatChip icon={<CalendarIcon size={16} />} label={`${trip.nights + 1} ימים`} />
-        <StatChip icon={<ProfileIcon size={16} />} label={`${trip.travelers}`} />
+        <StatChip icon={<ProfileIcon />} label={`${trip.travelers}`} />
       </div>
 
       <Card>
@@ -83,6 +92,20 @@ export default function TripOverviewScreen() {
         </DangerButton>
         <PrimaryButton onClick={() => router.push(`/trips/${trip.id}/plan`)}>צפה בתוכנית</PrimaryButton>
       </div>
+
+      {editingDates ? (
+        <DateRangePicker
+          title="עריכת תאריכי הטיול"
+          initialStartDate={trip.startDate}
+          initialEndDate={trip.endDate}
+          onClose={() => setEditingDates(false)}
+          onConfirm={(startDate, endDate) => {
+            const updated = updateTrip(trip.id, { startDate, endDate });
+            if (updated) setTrip(updated);
+            setEditingDates(false);
+          }}
+        />
+      ) : null}
     </ScreenShell>
   );
 }
