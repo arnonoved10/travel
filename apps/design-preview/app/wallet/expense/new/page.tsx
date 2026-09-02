@@ -47,6 +47,7 @@ function AddExpenseForm() {
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [tip, setTip] = useState("");
+  const [tipMode, setTipMode] = useState<"included" | "separate">("included");
   const [date, setDate] = useState(today());
   const [time, setTime] = useState(nowTime());
   const [method, setMethod] = useState<PaymentMethod>("cash");
@@ -179,10 +180,15 @@ function AddExpenseForm() {
   function handleSave() {
     if (!title.trim()) return setError("יש להזין שם הוצאה");
     if (!(Number(amount) > 0)) return setError("יש להזין סכום גדול מ-0");
-    if (tip && Number(tip) > Number(amount)) return setError("הטיפ לא יכול להיות גדול מהסכום הכולל");
+    if (tipMode === "included" && tip && Number(tip) > Number(amount)) return setError("הטיפ לא יכול להיות גדול מהסכום הכולל");
     setError(null);
+    // הטיפ נשמר תמיד כתת-סכום של amount (עקבי, לא משנה איך המשתמש הזין
+    // אותו): במצב "בנפרד" מנרמלים על-ידי הוספת הטיפ ל-amount בזמן השמירה,
+    // כדי שיתרת הארנק/כרטיס תרד בדיוק לפי מה שבאמת שולם.
+    const tipValue = tip && Number(tip) > 0 ? Number(tip) : 0;
+    const finalAmount = tipMode === "separate" ? Number(amount) + tipValue : Number(amount);
     store.saveExpense(
-      { title: title.trim(), merchant: merchant || undefined, category, currency, amount: Number(amount), tipAmount: tip && Number(tip) > 0 ? Number(tip) : undefined, date, time, paymentMethod: method, cardId, notes: notes || undefined },
+      { title: title.trim(), merchant: merchant || undefined, category, currency, amount: finalAmount, tipAmount: tipValue > 0 ? tipValue : undefined, date, time, paymentMethod: method, cardId, notes: notes || undefined },
       receiptDataUrl,
       editId ?? undefined
     );
@@ -199,6 +205,16 @@ function AddExpenseForm() {
   return (
     <ScreenShell>
       <ScreenHeader title={isEditMode ? "עריכת הוצאה" : "הוספת הוצאה"} />
+
+      {!isEditMode ? (
+        <button
+          type="button"
+          onClick={() => router.push("/wallet/expense/batch")}
+          style={{ background: "none", border: "none", color: COLOR.primaryLight, fontSize: "12px", fontWeight: 700, cursor: "pointer", padding: 0, textAlign: "start" }}
+        >
+          יש לי כמה הוצאות להזין ביחד ←
+        </button>
+      ) : null}
 
       {!isEditMode && recentExpenseSuggestions.length > 0 ? (
         <div>
@@ -235,8 +251,31 @@ function AddExpenseForm() {
         <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
       </div>
 
-      <Field label="טיפ מתוך הסכום (אופציונלי)">
-        <input type="number" value={tip} onChange={(e) => setTip(e.target.value)} placeholder="0" style={{ ...inputStyle, textAlign: "left" }} />
+      <Field label="טיפ (אופציונלי)">
+        <div style={{ display: "flex", gap: SPACE.sm }}>
+          <input type="number" value={tip} onChange={(e) => setTip(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
+          <div style={{ display: "flex", borderRadius: "12px", overflow: "hidden", border: `1px solid ${COLOR.border}`, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => setTipMode("included")}
+              style={{ padding: "0 10px", border: "none", background: tipMode === "included" ? COLOR.primary : "transparent", color: tipMode === "included" ? "#fff" : COLOR.textSecondary, fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+            >
+              כלול בסכום
+            </button>
+            <button
+              type="button"
+              onClick={() => setTipMode("separate")}
+              style={{ padding: "0 10px", border: "none", background: tipMode === "separate" ? COLOR.primary : "transparent", color: tipMode === "separate" ? "#fff" : COLOR.textSecondary, fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+            >
+              בנפרד
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: "11px", color: COLOR.textSecondary, marginTop: "4px" }}>
+          {tipMode === "included"
+            ? "הסכום שלמעלה כולל את הטיפ (למשל: החשבון 100, מתוכם 10 טיפ)"
+            : `הטיפ מתווסף לסכום שלמעלה${amount && tip ? ` — סה״כ ישולם: ${(Number(amount) + Number(tip)).toLocaleString()}` : ""}`}
+        </div>
       </Field>
 
       {method === "credit" ? (
