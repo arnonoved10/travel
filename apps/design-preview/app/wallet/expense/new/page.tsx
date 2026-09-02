@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, IconPill, Field, PrimaryButton, CameraIcon, inputStyle, textareaStyle, COLOR, SPACE } from "../../../design-system";
 import { CurrencyPickerButton } from "../../../pickers";
 import { runDemoReceiptOcrAction } from "../../../actions";
-import { compressImageFile, today, type Category, type PaymentMethod } from "../../../wallet-data";
+import { compressImageFile, today, nowTime, defaultCurrencyPriority, type Category, type PaymentMethod } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
 
 const CATEGORIES: Category[] = ["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"];
@@ -15,20 +15,38 @@ const METHOD_TABS: { key: PaymentMethod; label: string }[] = [
 ];
 
 /**
- * מסך "הוספת הוצאה" (20) — הלוגיקה (כולל צילום-קבלה + OCR אמיתי דרך
+ * מסך "הוספת/עריכת הוצאה" (20) — הלוגיקה (כולל צילום-קבלה + OCR אמיתי דרך
  * Tesseract, ר' actions.ts) זהה-במדויק ללוגיקה שהייתה בחלונית-ההוצאה
- * הישנה בתוך wallet/page.tsx (חילוץ, לא שכתוב).
+ * הישנה בתוך wallet/page.tsx (חילוץ, לא שכתוב). מסך זה הוא כעת המקור היחיד
+ * ליצירה *וגם* לעריכה (?edit=<id>) — הדיאלוג הישן ב-wallet/page.tsx הוסר
+ * כדי שלא יהיו שני מימושים מקבילים שיכולים להתבדר זה מזה (בדיוק הבאג
+ * שתוקן קודם בהמרת-מטבע).
  */
 export default function AddExpenseScreen() {
+  return (
+    <Suspense fallback={null}>
+      <AddExpenseForm />
+    </Suspense>
+  );
+}
+
+function AddExpenseForm() {
   const router = useRouter();
   const store = useWalletStore();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const editing = store.hydrated ? store.expenses.find((e) => e.id === editId) ?? null : null;
+  const isEditMode = !!editId;
+
   const [title, setTitle] = useState("");
   const [merchant, setMerchant] = useState("");
   const [category, setCategory] = useState<Category>("אחר");
-  const [currency, setCurrency] = useState("JPY");
+  const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today());
+  const [time, setTime] = useState(nowTime());
   const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [cardId, setCardId] = useState<string | undefined>(undefined);
   const [notes, setNotes] = useState("");
   const [receiptDataUrl, setReceiptDataUrl] = useState<string | null>(null);
   const [ocrState, setOcrState] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -36,12 +54,51 @@ export default function AddExpenseScreen() {
   const [error, setError] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prefilled = useRef(false);
+  const currencyTouched = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.search.includes("autoCamera=1")) {
       cameraInputRef.current?.click();
     }
   }, []);
+
+  // ברירת-מחדל למטבע: המטבע המקומי של יעד הטיול הפעיל — רק אם המשתמש עוד
+  // לא שינה אותו ידנית, ורק ביצירה חדשה (לא דורס עריכה קיימת).
+  useEffect(() => {
+    if (store.hydrated && !isEditMode && !currencyTouched.current) {
+      setCurrency(store.localCurrency.currencyCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.hydrated, store.localCurrency.currencyCode, isEditMode]);
+
+  // מילוי-מראש בעת עריכה
+  useEffect(() => {
+    if (editing && !prefilled.current) {
+      prefilled.current = true;
+      setTitle(editing.title);
+      setMerchant(editing.merchant ?? "");
+      setCategory(editing.category);
+      setCurrency(editing.currency);
+      setAmount(String(editing.amount));
+      setDate(editing.date);
+      setTime(editing.time ?? nowTime());
+      setMethod(editing.paymentMethod === "credit" ? "credit" : "cash");
+      setCardId(editing.cardId);
+      setNotes(editing.notes ?? "");
+      if (editing.receiptId && store.receipts[editing.receiptId]) setReceiptDataUrl(store.receipts[editing.receiptId]!);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+
+  // ברירת-מחדל לכרטיס: הכרטיס הראשי (אם קיים) כשעוברים לתשלום באשראי
+  useEffect(() => {
+    if (method === "credit" && !cardId && store.cards.length > 0) {
+      setCardId(store.cards.find((c) => c.isPrimary)?.id ?? store.cards[0]!.id);
+    }
+    if (method !== "credit") setCardId(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [method, store.cards.length]);
 
   async function handleReceiptFile(file: File) {
     setOcrState("loading");
@@ -77,26 +134,82 @@ export default function AddExpenseScreen() {
   }
 
   if (!store.hydrated) return null;
+  if (isEditMode && !editing) return null;
 
   function handleSave() {
     if (!title.trim()) return setError("יש להזין שם הוצאה");
     if (!(Number(amount) > 0)) return setError("יש להזין סכום גדול מ-0");
     setError(null);
-    store.saveExpense({ title: title.trim(), merchant: merchant || undefined, category, currency, amount: Number(amount), date, paymentMethod: method, cardId: undefined }, receiptDataUrl);
+    store.saveExpense(
+      { title: title.trim(), merchant: merchant || undefined, category, currency, amount: Number(amount), date, time, paymentMethod: method, cardId, notes: notes || undefined },
+      receiptDataUrl,
+      editId ?? undefined
+    );
+    router.push("/wallet");
+  }
+
+  function handleDelete() {
+    if (!editing) return;
+    if (!confirm(`למחוק את ההוצאה "${editing.title}"?`)) return;
+    store.deleteExpense(editing.id);
     router.push("/wallet");
   }
 
   return (
     <ScreenShell>
-      <ScreenHeader title="הוספת הוצאה" />
+      <ScreenHeader title={isEditMode ? "עריכת הוצאה" : "הוספת הוצאה"} />
       <PillTabs options={METHOD_TABS} value={method} onChange={setMethod} />
 
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
         <div style={{ width: "140px", flexShrink: 0 }}>
-          <CurrencyPickerButton selectedCode={currency} onSelect={setCurrency} priorityCodes={store.balances.map((b) => b.code)} />
+          <CurrencyPickerButton
+            selectedCode={currency}
+            onSelect={(c) => {
+              currencyTouched.current = true;
+              setCurrency(c);
+            }}
+            priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)}
+          />
         </div>
         <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
       </div>
+
+      {method === "credit" ? (
+        <div>
+          <div style={{ fontSize: "12.5px", fontWeight: 600, color: COLOR.textSecondary, marginBottom: SPACE.sm }}>כרטיס אשראי</div>
+          {store.cards.length === 0 ? (
+            <div style={{ fontSize: "12px", color: COLOR.textSecondary }}>
+              אין כרטיסי אשראי —{" "}
+              <button type="button" onClick={() => router.push("/wallet/cards")} style={{ background: "none", border: "none", color: COLOR.primaryLight, fontSize: "12px", fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                הוספת כרטיס
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto" }}>
+              {store.cards.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCardId(c.id)}
+                  style={{
+                    flexShrink: 0,
+                    padding: "9px 14px",
+                    borderRadius: "12px",
+                    background: cardId === c.id ? `${COLOR.primary}22` : COLOR.card,
+                    border: `1px solid ${cardId === c.id ? COLOR.primary : COLOR.border}`,
+                    color: cardId === c.id ? COLOR.primaryLight : COLOR.textSecondary,
+                    fontSize: "12.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {c.nickname} · {c.last4}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div>
         <div style={{ fontSize: "12.5px", fontWeight: 600, color: COLOR.textSecondary, marginBottom: SPACE.sm }}>קטגוריה</div>
@@ -111,9 +224,18 @@ export default function AddExpenseScreen() {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="לדוגמה: מסעדת רעמן" style={inputStyle} />
       </Field>
 
-      <Field label="תאריך">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
-      </Field>
+      <div style={{ display: "flex", gap: SPACE.sm }}>
+        <div style={{ flex: 1 }}>
+          <Field label="תאריך">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="שעה">
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} />
+          </Field>
+        </div>
+      </div>
 
       <Field label="הערות (אופציונלי)">
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={textareaStyle} />
@@ -143,7 +265,12 @@ export default function AddExpenseScreen() {
       </Field>
 
       {error ? <div style={{ color: COLOR.danger, fontSize: "12.5px" }}>{error}</div> : null}
-      <PrimaryButton onClick={handleSave}>שמור הוצאה</PrimaryButton>
+      <PrimaryButton onClick={handleSave}>{isEditMode ? "עדכון הוצאה" : "שמור הוצאה"}</PrimaryButton>
+      {isEditMode ? (
+        <button type="button" onClick={handleDelete} style={{ width: "100%", padding: "13px", borderRadius: "12px", background: "none", border: `1px solid ${COLOR.danger}55`, color: COLOR.danger, fontSize: "13.5px", fontWeight: 700, cursor: "pointer" }}>
+          מחיקת ההוצאה
+        </button>
+      ) : null}
     </ScreenShell>
   );
 }

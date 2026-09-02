@@ -185,16 +185,16 @@ export function CurrencyPickerSheet({
   const [query, setQuery] = useState("");
   const allCodes = options ?? Object.keys(CURRENCY_META).filter((c) => CURRENCY_META[c]?.code === c);
   const uniqueCodes = Array.from(new Set(allCodes));
-  const prioritySet = new Set(priorityCodes ?? []);
+  const priorityRank = new Map((priorityCodes ?? []).map((code, i) => [code, i]));
   const results = useMemo(() => {
     const q = normalize(query);
     const list = uniqueCodes
       .map((code) => ({ code, meta: currencyMeta(code), country: Object.values(COUNTRIES).find((c) => c.currencyCodes[0] === code) }))
       .filter((row) => !q || normalize(row.code).includes(q) || normalize(row.meta.name).includes(q) || (row.country && (normalize(row.country.nameHe).includes(q) || normalize(row.country.nameEn).includes(q))));
     return list.sort((a, b) => {
-      const aPriority = prioritySet.has(a.code) ? 0 : 1;
-      const bPriority = prioritySet.has(b.code) ? 0 : 1;
-      if (aPriority !== bPriority) return aPriority - bPriority;
+      const aRank = priorityRank.has(a.code) ? priorityRank.get(a.code)! : Infinity;
+      const bRank = priorityRank.has(b.code) ? priorityRank.get(b.code)! : Infinity;
+      if (aRank !== bRank) return aRank - bRank;
       return a.code.localeCompare(b.code);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

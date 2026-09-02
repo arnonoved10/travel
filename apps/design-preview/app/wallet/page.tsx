@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LegacyCard as Card, LegacyIconSlot as IconSlot, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR } from "../route/legacy-shared";
-import { getDemoCurrencyRatesAction, runDemoReceiptOcrAction, type DemoCurrencyResult } from "../actions";
+import { getDemoCurrencyRatesAction, type DemoCurrencyResult } from "../actions";
 import { FlagIcon } from "../country-currency-data";
 import { CountryPickerSheet, CurrencyPickerButton, AddCurrencySheet } from "../pickers";
-import { Field, Sheet, ActionRow, PillSelect, DotsIcon, CameraIcon, ImageIcon, inputStyle, ToastView } from "../ui-kit";
+import { Field, Sheet, ActionRow, PillSelect, DotsIcon, CameraIcon, inputStyle, ToastView } from "../ui-kit";
 import {
   CURRENCY_CATALOG,
   currencyMeta,
@@ -29,7 +29,6 @@ import {
   INITIAL_BALANCES,
   INITIAL_EXPENSES,
   nextId,
-  compressImageFile,
   resolveLocalCurrency,
 } from "../wallet-data";
 
@@ -83,7 +82,6 @@ export default function WalletPreviewScreen() {
   const [dialog, setDialog] = useState<
     | { type: "addMoney" | "reduceMoney" | "history" | "currencyDetail"; currency: string }
     | { type: "convert"; from: string }
-    | { type: "addExpense" | "editExpense"; id?: string; autoCamera?: boolean }
     | { type: "addCurrency" }
     | { type: "changeCountry" }
     | { type: "addCard" | "editCard"; id?: string }
@@ -255,35 +253,6 @@ export default function WalletPreviewScreen() {
   }
 
   // ---------- פעולות: הוצאות ----------
-  function handleSaveExpense(patch: Omit<Expense, "id">, receiptDataUrl: string | null | undefined, existingId?: string) {
-    let receiptId = existingId ? expenses.find((e) => e.id === existingId)?.receiptId : undefined;
-    if (receiptDataUrl) {
-      receiptId = existingId ? receiptId ?? nextId("rcpt") : nextId("rcpt");
-      setReceipts((prev) => ({ ...prev, [receiptId!]: receiptDataUrl }));
-    } else if (receiptDataUrl === null && existingId) {
-      receiptId = undefined;
-    }
-
-    if (existingId) {
-      setExpenses((prev) => prev.map((e) => (e.id === existingId ? { ...e, ...patch, receiptId } : e)));
-    } else {
-      const expense: Expense = { id: nextId("tx"), ...patch, receiptId };
-      setExpenses((prev) => [expense, ...prev]);
-      if (patch.paymentMethod !== "credit") {
-        adjustBalance(patch.currency, -patch.amount, patch.amount);
-      } else {
-        setBalances((prev) => {
-          const idx = prev.findIndex((b) => b.code === patch.currency);
-          if (idx === -1) return [...prev, { code: patch.currency, balance: 0, spent: patch.amount, lastUpdated: today() }];
-          const arr = [...prev];
-          arr[idx] = { ...arr[idx]!, spent: arr[idx]!.spent + patch.amount, lastUpdated: today() };
-          return arr;
-        });
-      }
-    }
-    setDialog(null);
-    showToast(existingId ? "ההוצאה עודכנה" : "ההוצאה נוספה");
-  }
   function handleDeleteExpense(id: string) {
     const idx = expenses.findIndex((e) => e.id === id);
     const tx = expenses[idx]!;
@@ -369,7 +338,6 @@ export default function WalletPreviewScreen() {
   const forecastTotal = avgDaily * TRIP_TOTAL_DAYS;
 
   const filteredExpenses = paymentFilter === "all" ? expenses : expenses.filter((e) => e.paymentMethod === paymentFilter);
-  const editingExpense = dialog?.type === "editExpense" ? expenses.find((e) => e.id === dialog.id) ?? null : null;
   const menuExpense = expenses.find((e) => e.id === menuForExpense) ?? null;
   const editingCard = dialog?.type === "editCard" ? cards.find((c) => c.id === dialog.id) ?? null : null;
   const menuCard = cards.find((c) => c.id === menuForCard) ?? null;
@@ -473,7 +441,7 @@ export default function WalletPreviewScreen() {
             <QuickAction label="הוצאה" onClick={() => router.push("/wallet/expense/new")} />
             <QuickAction label="כסף" onClick={() => router.push("/wallet/add")} />
             <QuickAction label="המרה" onClick={() => router.push("/wallet/convert")} />
-            <QuickAction label="קבלה" icon={<CameraIcon size={16} />} onClick={() => openDialog({ type: "addExpense", autoCamera: true })} />
+            <QuickAction label="קבלה" icon={<CameraIcon size={16} />} onClick={() => router.push("/wallet/expense/new?autoCamera=1")} />
           </div>
 
           {/* סיכום יומי קומפקטי */}
@@ -652,7 +620,7 @@ export default function WalletPreviewScreen() {
 
       {menuExpense ? (
         <Sheet title={menuExpense.title} onClose={() => setMenuForExpense(null)}>
-          <ActionRow label="עריכת ההוצאה" onClick={() => openDialog({ type: "editExpense", id: menuExpense.id })} />
+          <ActionRow label="עריכת ההוצאה" onClick={() => { setMenuForExpense(null); router.push(`/wallet/expense/new?edit=${menuExpense.id}`); }} />
           <ActionRow label="מחיקת ההוצאה" danger onClick={() => handleDeleteExpense(menuExpense.id)} />
         </Sheet>
       ) : null}
@@ -711,17 +679,6 @@ export default function WalletPreviewScreen() {
         />
       ) : null}
       {dialog?.type === "addCard" || dialog?.type === "editCard" ? <AddCardForm initial={editingCard} onClose={() => setDialog(null)} onSave={(card) => handleSaveCard(card, editingCard?.id)} /> : null}
-      {dialog?.type === "addExpense" || dialog?.type === "editExpense" ? (
-        <ExpenseForm
-          initial={editingExpense}
-          autoCamera={dialog.type === "addExpense" ? dialog.autoCamera : false}
-          currencies={balances.map((b) => b.code)}
-          cards={cards}
-          existingReceiptDataUrl={editingExpense?.receiptId ? receipts[editingExpense.receiptId] : undefined}
-          onClose={() => setDialog(null)}
-          onSave={(patch, receiptDataUrl) => handleSaveExpense(patch, receiptDataUrl, editingExpense?.id)}
-        />
-      ) : null}
     </ScreenShell>
   );
 }
@@ -790,16 +747,44 @@ function CurrencyDetailSheet({
 // ============================== היסטוריה מלאה (כל המטבעות) ==============================
 
 function AllHistoryList({ expenses, additions, conversions }: { expenses: Expense[]; additions: MoneyAddition[]; conversions: ConversionRecord[] }) {
-  type Row = { dateTime: string; label: string; amountLabel: string; color: string; currency: string; ltr?: boolean };
+  const router = useRouter();
+  type Row = { sortKey: string; displayDate: string; label: string; amountLabel: string; color: string; currency: string; ltr?: boolean; href?: string };
   const rows: Row[] = [];
-  for (const e of expenses) rows.push({ dateTime: e.date, label: `הוצאה: ${e.title}`, amountLabel: `-${formatMoney(e.amount, e.currency)}`, color: COLOR.danger, currency: e.currency });
-  for (const a of additions) rows.push({ dateTime: a.date, label: a.amount >= 0 ? `הוספה: ${MONEY_SOURCE_LABEL[a.source]}` : `הפחתה: ${a.note ?? ""}`, amountLabel: `${a.amount >= 0 ? "+" : ""}${formatMoney(a.amount, a.currency)}`, color: a.amount >= 0 ? COLOR.success : COLOR.danger, currency: a.currency });
+  for (const e of expenses)
+    rows.push({
+      sortKey: `${e.date}T${e.time ?? "00:00"}`,
+      displayDate: e.time ? `${e.date} · ${e.time}` : e.date,
+      label: `הוצאה: ${e.title}`,
+      amountLabel: `-${formatMoney(e.amount, e.currency)}`,
+      color: COLOR.danger,
+      currency: e.currency,
+      href: `/wallet/expense/new?edit=${e.id}`,
+    });
+  for (const a of additions)
+    rows.push({
+      sortKey: `${a.date}T00:00`,
+      displayDate: a.date,
+      label: a.amount >= 0 ? `הוספה: ${MONEY_SOURCE_LABEL[a.source]}` : `הפחתה: ${a.note ?? ""}`,
+      amountLabel: `${a.amount >= 0 ? "+" : ""}${formatMoney(a.amount, a.currency)}`,
+      color: a.amount >= 0 ? COLOR.success : COLOR.danger,
+      currency: a.currency,
+    });
   // תוכן ה"המרה" (קודי-מטבע + חץ) הוא איי-לנד LTR בתוך עמוד RTL — בלי לאלץ
   // כיוון-תצוגה מפורש, אלגוריתם ה-bidi הופך את סדר האסימונים הניטרליים
   // (כמו "€ 100 ← ฿ 3,000" שהופך ל-"3,000 ฿ → 100 €" חזותית) — אותה
   // משפחת-באג בדיוק כמו היפוך "MASTER TRIP"/"TRIP MASTER" שתוקן קודם.
-  for (const c of conversions) rows.push({ dateTime: c.dateTime, label: `המרה: ${c.fromCurrency} → ${c.toCurrency}`, amountLabel: `${formatMoney(c.fromAmount, c.fromCurrency)} → ${formatMoney(c.toAmount, c.toCurrency)}`, color: COLOR.warning, currency: c.toCurrency, ltr: true });
-  rows.sort((a, b) => (a.dateTime < b.dateTime ? 1 : -1));
+  for (const c of conversions)
+    rows.push({
+      sortKey: c.dateTime,
+      displayDate: c.dateTime.includes("T") ? c.dateTime.replace("T", " · ").slice(0, 16) : c.dateTime,
+      label: `המרה: ${c.fromCurrency} → ${c.toCurrency}`,
+      amountLabel: `${formatMoney(c.fromAmount, c.fromCurrency)} → ${formatMoney(c.toAmount, c.toCurrency)}`,
+      color: COLOR.warning,
+      currency: c.toCurrency,
+      ltr: true,
+      href: `/wallet/convert?edit=${c.id}`,
+    });
+  rows.sort((a, b) => (a.sortKey < b.sortKey ? 1 : -1));
 
   return (
     <>
@@ -811,11 +796,11 @@ function AllHistoryList({ expenses, additions, conversions }: { expenses: Expens
           {rows.map((r, i) => {
             const country = primaryCountryForCurrency(r.currency);
             return (
-              <Card key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Card key={i} onClick={r.href ? () => router.push(r.href!) : undefined} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: r.href ? "pointer" : undefined }}>
                 {country ? <FlagIcon countryCode={country.code} size={20} /> : null}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", direction: r.ltr ? "ltr" : undefined, textAlign: r.ltr ? "right" : undefined }}>{r.label}</div>
-                  <div style={{ fontSize: "10.5px", color: COLOR.textMuted }}>{r.dateTime}</div>
+                  <div style={{ fontSize: "10.5px", color: COLOR.textMuted }}>{r.displayDate}</div>
                 </div>
                 <div style={{ fontSize: "13px", fontWeight: 800, color: r.color, whiteSpace: "nowrap", direction: r.ltr ? "ltr" : undefined }}>{r.amountLabel}</div>
               </Card>
@@ -1183,195 +1168,3 @@ function AddCardForm({ initial, onClose, onSave }: { initial: CreditCardInfo | n
   );
 }
 
-function ExpenseForm({
-  initial,
-  currencies,
-  cards,
-  existingReceiptDataUrl,
-  autoCamera,
-  onClose,
-  onSave,
-}: {
-  initial: Expense | null;
-  currencies: string[];
-  cards: CreditCardInfo[];
-  existingReceiptDataUrl?: string;
-  autoCamera?: boolean;
-  onClose: () => void;
-  onSave: (patch: Omit<Expense, "id">, receiptDataUrl: string | null | undefined) => void;
-}) {
-  const [title, setTitle] = useState(initial?.title ?? "");
-  const [merchant, setMerchant] = useState(initial?.merchant ?? "");
-  const [category, setCategory] = useState<Category>(initial?.category ?? "אחר");
-  const [currency, setCurrency] = useState(initial?.currency ?? currencies[0] ?? "THB");
-  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
-  const [date, setDate] = useState(initial?.date ?? today());
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initial?.paymentMethod ?? "cash");
-  const [cardId, setCardId] = useState(initial?.cardId ?? cards[0]?.id ?? "");
-
-  const [receiptDataUrl, setReceiptDataUrl] = useState<string | null | undefined>(existingReceiptDataUrl ?? null);
-  const [receiptRemoved, setReceiptRemoved] = useState(false);
-  const [ocrState, setOcrState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [autoFilledFields, setAutoFilledFields] = useState<string[]>([]);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const autoCameraTriggered = useRef(false);
-
-  useEffect(() => {
-    if (autoCamera && !autoCameraTriggered.current) {
-      autoCameraTriggered.current = true;
-      cameraInputRef.current?.click();
-    }
-  }, [autoCamera]);
-
-  const categories: Category[] = ["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"];
-  const canSave = title.trim().length > 0 && Number(amount) > 0;
-
-  async function handleReceiptFile(file: File) {
-    setOcrState("loading");
-    try {
-      const compressed = await compressImageFile(file);
-      setReceiptDataUrl(compressed);
-      setReceiptRemoved(false);
-      const base64 = compressed.split(",")[1] ?? "";
-      const ocr = await runDemoReceiptOcrAction(base64, "image/jpeg");
-      if (ocr.ok && ocr.fields.length > 0) {
-        const filled: string[] = [];
-        for (const f of ocr.fields) {
-          if (!f.extractedValue) continue;
-          const name = f.fieldName.toLowerCase();
-          if (name.includes("amount") || name.includes("total")) {
-            if (!amount) {
-              const num = f.extractedValue.replace(/[^\d.]/g, "");
-              if (num) {
-                setAmount(num);
-                filled.push("amount");
-              }
-            }
-          } else if (name.includes("date")) {
-            filled.push("date");
-          } else if (name.includes("merchant") || name.includes("vendor") || name.includes("store")) {
-            if (!merchant) {
-              setMerchant(f.extractedValue);
-              filled.push("merchant");
-            }
-          }
-        }
-        setAutoFilledFields(filled);
-        setOcrState("done");
-      } else {
-        setOcrState(ocr.ok ? "done" : "error");
-      }
-    } catch {
-      setOcrState("error");
-    }
-  }
-
-  return (
-    <Sheet title={initial ? "עריכת הוצאה" : "הוספת הוצאה"} onClose={onClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <Field label="קבלה">
-          {receiptDataUrl && !receiptRemoved ? (
-            <div>
-              <img src={receiptDataUrl} alt="תצוגה מקדימה של הקבלה" style={{ width: "100%", maxHeight: "220px", objectFit: "contain", borderRadius: "10px", background: "#000" }} />
-              {ocrState === "loading" ? <div style={{ fontSize: "11px", color: COLOR.textSecondary, marginTop: "6px" }}>מזהה פרטים מהקבלה...</div> : null}
-              {ocrState === "done" && autoFilledFields.length > 0 ? <div style={{ fontSize: "11px", color: COLOR.success, marginTop: "6px" }}>זוהו אוטומטית: {autoFilledFields.join(", ")} — יש לוודא שהערכים נכונים</div> : null}
-              {ocrState === "error" ? <div style={{ fontSize: "11px", color: COLOR.textMuted, marginTop: "6px" }}>לא זוהו פרטים אוטומטית — נא להזין ידנית</div> : null}
-              <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
-                <button type="button" onClick={() => cameraInputRef.current?.click()} style={{ flex: 1, padding: "8px", borderRadius: "10px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>
-                  צילום מחדש
-                </button>
-                <button type="button" onClick={() => fileInputRef.current?.click()} style={{ flex: 1, padding: "8px", borderRadius: "10px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>
-                  החלפת התמונה
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReceiptDataUrl(null);
-                    setReceiptRemoved(true);
-                    setOcrState("idle");
-                  }}
-                  style={{ flex: 1, padding: "8px", borderRadius: "10px", background: "rgba(239,111,97,0.14)", border: `1px solid ${COLOR.danger}40`, color: COLOR.danger, fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
-                >
-                  מחיקת התמונה
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button type="button" onClick={() => cameraInputRef.current?.click()} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "11px", borderRadius: "10px", background: "rgba(138,90,223,0.16)", border: `1px solid ${COLOR.purple}40`, color: "#c9b3ff", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>
-                <CameraIcon size={15} />
-                צילום קבלה
-              </button>
-              <button type="button" onClick={() => fileInputRef.current?.click()} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "11px", borderRadius: "10px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>
-                <ImageIcon size={15} />
-                בחירת תמונה קיימת
-              </button>
-            </div>
-          )}
-          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); e.target.value = ""; }} />
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); e.target.value = ""; }} />
-        </Field>
-
-        <Field label="שם ההוצאה">
-          <input data-testid="expense-title" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle()} />
-        </Field>
-        <Field label="בית עסק (לא חובה)">
-          <input data-testid="expense-merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} style={inputStyle()} />
-        </Field>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <div style={{ flex: 1 }}>
-            <Field label="סכום">
-              <input data-testid="expense-amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle()} />
-            </Field>
-          </div>
-          <div style={{ flex: 1 }}>
-            <Field label="מטבע">
-              <CurrencyPickerButton selectedCode={currency} onSelect={setCurrency} options={currencies} testId="expense-currency" />
-            </Field>
-          </div>
-        </div>
-        <Field label="תאריך">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle()} />
-        </Field>
-        <Field label="קטגוריה">
-          <PillSelect options={categories} value={category} onChange={setCategory} labels={Object.fromEntries(categories.map((c) => [c, c])) as Record<Category, string>} />
-        </Field>
-        <Field label="אמצעי תשלום">
-          <div data-testid="expense-payment-method">
-            <PillSelect options={["cash", "credit", "debit", "transfer", "digital_wallet", "other"] as const} value={paymentMethod} onChange={setPaymentMethod} labels={PAYMENT_METHOD_LABEL} />
-          </div>
-        </Field>
-        {(paymentMethod === "credit" || paymentMethod === "debit") && cards.length > 0 ? (
-          <Field label="כרטיס">
-            <select value={cardId} onChange={(e) => setCardId(e.target.value)} style={inputStyle()}>
-              {cards.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nickname} (•••• {c.last4})
-                </option>
-              ))}
-            </select>
-          </Field>
-        ) : null}
-
-        <button
-          type="button"
-          disabled={!canSave}
-          onClick={() => {
-            let receiptToSave: string | null | undefined;
-            if (receiptRemoved) receiptToSave = null;
-            else if (receiptDataUrl && receiptDataUrl !== existingReceiptDataUrl) receiptToSave = receiptDataUrl;
-            else receiptToSave = undefined;
-            onSave(
-              { title, merchant: merchant || undefined, category, currency, amount: Number(amount), date, paymentMethod, cardId: paymentMethod === "credit" || paymentMethod === "debit" ? cardId || undefined : undefined },
-              receiptToSave,
-            );
-          }}
-          style={{ padding: "13px", borderRadius: "12px", background: canSave ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: canSave ? "#fff" : COLOR.textMuted, fontSize: "14.5px", fontWeight: 800, cursor: canSave ? "pointer" : "default", marginTop: "4px" }}
-        >
-          שמירה
-        </button>
-      </div>
-    </Sheet>
-  );
-}

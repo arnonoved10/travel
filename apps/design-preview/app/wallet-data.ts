@@ -54,9 +54,11 @@ export interface Expense {
   currency: string;
   amount: number;
   date: string;
+  time?: string;
   paymentMethod: PaymentMethod;
   cardId?: string;
   receiptId?: string;
+  notes?: string;
 }
 export interface MoneyAddition {
   id: string;
@@ -183,6 +185,15 @@ export function saveJSON(key: string, value: unknown) {
 }
 
 export const today = () => new Date().toISOString().slice(0, 10);
+export const nowTime = () => new Date().toTimeString().slice(0, 5);
+
+/** סדר-ברירת-מחדל לרשימות-בחירת-מטבע בהקשרי תשלום/הוצאה/המרה: המטבע
+ * המקומי של יעד הטיול קודם (זה שבו כנראה משלמים בפועל), אחריו דולר/אירו/
+ * שקל תמיד, ואז שאר המטבעות לפי סדר א'-ב' — לפי בקשה מפורשת. */
+export function defaultCurrencyPriority(localCurrencyCode?: string | null): string[] {
+  const order = [localCurrencyCode, "USD", "EUR", "ILS"].filter((c): c is string => !!c);
+  return Array.from(new Set(order));
+}
 
 // יתרות-פתיחה תואמות את חבילת-העיצוב המחייבת (מסך 16, "הארנק שלי") —
 // נתוני-דמו מוצהרים, לא "נתון דינמי המוצג כקבוע": ברגע שהמשתמש מוסיף/מוציא
@@ -301,10 +312,10 @@ export function parseBackupJSON(raw: string): WalletState | null {
 }
 
 export function buildExpenseReportCSV(expenses: Expense[], cards: CreditCardInfo[]): string {
-  const rows = [["תאריך", "כותרת", "קטגוריה", "מטבע", "סכום", "אמצעי תשלום", "כרטיס", "בית עסק"]];
+  const rows = [["תאריך", "שעה", "כותרת", "קטגוריה", "מטבע", "סכום", "אמצעי תשלום", "כרטיס", "בית עסק"]];
   for (const e of expenses) {
     const card = cards.find((c) => c.id === e.cardId);
-    rows.push([e.date, e.title, e.category, e.currency, String(e.amount), PAYMENT_METHOD_LABEL[e.paymentMethod], card ? `${card.nickname} (${card.last4})` : "", e.merchant ?? ""]);
+    rows.push([e.date, e.time ?? "", e.title, e.category, e.currency, String(e.amount), PAYMENT_METHOD_LABEL[e.paymentMethod], card ? `${card.nickname} (${card.last4})` : "", e.merchant ?? ""]);
   }
   return rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
 }

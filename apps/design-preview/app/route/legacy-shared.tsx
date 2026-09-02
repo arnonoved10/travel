@@ -35,9 +35,10 @@ export const LEGACY_COLOR = {
 
 export const LEGACY_NAV_HEIGHT = 64;
 
-export function LegacyCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+export function LegacyCard({ children, style, onClick }: { children: React.ReactNode; style?: React.CSSProperties; onClick?: () => void }) {
   return (
     <div
+      onClick={onClick}
       style={{
         background: LEGACY_COLOR.cardBg,
         border: `1px solid ${LEGACY_COLOR.cardBorder}`,

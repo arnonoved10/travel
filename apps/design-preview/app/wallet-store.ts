@@ -46,6 +46,7 @@ export function useWalletStore() {
   const pendingDeleteExpense = useRef<{ tx: Expense; index: number } | null>(null);
   const pendingDeleteCard = useRef<{ card: CreditCardInfo; index: number } | null>(null);
   const pendingDeleteAddition = useRef<{ addition: MoneyAddition; index: number } | null>(null);
+  const pendingDeleteConversion = useRef<{ record: ConversionRecord; index: number } | null>(null);
 
   function showToast(message: string, actionLabel?: string, onAction?: () => void) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -188,6 +189,55 @@ export function useWalletStore() {
     showToast(`הומרו ${formatMoney(fromAmount, fromCcy)} ל-${formatMoney(toAmount, toCcy)}`);
     return true;
   }
+  /** עריכת המרה קיימת — מבטלת את השפעת-היתרות של הרשומה הישנה ואז מחילה
+   * את הרשומה החדשה, כדי ששינוי סכום/מטבע לא ישאיר יתרות "תקועות". */
+  function updateConversion(id: string, fromCcy: string, fromAmount: number, toCcy: string, toAmount: number, fee: number, location: string, dateTime: string): boolean {
+    const existing = conversions.find((c) => c.id === id);
+    if (!existing) return false;
+    adjustBalance(existing.fromCurrency, existing.fromAmount);
+    adjustBalance(existing.toCurrency, -existing.toAmount);
+    const bal = balanceOf(fromCcy);
+    const availableBalance = fromCcy === existing.fromCurrency ? bal.balance + existing.fromAmount : bal.balance;
+    if (fromAmount > availableBalance) {
+      adjustBalance(existing.fromCurrency, -existing.fromAmount);
+      adjustBalance(existing.toCurrency, existing.toAmount);
+      showToast("היתרה במטבע המקור אינה מספיקה — העדכון בוטל");
+      return false;
+    }
+    const marketRate = convertAmount(1, fromCcy, toCcy);
+    adjustBalance(fromCcy, -fromAmount);
+    adjustBalance(toCcy, toAmount);
+    setConversions((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, fromCurrency: fromCcy, fromAmount, toCurrency: toCcy, toAmount, fee: fee || undefined, location: location || undefined, dateTime, effectiveRate: toAmount / fromAmount, marketRateAtTime: marketRate ?? undefined }
+          : c
+      )
+    );
+    showToast("ההמרה עודכנה");
+    return true;
+  }
+  function deleteConversion(id: string) {
+    const idx = conversions.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    const record = conversions[idx]!;
+    pendingDeleteConversion.current = { record, index: idx };
+    setConversions((prev) => prev.filter((c) => c.id !== id));
+    adjustBalance(record.fromCurrency, record.fromAmount);
+    adjustBalance(record.toCurrency, -record.toAmount);
+    showToast(`ההמרה ל-${currencyMeta(record.toCurrency).name} נמחקה`, "בטל", () => {
+      const pending = pendingDeleteConversion.current;
+      if (!pending) return;
+      setConversions((prev) => {
+        const arr = [...prev];
+        arr.splice(pending.index, 0, pending.record);
+        return arr;
+      });
+      adjustBalance(pending.record.fromCurrency, -pending.record.fromAmount);
+      adjustBalance(pending.record.toCurrency, pending.record.toAmount);
+      setToast(null);
+    });
+  }
   function saveExpense(patch: Omit<Expense, "id">, receiptDataUrl: string | null | undefined, existingId?: string) {
     let receiptId = existingId ? expenses.find((e) => e.id === existingId)?.receiptId : undefined;
     if (receiptDataUrl) {
@@ -300,6 +350,8 @@ export function useWalletStore() {
     deleteAddition,
     reduceMoney,
     convertCurrency,
+    updateConversion,
+    deleteConversion,
     saveExpense,
     deleteExpense,
     saveCard,
