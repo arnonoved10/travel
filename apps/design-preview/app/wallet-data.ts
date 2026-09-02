@@ -66,6 +66,22 @@ export interface Expense {
   receiptId?: string;
   notes?: string;
 }
+/** פיקדון (מלון/רכב שכור/וכו') — סכום שמוחזק זמנית ואמור לחזור, לא הוצאה
+ * אמיתית: יורד מהארנק/נספר על הכרטיס כשניתן, וחוזר/מזוכה כשמסמנים
+ * "הוחזר". status="pending" עד שמסמנים אחרת. */
+export interface Deposit {
+  id: string;
+  title: string;
+  amount: number;
+  currency: string;
+  paymentMethod: PaymentMethod;
+  cardId?: string;
+  dateGiven: string;
+  expectedReturnDate?: string;
+  status: "pending" | "returned";
+  returnedDate?: string;
+  notes?: string;
+}
 export interface MoneyAddition {
   id: string;
   currency: string;
@@ -167,6 +183,7 @@ export const SK = {
   profile: "design-preview-profile-v1",
   settings: "design-preview-settings-v1",
   customCategories: "design-preview-wallet-custom-categories-v1",
+  deposits: "design-preview-wallet-deposits-v1",
 };
 
 // כל מפתחות ה-localStorage שבשימוש בכל design-preview (ארנק + עוד + מסמכים

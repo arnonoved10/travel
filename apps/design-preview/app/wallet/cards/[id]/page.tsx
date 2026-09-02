@@ -5,6 +5,10 @@ import { ScreenShell, ScreenHeader, Card, Badge, Money, PrimaryButton, DangerBut
 import { formatMoney, currencyMeta } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
 
+/** פיקדון בכרטיס: כל עוד לא הוחזר הוא נספר כמוחזק על הכרטיס (מציג "מוחזק"),
+ * וברגע שהוא מסומן כהוחזר הוא לא נספר יותר בסכום המוחזק אלא מוצג כשורת
+ * זיכוי נפרדת — כדי ש"יהיה רואים שיש זיכוי בכרטיס" לפי בקשה מפורשת. */
+
 /** מסך פרטי כרטיס-אשראי — מה שנרכש עליו בפועל, לפי בקשה מפורשת: הוצאה
  * שסומנה "כרטיס אשראי" צריכה "להופיע על הכרטיס", לא רק להיספר בשקט. */
 export default function CardDetailsScreen() {
@@ -24,8 +28,12 @@ export default function CardDetailsScreen() {
   }
 
   const cardExpenses = store.expenses.filter((e) => e.cardId === card.id).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const cardDeposits = store.deposits
+    .filter((d) => d.paymentMethod === "credit" && d.cardId === card.id)
+    .sort((a, b) => (a.dateGiven < b.dateGiven ? 1 : -1));
   const totalsByCurrency = new Map<string, number>();
   for (const e of cardExpenses) totalsByCurrency.set(e.currency, (totalsByCurrency.get(e.currency) ?? 0) + e.amount);
+  for (const d of cardDeposits) if (d.status === "pending") totalsByCurrency.set(d.currency, (totalsByCurrency.get(d.currency) ?? 0) + d.amount);
 
   return (
     <ScreenShell>
@@ -108,6 +116,45 @@ export default function CardDetailsScreen() {
           </div>
         )}
       </div>
+
+      {cardDeposits.length > 0 ? (
+        <div>
+          <div style={{ fontSize: "13.5px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.sm }}>פיקדונות בכרטיס</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs }}>
+            {cardDeposits.map((d) => (
+              <Card
+                key={d.id}
+                onClick={() => router.push(`/wallet/deposit/new?edit=${d.id}`)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+              >
+                <div>
+                  <div style={{ fontSize: "12.5px", fontWeight: 700, color: COLOR.textPrimary }}>{d.title}</div>
+                  <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>
+                    {d.status === "pending" ? `ניתן ב-${d.dateGiven}` : `זוכה ב-${d.returnedDate}`}
+                  </div>
+                </div>
+                <div style={{ textAlign: "left" }}>
+                  {d.status === "pending" ? (
+                    <>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, display: "block" }}>
+                        <Money text={formatMoney(d.amount, d.currency)} />
+                      </span>
+                      <Badge tone="warning">מוחזק</Badge>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: COLOR.success, display: "block" }}>
+                        זיכוי -<Money text={formatMoney(d.amount, d.currency)} />
+                      </span>
+                      <Badge tone="success">✓ זוכה בכרטיס</Badge>
+                    </>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <PrimaryButton onClick={() => router.push("/wallet/expense/new")}>הוספת הוצאה על הכרטיס הזה</PrimaryButton>
       <DangerButton

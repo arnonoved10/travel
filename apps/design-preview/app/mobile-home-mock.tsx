@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoWeatherAction, getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney } from "./wallet-data";
+import { formatMoney, today } from "./wallet-data";
 import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
 import { FlagIcon } from "./country-currency-data";
 
@@ -1417,6 +1417,18 @@ export function MobileHomeMock() {
             <FlagIcon countryCode={activeTripInfo.countryCode} size={14} />
             <span>{activeTripInfo.name}</span>
             <span style={{ color: COLOR.purple }}>· החלפת טיול</span>
+          </Link>
+        ) : null}
+
+        {/* תזכורת פיקדונות שהגיע/עבר הזמן להחזרתם — לפי בקשה מפורשת
+            "שיתזכר אותנו שאנחנו עוזבים את המלון או מחזירים את הרכב". */}
+        {walletStore.hydrated && walletStore.deposits.some((d) => d.status === "pending" && d.expectedReturnDate && d.expectedReturnDate <= today()) ? (
+          <Link href="/wallet/deposits" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+            <Card style={{ cursor: "pointer", border: `1px solid ${COLOR.warning}66`, background: "rgba(245,158,11,0.12)" }}>
+              <div style={{ fontSize: "12.5px", fontWeight: 700, color: COLOR.warning }}>
+                תזכורת: יש לכם פיקדון שזמן ההחזרה שלו הגיע — ודאו שקיבלתם אותו בחזרה
+              </div>
+            </Card>
           </Link>
         ) : null}
 

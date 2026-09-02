@@ -11,6 +11,7 @@ import {
   type Expense,
   type MoneyAddition,
   type ConversionRecord,
+  type Deposit,
   SK,
   loadJSON,
   saveJSON,
@@ -37,6 +38,7 @@ export function useWalletStore() {
   const [cards, setCards] = useState<CreditCardInfo[]>([]);
   const [additions, setAdditions] = useState<MoneyAddition[]>([]);
   const [conversions, setConversions] = useState<ConversionRecord[]>([]);
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [receipts, setReceipts] = useState<Record<string, string>>({});
   const [baseCurrency, setBaseCurrency] = useState("ILS");
   const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function useWalletStore() {
   const pendingDeleteAddition = useRef<{ addition: MoneyAddition; index: number } | null>(null);
   const pendingDeleteConversion = useRef<{ record: ConversionRecord; index: number } | null>(null);
   const pendingDeleteBalance = useRef<{ balance: CurrencyBalance; index: number } | null>(null);
+  const pendingDeleteDeposit = useRef<{ deposit: Deposit; index: number } | null>(null);
 
   function showToast(message: string, actionLabel?: string, onAction?: () => void) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -62,6 +65,7 @@ export function useWalletStore() {
     setCards(loadJSON(SK.cards, INITIAL_CARDS));
     setAdditions(loadJSON(SK.additions, []));
     setConversions(loadJSON(SK.conversions, []));
+    setDeposits(loadJSON(SK.deposits, []));
     setReceipts(loadJSON(SK.receipts, {}));
     setBaseCurrency(loadJSON(SK.baseCcy, "ILS"));
     setManualCountryCode(loadJSON<string | null>(SK.manualCountry, null));
@@ -88,6 +92,10 @@ export function useWalletStore() {
     if (!hydrated) return;
     saveJSON(SK.conversions, conversions);
   }, [conversions, hydrated]);
+  useEffect(() => {
+    if (!hydrated) return;
+    saveJSON(SK.deposits, deposits);
+  }, [deposits, hydrated]);
   useEffect(() => {
     if (!hydrated) return;
     saveJSON(SK.receipts, receipts);
@@ -314,6 +322,63 @@ export function useWalletStore() {
       setToast(null);
     });
   }
+
+  // ---------- פיקדונות (מלון/רכב שכור/וכו') ----------
+  // בניגוד להוצאה: לא הוצאה קבועה — יורד מהארנק/נספר-על-הכרטיס כשניתן,
+  // וחוזר בדיוק באותה דרך כשמסמנים "הוחזר" (לא רק state, גם ההשפעה
+  // הכספית מתבטלת בפועל).
+  function addDeposit(patch: Omit<Deposit, "id" | "status" | "returnedDate">) {
+    const deposit: Deposit = { id: nextId("dep"), ...patch, status: "pending" };
+    setDeposits((prev) => [deposit, ...prev]);
+    if (patch.paymentMethod !== "credit") {
+      adjustBalance(patch.currency, -patch.amount);
+    } else {
+      setBalances((prev) => {
+        const idx = prev.findIndex((b) => b.code === patch.currency);
+        if (idx === -1) return [...prev, { code: patch.currency, balance: 0, spent: patch.amount, lastUpdated: today() }];
+        const arr = [...prev];
+        arr[idx] = { ...arr[idx]!, spent: arr[idx]!.spent + patch.amount, lastUpdated: today() };
+        return arr;
+      });
+    }
+    showToast(`פיקדון "${patch.title}" נרשם — ${formatMoney(patch.amount, patch.currency)}`);
+    return deposit;
+  }
+  function markDepositReturned(id: string) {
+    const deposit = deposits.find((d) => d.id === id);
+    if (!deposit || deposit.status === "returned") return;
+    setDeposits((prev) => prev.map((d) => (d.id === id ? { ...d, status: "returned", returnedDate: today() } : d)));
+    if (deposit.paymentMethod !== "credit") adjustBalance(deposit.currency, deposit.amount);
+    else setBalances((prev) => prev.map((b) => (b.code === deposit.currency ? { ...b, spent: Math.max(0, b.spent - deposit.amount) } : b)));
+    showToast(`הפיקדון "${deposit.title}" סומן כהוחזר`);
+  }
+  function deleteDeposit(id: string) {
+    const idx = deposits.findIndex((d) => d.id === id);
+    if (idx === -1) return;
+    const deposit = deposits[idx]!;
+    pendingDeleteDeposit.current = { deposit, index: idx };
+    setDeposits((prev) => prev.filter((d) => d.id !== id));
+    // רק אם הפיקדון עדיין "תקוע" (pending) יש להחזיר את ההשפעה על הארנק —
+    // אם כבר סומן כהוחזר, ההשפעה כבר בוטלה קודם ואין מה להפוך שוב.
+    if (deposit.status === "pending") {
+      if (deposit.paymentMethod !== "credit") adjustBalance(deposit.currency, deposit.amount);
+      else setBalances((prev) => prev.map((b) => (b.code === deposit.currency ? { ...b, spent: Math.max(0, b.spent - deposit.amount) } : b)));
+    }
+    showToast(`הפיקדון "${deposit.title}" נמחק`, "בטל", () => {
+      const pending = pendingDeleteDeposit.current;
+      if (!pending) return;
+      setDeposits((prev) => {
+        const arr = [...prev];
+        arr.splice(pending.index, 0, pending.deposit);
+        return arr;
+      });
+      if (pending.deposit.status === "pending") {
+        if (pending.deposit.paymentMethod !== "credit") adjustBalance(pending.deposit.currency, -pending.deposit.amount);
+        else setBalances((prev) => prev.map((b) => (b.code === pending.deposit.currency ? { ...b, spent: b.spent + pending.deposit.amount } : b)));
+      }
+      setToast(null);
+    });
+  }
   function saveCard(card: Omit<CreditCardInfo, "id">, existingId?: string) {
     if (existingId) {
       setCards((prev) => prev.map((c) => (c.id === existingId ? { ...c, ...card, isPrimary: card.isPrimary ? true : c.isPrimary } : card.isPrimary ? { ...c, isPrimary: false } : c)));
@@ -360,6 +425,7 @@ export function useWalletStore() {
     cards,
     additions,
     conversions,
+    deposits,
     receipts,
     baseCurrency,
     setBaseCurrency,
@@ -384,6 +450,9 @@ export function useWalletStore() {
     deleteConversion,
     saveExpense,
     deleteExpense,
+    addDeposit,
+    markDepositReturned,
+    deleteDeposit,
     saveCard,
     setPrimaryCard,
     deleteCard,

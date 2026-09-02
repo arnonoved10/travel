@@ -457,11 +457,12 @@ export default function WalletPreviewScreen() {
           </div>
 
           {/* פעולות מהירות */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "6px" }}>
             <QuickAction label="הוצאה" onClick={() => router.push("/wallet/expense/new")} />
             <QuickAction label="כסף" onClick={() => router.push("/wallet/add")} />
             <QuickAction label="המרה" onClick={() => router.push("/wallet/convert")} />
             <QuickAction label="קבלה" icon={<CameraIcon size={16} />} onClick={() => router.push("/wallet/expense/new?autoCamera=1")} />
+            <QuickAction label="פיקדון" onClick={() => router.push("/wallet/deposits")} />
           </div>
 
           {/* סיכום יומי קומפקטי */}
