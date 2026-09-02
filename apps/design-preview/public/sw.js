@@ -1,6 +1,6 @@
 // Service Worker בסיסי — קאשינג app-shell בלבד, לא סנכרון offline אמיתי.
 // לעולם לא נוגע בבקשות שאינן GET (Server Actions הם POST).
-const CACHE_NAME = "design-preview-shell-v2";
+const CACHE_NAME = "design-preview-shell-v3";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
