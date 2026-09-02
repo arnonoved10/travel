@@ -113,7 +113,7 @@ export default function TripOverviewScreen() {
       <div style={{ display: "flex", gap: SPACE.sm }}>
         <StatChip icon={<CalendarIcon size={16} />} label={`${trip.nights} לילות`} />
         <StatChip icon={<CalendarIcon size={16} />} label={`${trip.nights + 1} ימים`} />
-        <StatChip icon={<ProfileIcon />} label={`${trip.travelers}`} />
+        <StatChip icon={<ProfileIcon />} label={`${trip.travelers} נוסעים`} onClick={() => setEditingDetails(true)} />
       </div>
 
       <Card>
@@ -203,12 +203,17 @@ function EditTripDetailsSheet({ trip, onClose, onSave }: { trip: DemoTrip; onClo
   );
 }
 
-function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
+function StatChip({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", borderRadius: "12px", background: COLOR.card, border: `1px solid ${COLOR.border}`, flex: 1, justifyContent: "center" }}>
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", borderRadius: "12px", background: COLOR.card, border: `1px solid ${COLOR.border}`, flex: 1, justifyContent: "center", cursor: onClick ? "pointer" : undefined, fontFamily: "inherit" }}
+    >
       {icon}
       <span style={{ fontSize: "12px", fontWeight: 700, color: COLOR.textPrimary }}>{label}</span>
-    </div>
+    </Tag>
   );
 }
 

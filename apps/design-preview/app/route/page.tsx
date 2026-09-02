@@ -76,6 +76,7 @@ export default function RoutePreviewScreen() {
 
   function handleDelete() {
     if (editing?.mode === "edit" && editing.stop) {
+      if (!confirm(`למחוק את התחנה "${editing.stop.city}"?`)) return;
       deleteStop(editing.stop.id);
       setStops(loadStops());
     }

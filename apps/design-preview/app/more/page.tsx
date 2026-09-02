@@ -27,7 +27,6 @@ import {
   parseBackupJSON,
   buildExpenseReportCSV,
   type CurrencyBalance,
-  type CreditCardInfo,
   type DocumentEntry,
   type ProfileInfo,
 } from "../wallet-data";
@@ -156,6 +155,7 @@ export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; s
   }
   function remove(index: number) {
     const balance = balances[index]!;
+    if (!confirm(`להסיר את ${balance.code} מהארנק?`)) return;
     pendingDelete.current = { balance, index };
     setBalances((prev) => prev.filter((_, i) => i !== index));
     showToast(`מטבע ${balance.code} הוסר`, "בטל", () => {
@@ -279,152 +279,6 @@ export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; s
   );
 }
 
-// ============================== ניהול כרטיסי אשראי ==============================
-
-const CARD_COLORS = ["#6642b9", "#4f8fe0", "#43d6aa", "#e0524a", "#f5a544", "#1c2750"];
-
-export function CardsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
-  const [hydrated, setHydrated] = useState(false);
-  const [cards, setCards] = useState<CreditCardInfo[]>([]);
-  const [formOpen, setFormOpen] = useState<{ mode: "add" | "edit"; card: CreditCardInfo | null } | null>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
-  const pendingDelete = useRef<{ card: CreditCardInfo; index: number } | null>(null);
-
-  useEffect(() => {
-    setCards(loadJSON(SK.cards, []));
-    setHydrated(true);
-  }, []);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.cards, cards);
-  }, [cards, hydrated]);
-
-  function save(card: Omit<CreditCardInfo, "id">, existingId?: string) {
-    if (existingId) {
-      setCards((prev) => prev.map((c) => (c.id === existingId ? { ...c, ...card } : card.isPrimary ? { ...c, isPrimary: false } : c)));
-    } else {
-      setCards((prev) => (card.isPrimary ? [...prev.map((c) => ({ ...c, isPrimary: false })), { id: nextId("card"), ...card }] : [...prev, { id: nextId("card"), ...card }]));
-    }
-    setFormOpen(null);
-    showToast(existingId ? "הכרטיס עודכן" : "כרטיס האשראי נוסף");
-  }
-  function setPrimary(id: string) {
-    setCards((prev) => prev.map((c) => ({ ...c, isPrimary: c.id === id })));
-    setMenuId(null);
-    showToast("הכרטיס הוגדר כראשי");
-  }
-  function remove(id: string) {
-    const idx = cards.findIndex((c) => c.id === id);
-    const card = cards[idx]!;
-    pendingDelete.current = { card, index: idx };
-    setCards((prev) => prev.filter((c) => c.id !== id));
-    setMenuId(null);
-    showToast(`"${card.nickname}" נמחק`, "בטל", () => {
-      const pending = pendingDelete.current;
-      if (!pending) return;
-      setCards((prev) => {
-        const arr = [...prev];
-        arr.splice(pending.index, 0, pending.card);
-        return arr;
-      });
-    });
-  }
-  const menuCard = cards.find((c) => c.id === menuId) ?? null;
-
-  return (
-    <>
-      <SubHeader title="ניהול כרטיסי אשראי" onBack={onBack} />
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button type="button" onClick={() => setFormOpen({ mode: "add", card: null })} style={{ padding: "6px 12px", borderRadius: "999px", background: "rgba(138,90,223,0.18)", border: `1px solid ${COLOR.purple}55`, color: "#c9b3ff", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>
-          + הוספת כרטיס
-        </button>
-      </div>
-      {cards.length === 0 ? (
-        <div style={{ fontSize: "12.5px", color: COLOR.textSecondary, padding: "6px 2px" }}>לא נוספו כרטיסי אשראי</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {cards.map((c) => (
-            <Card key={c.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span aria-hidden style={{ width: "40px", height: "26px", borderRadius: "5px", background: c.color, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
-                  {c.nickname}
-                  {c.isPrimary ? <span style={{ fontSize: "9px", fontWeight: 800, color: COLOR.success, background: "rgba(67,214,170,0.14)", borderRadius: "999px", padding: "1px 6px" }}>ראשי</span> : null}
-                </div>
-                <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>
-                  {c.issuer} · •••• {c.last4} · {c.currency}
-                </div>
-              </div>
-              <button type="button" onClick={() => setMenuId(c.id)} aria-label={`פעולות עבור ${c.nickname}`} style={{ width: "32px", height: "32px", borderRadius: "9px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-                <DotsIcon size={14} />
-              </button>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {menuCard ? (
-        <Sheet title={menuCard.nickname} onClose={() => setMenuId(null)}>
-          <ActionRow label="עריכת הכרטיס" onClick={() => { setFormOpen({ mode: "edit", card: menuCard }); setMenuId(null); }} />
-          {!menuCard.isPrimary ? <ActionRow label="הפיכה לכרטיס ראשי" onClick={() => setPrimary(menuCard.id)} /> : null}
-          <ActionRow label="מחיקת הכרטיס" danger onClick={() => remove(menuCard.id)} />
-        </Sheet>
-      ) : null}
-
-      {formOpen ? <CardForm initial={formOpen.card} onClose={() => setFormOpen(null)} onSave={(card) => save(card, formOpen.card?.id)} /> : null}
-    </>
-  );
-}
-
-function CardForm({ initial, onClose, onSave }: { initial: CreditCardInfo | null; onClose: () => void; onSave: (card: Omit<CreditCardInfo, "id">) => void }) {
-  const [nickname, setNickname] = useState(initial?.nickname ?? "");
-  const [issuer, setIssuer] = useState(initial?.issuer ?? "");
-  const [last4, setLast4] = useState(initial?.last4 ?? "");
-  const [currency, setCurrency] = useState(initial?.currency ?? "ILS");
-  const [feePercent, setFeePercent] = useState(initial?.feePercent ? String(initial.feePercent) : "");
-  const [color, setColor] = useState(initial?.color ?? CARD_COLORS[0]!);
-  const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
-  const canSave = nickname.trim().length > 0 && /^\d{4}$/.test(last4);
-  return (
-    <Sheet title={initial ? "עריכת כרטיס" : "הוספת כרטיס אשראי"} onClose={onClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <div style={{ fontSize: "10.5px", color: COLOR.textMuted, background: "rgba(245,165,68,0.1)", border: `1px solid ${COLOR.warning}30`, borderRadius: "8px", padding: "8px" }}>
-          לעולם לא נשמרים מספר כרטיס מלא, תוקף או קוד אבטחה — רק 4 הספרות האחרונות.
-        </div>
-        <Field label="שם/כינוי הכרטיס">
-          <input value={nickname} onChange={(e) => setNickname(e.target.value)} style={inputStyle()} />
-        </Field>
-        <Field label="חברה מנפיקה">
-          <input value={issuer} onChange={(e) => setIssuer(e.target.value)} style={inputStyle()} />
-        </Field>
-        <Field label="4 ספרות אחרונות">
-          <input value={last4} onChange={(e) => setLast4(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" style={inputStyle()} />
-        </Field>
-        <Field label="מטבע החיוב">
-          <CurrencyPickerButton selectedCode={currency} onSelect={setCurrency} />
-        </Field>
-        <Field label="עמלת המרה % (לא חובה)">
-          <input type="number" value={feePercent} onChange={(e) => setFeePercent(e.target.value)} style={inputStyle()} />
-        </Field>
-        <Field label="צבע לזיהוי">
-          <div style={{ display: "flex", gap: "8px" }}>
-            {CARD_COLORS.map((c) => (
-              <button key={c} type="button" onClick={() => setColor(c)} aria-label={`בחירת צבע ${c}`} style={{ width: "30px", height: "30px", borderRadius: "50%", background: c, border: color === c ? "3px solid #fff" : "1px solid rgba(255,255,255,0.3)", cursor: "pointer" }} />
-            ))}
-          </div>
-        </Field>
-        <button type="button" onClick={() => setIsPrimary((v) => !v)} style={{ display: "flex", alignItems: "center", gap: "8px", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "start" }}>
-          <span style={{ width: "18px", height: "18px", borderRadius: "5px", border: `1.5px solid ${COLOR.purple}`, background: isPrimary ? COLOR.purple : "transparent", flexShrink: 0 }} />
-          <span style={{ fontSize: "12.5px", color: "#fff" }}>קבע ככרטיס ראשי</span>
-        </button>
-        <button type="button" disabled={!canSave} onClick={() => onSave({ nickname, issuer, last4, currency, feePercent: feePercent ? Number(feePercent) : undefined, color, isPrimary })} style={{ padding: "13px", borderRadius: "12px", background: canSave ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: canSave ? "#fff" : COLOR.textMuted, fontSize: "14.5px", fontWeight: 800, cursor: canSave ? "pointer" : "default" }}>
-          שמירה
-        </button>
-      </div>
-    </Sheet>
-  );
-}
-
 // ============================== גיבוי ושחזור ==============================
 
 export function BackupSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
@@ -517,6 +371,7 @@ export function DocumentsSection({ onBack, showToast }: { onBack: () => void; sh
   function remove(id: string) {
     const idx = documents.findIndex((d) => d.id === id);
     const doc = documents[idx]!;
+    if (!confirm(`למחוק את "${doc.title}"?`)) return;
     pendingDelete.current = { doc, index: idx };
     setDocuments((prev) => prev.filter((d) => d.id !== id));
     showToast(`"${doc.title}" נמחק`, "בטל", () => {
@@ -679,9 +534,21 @@ export function ProfileSection({ onBack, showToast }: { onBack: () => void; show
       <SubHeader title="פרופיל" onBack={onBack} />
       <div style={{ fontSize: "10.5px", color: COLOR.textMuted }}>פרופיל מקומי להדגמה בלבד — אינו מחובר לחשבון המשתמש האמיתי או לשרת.</div>
       <div style={{ display: "flex", justifyContent: "center" }}>
-        <button type="button" onClick={() => photoRef.current?.click()} style={{ width: "76px", height: "76px", borderRadius: "50%", overflow: "hidden", border: `2px solid ${COLOR.purple}`, background: "#0e1930", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
-          {profile.photoDataUrl ? <img src={profile.photoDataUrl} alt="תמונת פרופיל" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <CameraIcon size={22} />}
-        </button>
+        <div style={{ position: "relative" }}>
+          <button type="button" onClick={() => photoRef.current?.click()} style={{ width: "76px", height: "76px", borderRadius: "50%", overflow: "hidden", border: `2px solid ${COLOR.purple}`, background: "#0e1930", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+            {profile.photoDataUrl ? <img src={profile.photoDataUrl} alt="תמונת פרופיל" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <CameraIcon size={22} />}
+          </button>
+          {profile.photoDataUrl ? (
+            <button
+              type="button"
+              onClick={() => confirm("להסיר את תמונת הפרופיל?") && setProfile((p) => ({ ...p, photoDataUrl: null }))}
+              aria-label="הסרת תמונת הפרופיל"
+              style={{ position: "absolute", bottom: 0, insetInlineEnd: -4, width: "24px", height: "24px", borderRadius: "50%", background: COLOR.danger, border: "2px solid #0e1930", color: "#fff", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
         <input ref={photoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhoto(f); e.target.value = ""; }} />
       </div>
       <Card>

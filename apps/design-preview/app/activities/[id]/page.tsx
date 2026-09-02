@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, DangerButton, PrimaryButton, PinIcon, CalendarIcon, ClockIcon, COLOR, SPACE } from "../../design-system";
 import { findActivity, deleteActivity, type TripActivity } from "../../trip-content";
+import { activeTrip } from "../../trips-data";
 
 const CATEGORY_LABEL: Record<TripActivity["category"], string> = { אתר: "אתר היסטורי", אוכל: "קולינרי", קניות: "שופינג", טיול: "סיור עירוני", עוד: "פעילות" };
 
@@ -11,9 +12,11 @@ export default function ActivityDetailsScreen() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [result, setResult] = useState<{ activity: TripActivity; date: string } | null | undefined>(undefined);
+  const [tripId, setTripId] = useState<string | null>(null);
 
   useEffect(() => {
     setResult(findActivity(params.id));
+    setTripId(activeTrip()?.id ?? null);
   }, [params.id]);
 
   if (result === undefined) return null;
@@ -84,7 +87,9 @@ export default function ActivityDetailsScreen() {
         >
           מחק פעילות
         </DangerButton>
-        <PrimaryButton onClick={() => router.push(`/trips/japan-2025/plan/add?day=${date}&id=${activity.id}`)}>ערוך פעילות</PrimaryButton>
+        <PrimaryButton onClick={() => tripId && router.push(`/trips/${tripId}/plan/add?day=${date}&id=${activity.id}`)} disabled={!tripId}>
+          ערוך פעילות
+        </PrimaryButton>
       </div>
     </ScreenShell>
   );

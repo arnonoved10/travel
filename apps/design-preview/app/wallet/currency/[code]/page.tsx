@@ -57,7 +57,7 @@ export default function CurrencyDetailsScreen() {
                   {item.kind === "addition" ? (
                     <button
                       type="button"
-                      onClick={() => store.deleteAddition(item.id)}
+                      onClick={() => confirm("לבטל את ההפקדה הזו?") && store.deleteAddition(item.id)}
                       aria-label="ביטול ההפקדה הזו"
                       style={{ width: "26px", height: "26px", borderRadius: "8px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                     >

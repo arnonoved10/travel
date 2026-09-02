@@ -265,6 +265,7 @@ export default function WalletPreviewScreen() {
   function handleDeleteExpense(id: string) {
     const idx = expenses.findIndex((e) => e.id === id);
     const tx = expenses[idx]!;
+    if (!confirm(`למחוק את ההוצאה "${tx.title}"?`)) return;
     pendingDeleteExpense.current = { tx, index: idx };
     setExpenses((prev) => prev.filter((e) => e.id !== id));
     if (tx.paymentMethod !== "credit") adjustBalance(tx.currency, tx.amount, -tx.amount);
@@ -303,6 +304,7 @@ export default function WalletPreviewScreen() {
   function handleDeleteCard(id: string) {
     const idx = cards.findIndex((c) => c.id === id);
     const card = cards[idx]!;
+    if (!confirm(`למחוק את הכרטיס "${card.nickname}"?`)) return;
     pendingDeleteCard.current = { card, index: idx };
     setCards((prev) => prev.filter((c) => c.id !== id));
     setMenuForCard(null);

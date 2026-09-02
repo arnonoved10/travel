@@ -60,6 +60,11 @@ export default function PersonalTrackerScreen() {
     setNewAmount((p) => ({ ...p, [key]: "" }));
   }
 
+  function removeEntry(key: keyof TrackerState, id: string, label: string) {
+    if (!confirm(`למחוק את "${label}"?`)) return;
+    persist({ ...state, [key]: state[key].filter((e) => e.id !== id) });
+  }
+
   return (
     <ScreenShell>
       <ScreenHeader title="מעקב אישי בטיול" />
@@ -71,11 +76,19 @@ export default function PersonalTrackerScreen() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs, marginBottom: SPACE.sm }}>
             {state[sec.key].map((entry) => (
-              <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
-                <span style={{ color: COLOR.textSecondary }}>
+              <div key={entry.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", gap: SPACE.xs }}>
+                <span style={{ color: COLOR.textSecondary, flex: 1, minWidth: 0 }}>
                   {entry.date} · {entry.label}
                 </span>
-                <span style={{ color: COLOR.textPrimary, fontWeight: 600 }}>{formatMoney(entry.amount, entry.currency)}</span>
+                <span style={{ color: COLOR.textPrimary, fontWeight: 600, whiteSpace: "nowrap" }}>{formatMoney(entry.amount, entry.currency)}</span>
+                <button
+                  type="button"
+                  onClick={() => removeEntry(sec.key, entry.id, entry.label)}
+                  aria-label={`מחיקת ${entry.label}`}
+                  style={{ width: "20px", height: "20px", borderRadius: "6px", background: "none", border: "none", color: COLOR.danger, cursor: "pointer", fontSize: "12px", flexShrink: 0 }}
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>

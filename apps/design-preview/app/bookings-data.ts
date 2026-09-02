@@ -58,6 +58,11 @@ export function updateBooking(id: string, patch: Partial<Omit<Booking, "id">>): 
   saveJSON(SK_BOOKINGS, arr);
   return updated;
 }
+/** מוחקת הזמנה לצמיתות — שונה מ"ביטול" (updateBooking עם status: "cancelled")
+ * שרק מסמן את ההזמנה כמבוטלת אך משאיר אותה ברשימה. */
+export function deleteBooking(id: string) {
+  saveJSON(SK_BOOKINGS, loadBookings().filter((b) => b.id !== id));
+}
 export function bookingsByCategory(): Record<BookingCategory, Booking[]> {
   const all = loadBookings();
   const result: Record<BookingCategory, Booking[]> = { hotel: [], flight: [], transport: [], car: [], attraction: [] };

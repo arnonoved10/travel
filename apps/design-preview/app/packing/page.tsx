@@ -52,6 +52,11 @@ export default function PackingListScreen() {
     setNewItem("");
   }
 
+  function removeItem(catKey: string, itemId: string, label: string) {
+    if (!confirm(`למחוק את "${label}" מהרשימה?`)) return;
+    persist(categories.map((c) => (c.key !== catKey ? c : { ...c, items: c.items.filter((i) => i.id !== itemId) })));
+  }
+
   const total = categories.reduce((s, c) => s + c.items.length, 0);
   const done = categories.reduce((s, c) => s + c.items.filter((i) => i.done).length, 0);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -84,11 +89,21 @@ export default function PackingListScreen() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs }}>
               {cat.items.map((item) => (
-                <label key={item.id} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: "9px 12px", borderRadius: "10px", background: COLOR.card, border: `1px solid ${COLOR.border}`, cursor: "pointer" }}>
-                  <input type="checkbox" checked={item.done} onChange={() => toggle(cat.key, item.id)} />
-                  <span style={{ fontSize: "12.5px", color: item.done ? COLOR.textSecondary : COLOR.textPrimary, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</span>
-                  {item.done ? <CheckIcon size={14} /> : null}
-                </label>
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: "9px 12px", borderRadius: "10px", background: COLOR.card, border: `1px solid ${COLOR.border}` }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: SPACE.sm, flex: 1, minWidth: 0, cursor: "pointer" }}>
+                    <input type="checkbox" checked={item.done} onChange={() => toggle(cat.key, item.id)} />
+                    <span style={{ fontSize: "12.5px", color: item.done ? COLOR.textSecondary : COLOR.textPrimary, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</span>
+                    {item.done ? <CheckIcon size={14} /> : null}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(cat.key, item.id, item.label)}
+                    aria-label={`מחיקת ${item.label}`}
+                    style={{ width: "24px", height: "24px", borderRadius: "7px", background: "none", border: "none", color: COLOR.danger, cursor: "pointer", fontSize: "13px", flexShrink: 0 }}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
               {cat.items.length === 0 ? <div style={{ fontSize: "11.5px", color: COLOR.textSecondary }}>אין פריטים עדיין</div> : null}
             </div>

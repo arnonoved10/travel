@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, SecondaryButton, Money, CheckIcon, COLOR, SPACE } from "../../design-system";
-import { findBooking, updateBooking, type Booking } from "../../bookings-data";
+import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, PrimaryButton, SecondaryButton, Field, Money, CheckIcon, COLOR, SPACE, inputStyle } from "../../design-system";
+import { findBooking, updateBooking, deleteBooking, type Booking } from "../../bookings-data";
 
 export default function BookingDetailsScreen() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [booking, setBooking] = useState<Booking | null | undefined>(undefined);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     setBooking(findBooking(params.id));
@@ -29,6 +30,13 @@ export default function BookingDetailsScreen() {
     if (!confirm(`לבטל את ההזמנה "${booking.title}"?`)) return;
     const updated = updateBooking(booking.id, { status: "cancelled" });
     if (updated) setBooking(updated);
+  }
+
+  function handleDelete() {
+    if (!booking) return;
+    if (!confirm(`למחוק לצמיתות את ההזמנה "${booking.title}"? לא ניתן לבטל פעולה זו.`)) return;
+    deleteBooking(booking.id);
+    router.push("/bookings");
   }
 
   function handleViewConfirmation() {
@@ -63,15 +71,101 @@ export default function BookingDetailsScreen() {
         {booking.totalPrice ? <Row label="סכום כולל" value={<Money text={booking.totalPrice} />} badge="שולם במלואו" last /> : null}
       </Card>
 
+      <div style={{ display: "flex", gap: SPACE.sm }}>
+        <SecondaryButton onClick={() => setEditing(true)}>עריכת הפרטים</SecondaryButton>
+        {booking.status !== "cancelled" ? <SecondaryButton onClick={handleViewConfirmation}>צפייה באישור ההזמנה</SecondaryButton> : null}
+      </div>
+
       {booking.status !== "cancelled" ? (
-        <div style={{ display: "flex", gap: SPACE.sm }}>
-          <DangerButton onClick={handleCancel}>ביטול הזמנה</DangerButton>
-          <SecondaryButton onClick={handleViewConfirmation}>צפייה באישור ההזמנה</SecondaryButton>
-        </div>
+        <DangerButton onClick={handleCancel}>ביטול הזמנה</DangerButton>
       ) : (
         <SecondaryButton onClick={() => router.push("/bookings")}>חזרה להזמנות שלי</SecondaryButton>
       )}
+      <button
+        type="button"
+        onClick={handleDelete}
+        style={{ width: "100%", padding: "13px", borderRadius: "12px", background: "none", border: `1px solid ${COLOR.danger}55`, color: COLOR.danger, fontSize: "13.5px", fontWeight: 700, cursor: "pointer" }}
+      >
+        מחיקת ההזמנה לצמיתות
+      </button>
+
+      {editing ? (
+        <EditBookingSheet
+          booking={booking}
+          onClose={() => setEditing(false)}
+          onSave={(patch) => {
+            const updated = updateBooking(booking.id, patch);
+            if (updated) setBooking(updated);
+            setEditing(false);
+          }}
+        />
+      ) : null}
     </ScreenShell>
+  );
+}
+
+function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onClose: () => void; onSave: (patch: Partial<Omit<Booking, "id">>) => void }) {
+  const [title, setTitle] = useState(booking.title);
+  const [address, setAddress] = useState(booking.address ?? "");
+  const [checkIn, setCheckIn] = useState(booking.checkIn.slice(0, 10));
+  const [checkOut, setCheckOut] = useState(booking.checkOut?.slice(0, 10) ?? "");
+  const [guests, setGuests] = useState(booking.guests ? String(booking.guests) : "");
+  const [totalPrice, setTotalPrice] = useState(booking.totalPrice ?? "");
+  const [phone, setPhone] = useState(booking.phone ?? "");
+
+  const canSave = title.trim().length > 0 && checkIn.length > 0;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} />
+      <div style={{ position: "relative", width: "100%", maxWidth: "480px", background: "#0e1930", borderTop: "1px solid rgba(120,150,200,0.2)", borderTopLeftRadius: "20px", borderTopRightRadius: "20px", padding: "16px", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: SPACE.md }}>
+        <div style={{ fontSize: "15px", fontWeight: 800, color: "#f4f6fb" }}>עריכת פרטי ההזמנה</div>
+        <Field label="כותרת">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="כתובת (לא חובה)">
+          <input value={address} onChange={(e) => setAddress(e.target.value)} style={inputStyle} />
+        </Field>
+        <div style={{ display: "flex", gap: SPACE.sm }}>
+          <div style={{ flex: 1 }}>
+            <Field label="תאריך הגעה">
+              <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} style={inputStyle} />
+            </Field>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Field label="תאריך עזיבה (לא חובה)">
+              <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} style={inputStyle} />
+            </Field>
+          </div>
+        </div>
+        <Field label="מספר אורחים (לא חובה)">
+          <input type="number" min={1} value={guests} onChange={(e) => setGuests(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="סכום כולל (לא חובה)">
+          <input value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} placeholder="לדוגמה: ₪1,850" style={inputStyle} />
+        </Field>
+        <Field label="טלפון (לא חובה)">
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
+        </Field>
+        <PrimaryButton
+          disabled={!canSave}
+          onClick={() =>
+            canSave &&
+            onSave({
+              title: title.trim(),
+              address: address.trim() || undefined,
+              checkIn,
+              checkOut: checkOut || undefined,
+              guests: guests ? Number(guests) : undefined,
+              totalPrice: totalPrice.trim() || undefined,
+              phone: phone.trim() || undefined,
+            })
+          }
+        >
+          שמירה
+        </PrimaryButton>
+      </div>
+    </div>
   );
 }
 
