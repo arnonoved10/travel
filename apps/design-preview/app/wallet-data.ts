@@ -213,10 +213,13 @@ export const INITIAL_EXPENSES: Expense[] = [
   { id: "exp-6", title: "קפה", category: "מסעדות", currency: "ILS", amount: 32, date: "2025-06-14", paymentMethod: "cash" },
 ];
 
-let idCounter = 1000;
+// עודכן מ-counter פשוט במשתנה-מודול ל-crypto.randomUUID(): ה-counter
+// התאפס בכל טעינת-דף (משתנה בזיכרון בלבד, לא נשמר), ולכן הפקה חוזרת של
+// אותו מזהה (למשל "tx-1001") אחרי כל reload — התנגשות אמיתית שגרמה
+// לעריכת רשומה אחת לדרוס בטעות כמה רשומות-ישנות ששיתפו איתה אותו מזהה
+// (ר' דיווח: "עריכת הוצאה אחת שינתה כמה הוצאות אחרות"). UUID לא מתנגש לעולם.
 export function nextId(prefix: string) {
-  idCounter += 1;
-  return `${prefix}-${idCounter}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 // דחיסת-תמונה בצד-לקוח (Canvas, בלי ספרייה חדשה).
