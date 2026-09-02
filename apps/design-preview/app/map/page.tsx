@@ -81,13 +81,10 @@ const STATUS_TONE: Record<StopStatus, "success" | "purple" | "warning"> = { בו
 const STATUS_COLOR: Record<"success" | "purple" | "warning", string> = { success: COLOR.success, purple: COLOR.purple, warning: COLOR.warning };
 const CURRENT_INDEX = 1;
 
-const INITIAL_STOPS: Stop[] = [
-  { id: "tlv", city: "תל אביב", country: "ישראל", lat: 32.0853, lon: 34.7818, dateStart: "2026-04-30", days: 5, datesLabel: "30 באפריל – 4 במאי", status: "בוצע", hotel: null, weather: "28° בהיר", notes: "" },
-  { id: "bkk-1", city: "בנגקוק", country: "תאילנד", lat: 13.7563, lon: 100.5018, dateStart: "2026-05-04", days: 7, datesLabel: "4 – 10 במאי", status: "מאושר", hotel: "[דמו] מלון סנטרל בבנגקוק", weather: "33° מעונן חלקית", notes: "" },
-  { id: "pat", city: "פטאיה", country: "תאילנד", lat: 12.9236, lon: 100.8825, dateStart: "2026-05-10", days: 6, datesLabel: "10 – 15 במאי", status: "ממתין לאישור", hotel: "Pattaya Beach Resort", weather: "31° שמשי", notes: "" },
-  { id: "koh", city: "קוה צ'אנג", country: "תאילנד", lat: 12.045, lon: 102.322, dateStart: "2026-05-15", days: 6, datesLabel: "15 – 20 במאי", status: "מאושר", hotel: "Koh Chang Paradise Resort", weather: "30° בהיר", notes: "" },
-  { id: "bkk-2", city: "בנגקוק", country: "תאילנד", lat: 13.7563, lon: 100.5018, dateStart: "2026-06-20", days: 3, datesLabel: "20 – 22 ביוני", status: "מאושר", hotel: "[דמו] מלון סנטרל בבנגקוק", weather: "29° בהיר", notes: "" },
-];
+// לפי בקשה מפורשת: אין יותר יעדים/מסלול-דמו שמופיע מעצמו (היה כאן בעבר
+// מסלול מומצא בתאריכים אמיתיים באפריל-יוני, שהוצג כאילו הוא טיול אמיתי
+// של המשתמש). המסלול מתחיל ריק — המשתמש בונה אותו בעצמו דרך "הוספת יעד".
+const INITIAL_STOPS: Stop[] = [];
 
 const SEGMENTS: Segment[] = [
   { mode: "flight", label: "טיסה · כ-6 שעות" },
@@ -102,56 +99,10 @@ function nextId(prefix: string) {
   return `${prefix}-${idCounter}`;
 }
 
-function makeDemoActivities(stop: Stop): Activity[] {
-  const seed: Record<string, { time: string; endTime?: string; title: string; location: string; status: ActivityStatus }[]> = {
-    tlv: [
-      { time: "10:00", endTime: "12:00", title: "ארוחת פרידה", location: "נמל תל אביב", status: "מתוכנן" },
-      { time: "16:00", title: "טיסה לבנגקוק", location: "נתב״ג", status: "מתוכנן" },
-    ],
-    "bkk-1": [
-      { time: "08:30", endTime: "09:15", title: "ארוחת בוקר במלון", location: "[דמו] מלון סנטרל בבנגקוק", status: "בוצע" },
-      { time: "10:00", endTime: "11:30", title: "Wat Arun – מקדש השחר", location: "מקדש השחר", status: "בוצע" },
-      { time: "13:00", endTime: "15:00", title: "שוק ג'אטוצ'אק", location: "Chatuchak Market", status: "מתוכנן" },
-      { time: "20:00", endTime: "22:00", title: "ארוחת ערב", location: "Sirocco Sky Bar", status: "מתוכנן" },
-    ],
-    pat: [
-      { time: "09:00", title: "חוף פטאיה", location: "חוף פטאיה", status: "מתוכנן" },
-      { time: "12:00", title: "שוק צף פֿ-פת", location: "שוק צף", status: "מתוכנן" },
-      { time: "19:00", title: "ארוחת דגים על החוף", location: "מסעדת דגים", status: "מתוכנן" },
-    ],
-    koh: [
-      { time: "10:00", title: "מפל קלונג פלו", location: "קלונג פלו", status: "מתוכנן" },
-      { time: "14:00", title: "צלילה באי", location: "חוף מזרחי", status: "מתוכנן" },
-    ],
-    "bkk-2": [
-      { time: "10:00", title: "קניות אחרונות", location: "MBK Center", status: "מתוכנן" },
-      { time: "18:00", title: "טיסה חזרה", location: "נמל תעופה סוברנבהום", status: "מתוכנן" },
-    ],
-  };
-  return (seed[stop.id] ?? []).map((a) => ({ id: nextId("act"), stopId: stop.id, ...a }));
-}
-
-const INITIAL_TIMER_EVENTS: TimerEvent[] = [
-  {
-    id: "t1",
-    kind: "pickup",
-    label: "הסעה למלון",
-    offsetMinutes: 6,
-    travelMinutes: 22,
-    leadMinutes: 0,
-    status: "upcoming",
-    driverName: "אבי כהן",
-    vehicleType: "טויוטה קאמרי לבנה",
-    plate: "12-345-67",
-    driverStatus: "בדרך",
-    bookingRef: "TM-88213",
-  },
-  { id: "t2", kind: "hotel_leave", label: "יציאה מהמלון", offsetMinutes: 35, travelMinutes: 45, leadMinutes: 5, status: "upcoming" },
-  { id: "t3", kind: "restaurant", label: "ההזמנה למסעדה", offsetMinutes: 30, travelMinutes: 15, leadMinutes: 5, status: "upcoming" },
-  { id: "t4", kind: "ferry", label: "המעבורת יוצאת", offsetMinutes: 50, travelMinutes: 20, leadMinutes: 15, status: "upcoming" },
-  { id: "t5", kind: "boarding", label: "עלייה למטוס", offsetMinutes: 60, travelMinutes: 90, leadMinutes: 30, status: "upcoming" },
-  { id: "t6", kind: "checkout", label: "צ׳ק אאוט", offsetMinutes: 135, travelMinutes: 0, leadMinutes: 0, status: "upcoming" },
-];
+// לפי אותה בקשה: גם פעילויות-דמו וגם תזכורות-טיימר מומצאות (נהג/רכב/מספר-
+// הזמנה מזויפים) לא מוצגות יותר מעצמן — פעילות אמיתית נוצרת רק כשהמשתמש
+// מוסיף אותה בפועל דרך "הוספת פעילות", וטיימרים מתחילים ריקים.
+const INITIAL_TIMER_EVENTS: TimerEvent[] = [];
 
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -453,13 +404,13 @@ type Dialog =
 
 export default function MapPreviewScreen() {
   const [stops, setStops] = useState<Stop[]>(INITIAL_STOPS);
-  const [activitiesByStop, setActivitiesByStop] = useState<Record<string, Activity[]>>(() => Object.fromEntries(INITIAL_STOPS.map((s) => [s.id, makeDemoActivities(s)])));
+  const [activitiesByStop, setActivitiesByStop] = useState<Record<string, Activity[]>>({});
   const [timerEvents, setTimerEvents] = useState<TimerEvent[]>(INITIAL_TIMER_EVENTS);
   const [timerExpanded, setTimerExpanded] = useState(false);
   const [demoClock, setDemoClock] = useState(0);
 
-  const [selectedId, setSelectedId] = useState(INITIAL_STOPS[CURRENT_INDEX]!.id);
-  const [selectedDate, setSelectedDate] = useState(INITIAL_STOPS[CURRENT_INDEX]!.dateStart);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [sheetTranslate, setSheetTranslate] = useState(1); // 0 = open, 1 = peek (normalized)
   const [sheetDragging, setSheetDragging] = useState(false);
@@ -484,7 +435,7 @@ export default function MapPreviewScreen() {
   }, []);
 
   const selectedIndex = Math.max(0, stops.findIndex((s) => s.id === selectedId));
-  const stop = stops[selectedIndex] ?? stops[0]!;
+  const stop = stops[selectedIndex] ?? stops[0];
   const activities = activitiesByStop[stop?.id ?? ""] ?? [];
 
   function showToast(message: string, actionLabel?: string, onAction?: () => void) {
@@ -673,7 +624,7 @@ export default function MapPreviewScreen() {
   function handleTimerAction(action: "nav" | "call" | "remind" | "done" | "postpone" | "edit" | "booking") {
     if (!nearestEvent) return;
     if (action === "nav") {
-      window.open(`https://www.openstreetmap.org/search?query=${encodeURIComponent(stop.city)}`, "_blank", "noopener,noreferrer");
+      window.open(`https://www.openstreetmap.org/search?query=${encodeURIComponent(stop?.city ?? "")}`, "_blank", "noopener,noreferrer");
       return;
     }
     if (action === "call") {
@@ -789,6 +740,46 @@ export default function MapPreviewScreen() {
   const sheetPeekPx = Math.round(pageHeight * 0.118);
   const sheetOpenPx = Math.round(pageHeight * 0.66);
   const sheetTranslatePx = sheetTranslate * (sheetOpenPx - sheetPeekPx);
+
+  if (!stop) {
+    return (
+      <div style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-assistant), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px 4px", flexShrink: 0 }}>
+          <Link href="/route" aria-label="חזרה" style={{ width: "34px", height: "34px", borderRadius: "50%", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, textDecoration: "none" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 5 8 12l7 7" />
+            </svg>
+          </Link>
+          <h1 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>המסלול שלי</h1>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", padding: "24px", textAlign: "center" }}>
+          <div style={{ fontSize: "15px", fontWeight: 800, color: "#fff" }}>אין עדיין מסלול</div>
+          <div style={{ fontSize: "13px", color: COLOR.textSecondary, maxWidth: "280px" }}>הוסיפו יעדים למסלול הטיול כדי לראות אותם כאן על המפה</div>
+          <button
+            type="button"
+            onClick={() => openDialog({ kind: "stop", type: "add" })}
+            style={{ padding: "10px 20px", borderRadius: "999px", background: COLOR.purple, border: "none", color: "#fff", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+          >
+            + הוספת יעד ראשון
+          </button>
+        </div>
+        <BottomNav active="map" />
+        {dialog?.kind === "stop" && dialog.type === "add" ? (
+          <AddStopSheet
+            onClose={() => setDialog(null)}
+            onAdd={(form) => {
+              const newStop: Stop = { id: nextId("stop"), city: form.city, country: form.country, lat: 0, lon: 0, dateStart: form.dateStart, days: form.days, datesLabel: `${form.days} ימים החל מ-${form.dateStart}`, status: "ממתין לאישור", hotel: form.hotel || null, weather: "—", notes: "" };
+              setStops((prev) => [...prev, newStop]);
+              setActivitiesByStop((prev) => ({ ...prev, [newStop.id]: [] }));
+              setDialog(null);
+              setSelectedId(newStop.id);
+              showToast(`"${form.city}" נוסף למסלול`);
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div ref={pageWrapRef} style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-assistant), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
@@ -1180,7 +1171,7 @@ function EditStopSheet({ stop, onClose, onSave }: { stop: Stop; onClose: () => v
 
 function AddStopSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (form: { city: string; country: string; dateStart: string; days: number; hotel: string }) => void }) {
   const [city, setCity] = useState("");
-  const [country, setCountry] = useState("תאילנד");
+  const [country, setCountry] = useState("");
   const [dateStart, setDateStart] = useState("");
   const [days, setDays] = useState(3);
   const [hotel, setHotel] = useState("");

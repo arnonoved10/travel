@@ -53,7 +53,7 @@ function NewTripForm() {
             setCountryCode(c.code);
             setCountryName(c.nameHe);
           }}
-          placeholder="בחר יעד"
+          placeholder="לחצו לבחירת יעד"
         />
       </Field>
 

@@ -75,14 +75,20 @@ const SK_TRIP_OVERRIDES = "design-preview-trip-overrides-v1";
 export function loadCustomTrips(): DemoTrip[] {
   return loadJSON<DemoTrip[]>(SK_CUSTOM_TRIPS, []);
 }
+/** יוצרת טיול חדש — סטטוס ראשוני לפי תאריכים אמיתיים (today()): טיול
+ * שכבר הסתיים נוצר כ"היסטוריה", טיול שהתאריכים שלו כוללים את היום נוצר
+ * מיד כ"פעיל" (לפי בקשה מפורשת: "ברירת המחדל תהיה הטיול בהווה" — אין
+ * צורך בלחיצה נוספת כדי שהטיול-שקורה-עכשיו יהיה זה שמוצג בדף הבית), ורק
+ * טיול עתידי נוצר כ"עתידי". הפיכה לפעיל דרכה מורידה גם כל טיול-פעיל אחר
+ * (לעולם לא שניים בו-זמנית) — אותה הבטחה כמו setActiveTrip.
+ */
 export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status">): DemoTrip {
   const trips = loadCustomTrips();
-  // סטטוס ראשוני לפי תאריכים אמיתיים (today(), לא תאריך-דמו קבוע) בלבד —
-  // לעולם לא "active" אוטומטית, כדי שלא יהיו כמה טיולים "פעילים" בו-זמנית:
-  // הפיכה לטיול-הפעיל היא תמיד פעולה מפורשת דרך setActiveTrip (שגם מוריד
-  // את הטיול-הפעיל-הקודם).
-  const full: DemoTrip = { ...trip, id: nextId("trip"), status: new Date(trip.endDate) < new Date(today()) ? "completed" : "upcoming" };
+  const ref = today();
+  const status: TripStatus = trip.endDate < ref ? "completed" : trip.startDate <= ref ? "active" : "upcoming";
+  const full: DemoTrip = { ...trip, id: nextId("trip"), status };
   saveJSON(SK_CUSTOM_TRIPS, [...trips, full]);
+  if (status === "active") setActiveTrip(full.id, ref);
   return full;
 }
 const SK_HIDDEN_TRIPS = "design-preview-hidden-trips-v1";
