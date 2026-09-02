@@ -5,6 +5,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoWeatherAction, getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
+import { useWalletStore } from "./wallet-store";
+import { formatMoney, TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, DEMO_REFERENCE_DATE } from "./wallet-data";
+
+// התקדמות אמיתית בטיול, מחושבת מ-TRIP_STOP_COUNTRIES/TRIP_LAST_DAY (לא
+// מספרים קבועים) — "היום" לצורך ההדגמה הוא DEMO_REFERENCE_DATE, לא תאריך-
+// אמת, כדי שהדמו תמיד יראה טיול-באמצע בלי תלות בשעון המערכת האמיתי.
+function computeTripProgress() {
+  const start = new Date(TRIP_STOP_COUNTRIES[0]!.firstDay);
+  const end = new Date(TRIP_LAST_DAY);
+  const ref = new Date(DEMO_REFERENCE_DATE);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const totalDays = Math.round((end.getTime() - start.getTime()) / msPerDay);
+  const currentDay = Math.max(1, Math.round((ref.getTime() - start.getTime()) / msPerDay) + 1);
+  const daysRemaining = Math.max(0, Math.round((end.getTime() - ref.getTime()) / msPerDay));
+  const percent = totalDays > 0 ? Math.min(100, Math.round((currentDay / totalDays) * 100)) : 0;
+  return { totalDays, currentDay, daysRemaining, percent };
+}
 
 // שעון אמיתי לפי אזור-זמן — לא זמן קבוע. מתעדכן כל 30 שניות (מספיק לתצוגת
 // שעה, לא צריך רזולוציית-שנייה). אותה שיטה בדיוק כמו WorldClockCard האמיתי
@@ -968,6 +985,8 @@ function RideStatusCard({ event, demoClock, onOpenDetail }: { event: HomeTimerEv
 export function MobileHomeMock() {
   const router = useRouter();
   const currentUser = useCurrentUser();
+  const walletStore = useWalletStore();
+  const tripProgress = useMemo(() => computeTripProgress(), []);
 
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
   async function handleSignOut() {
@@ -1391,19 +1410,19 @@ export function MobileHomeMock() {
               <ChevronIcon size={13} color={COLOR.textSecondary} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Ring percent={10} size={40} color={COLOR.turquoise} />
+              <Ring percent={tripProgress.percent} size={40} color={COLOR.turquoise} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "15px", fontWeight: 800, marginBottom: "6px" }}>
-                  <span style={{ color: COLOR.turquoise }}>יום 5</span>
-                  <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך 48</span>
+                  <span style={{ color: COLOR.turquoise }}>יום {tripProgress.currentDay}</span>
+                  <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך {tripProgress.totalDays}</span>
                 </div>
                 <div style={{ height: "7px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ width: "10%", height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
+                  <div style={{ width: `${tripProgress.percent}%`, height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
                 </div>
               </div>
             </div>
             <div style={{ textAlign: "end", marginTop: "8px", fontSize: "12px", color: COLOR.textSecondary }}>
-              נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>43</span> ימים
+              נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>{tripProgress.daysRemaining}</span> ימים
             </div>
           </Card>
         </Link>
@@ -1416,13 +1435,22 @@ export function MobileHomeMock() {
           <Card style={{ cursor: "pointer" }}>
           <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "10px" }}>הארנק שלי</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <Ring percent={82} size={54} color={COLOR.turquoise} />
-            <div style={{ textAlign: "end" }}>
-              <div style={{ fontSize: "11px", color: COLOR.textMuted, marginBottom: "3px" }}>
-                יתרה זמינה <span style={{ color: COLOR.turquoise, fontWeight: 700 }}>฿ 50,000</span>
-              </div>
-              <div style={{ fontSize: "25px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>฿ 41,200</div>
-            </div>
+            {(() => {
+              const local = walletStore.hydrated ? walletStore.balanceOf(walletStore.localCurrency.currencyCode) : null;
+              const initialAmount = local ? local.balance + local.spent : 0;
+              const percent = local && initialAmount > 0 ? Math.min(100, Math.round((local.balance / initialAmount) * 100)) : 0;
+              return (
+                <>
+                  <Ring percent={percent} size={54} color={COLOR.turquoise} />
+                  <div style={{ textAlign: "end" }}>
+                    <div style={{ fontSize: "11px", color: COLOR.textMuted, marginBottom: "3px" }}>
+                      יתרה זמינה <span style={{ color: COLOR.turquoise, fontWeight: 700 }}>{local ? formatMoney(initialAmount, local.code) : "—"}</span>
+                    </div>
+                    <div style={{ fontSize: "25px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>{local ? formatMoney(local.balance, local.code) : "—"}</div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </Card>
         </Link>
