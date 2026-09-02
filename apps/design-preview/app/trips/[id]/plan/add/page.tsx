@@ -3,8 +3,8 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Field, PrimaryButton, IconPill, inputStyle, textareaStyle, COLOR, SPACE, PinIcon, SuitcaseIcon, DocumentIcon } from "../../../../design-system";
-import { saveActivity, findActivity, ALL_TRIP_DATES, type TripActivity } from "../../../../trip-content";
-import { nextId } from "../../../../wallet-data";
+import { saveActivity, findActivity, type TripActivity } from "../../../../trip-content";
+import { nextId, today } from "../../../../wallet-data";
 
 const CATEGORIES: { key: TripActivity["category"]; label: string }[] = [
   { key: "עוד", label: "עוד" },
@@ -18,7 +18,7 @@ function AddActivityForm() {
   const router = useRouter();
   const search = useSearchParams();
   const editId = search.get("id");
-  const date = search.get("day") || ALL_TRIP_DATES[0]!;
+  const date = search.get("day") || today();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<TripActivity["category"]>("אתר");
   const [time, setTime] = useState("09:00");

@@ -587,57 +587,12 @@ interface HomeTimerEvent {
   ferry?: FerryDetails;
   ride?: RideDetails;
 }
-// offsetMinutes נבחרו כדי שאפשר לצפות ברצף בכל עיצובי-הכרטיס תוך פרק-זמן
-// קצר בבדיקה (שעון-הדמו מתקדם דקה אחת בכל שנייה אמיתית).
-const HOME_TIMER_EVENTS: HomeTimerEvent[] = [
-  {
-    id: "ht1",
-    kind: "pickup",
-    label: "הסעה למלון",
-    location: "שדה התעופה סוברנבהום",
-    offsetMinutes: 15,
-    ride: { driverName: "אבי כהן", vehicleType: "טויוטה קאמרי", vehicleColor: "לבנה", plate: "12-345-67", pickupPoint: "יציאה 3, אולם הגעות" },
-  },
-  {
-    id: "ht3",
-    kind: "boarding",
-    label: "פתיחת שער העלייה למטוס",
-    location: "שדה התעופה סוברנבהום, שער B12",
-    offsetMinutes: 25,
-    flight: {
-      airline: "Thai Airways",
-      flightNumber: "TG 315",
-      originCode: "BKK",
-      originCity: "בנגקוק",
-      destCode: "TLV",
-      destCity: "תל אביב",
-      departTime: "23:45",
-      arriveTime: "05:20+1",
-      gate: "B12",
-      terminal: "1",
-      seat: "14A",
-      status: "עומדת בזמן",
-    },
-  },
-  {
-    id: "ht4",
-    kind: "ferry",
-    label: "המעבורת לקוה צ'אנג",
-    location: "נמל ת'ה ריי, טראט",
-    offsetMinutes: 35,
-    ferry: {
-      company: "Koh Chang Ferry Co.",
-      departurePort: "נמל ת'ה ריי",
-      arrivalPort: "נמל ספ בי, קוה צ'אנג",
-      departTime: "13:30",
-      durationMinutes: 45,
-      pier: "רציף 2",
-      bookingStatus: "מאושר",
-      confirmationCode: "KCF-77410",
-    },
-  },
-  { id: "ht2", kind: "hotel_leave", label: "עזיבת המלון", location: "[דמו] מלון סנטרל בבנגקוק", offsetMinutes: 120 },
-];
+// לפי בקשה מפורשת: אין יותר "אירוע קרוב" מומצא (הסעה/טיסה/מעבורת/מלון
+// בדויים) שמוצג לכל משתמש בלי קשר לטיול האמיתי שלו. הכרטיס הזה מוצג רק
+// כשיש אירוע אמיתי לקראתו — כרגע עוד אין מקור-נתונים אמיתי לכך (טיסות/
+// הסעות/מעבורות אינן חלק ממודל-הטיול הקיים), אז הרשימה ריקה והכרטיס
+// נעלם, ולא ממציא תוכן.
+const HOME_TIMER_EVENTS: HomeTimerEvent[] = [];
 
 function formatMinutesLabel(m: number) {
   const v = Math.max(0, Math.round(m));

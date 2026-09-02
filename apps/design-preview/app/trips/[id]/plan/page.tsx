@@ -3,16 +3,23 @@
 import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, PlusIcon, ChevronIcon, COLOR, SPACE, RADIUS, ThermometerIcon } from "../../../design-system";
-import { activitiesForDate, cityForDate, ALL_TRIP_DATES, type TripActivity } from "../../../trip-content";
+import { activitiesForDate, cityForDate, type TripActivity } from "../../../trip-content";
 import { getDemoWeatherAction, type DemoWeatherResult } from "../../../actions";
+import { today } from "../../../wallet-data";
 
 const CATEGORY_LABEL: Record<TripActivity["category"], string> = { אתר: "אתר היסטורי", אוכל: "קולינרי", קניות: "שופינג", טיול: "סיור עירוני", עוד: "פעילות" };
+
+function addDaysStr(dateISO: string, n: number): string {
+  const d = new Date(`${dateISO}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 function DailyPlanContent() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
-  const [date, setDate] = useState(search.get("day") || ALL_TRIP_DATES[0]!);
+  const [date, setDate] = useState(search.get("day") || today());
   const [activities, setActivities] = useState<TripActivity[]>([]);
   const [weather, setWeather] = useState<DemoWeatherResult | null>(null);
 
@@ -27,8 +34,7 @@ function DailyPlanContent() {
   const city = cityForDate(date);
   const monthLabel = new Date(date).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
   const dayLabel = new Date(date).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" });
-  const idx = ALL_TRIP_DATES.indexOf(date);
-  const strip = ALL_TRIP_DATES.slice(Math.max(0, idx - 1), Math.max(0, idx - 1) + 4);
+  const strip = [-1, 0, 1, 2].map((offset) => addDaysStr(date, offset));
 
   return (
     <ScreenShell>

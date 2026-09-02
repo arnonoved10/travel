@@ -393,7 +393,7 @@ export default function WalletPreviewScreen() {
 
   return (
     <ScreenShell>
-      <ScreenHeader title="הארנק שלי" subtitle="[דמו] כל מטבעות הטיול" />
+      <ScreenHeader title="הארנק שלי" subtitle="כל מטבעות הטיול" />
 
       {/* טאבים */}
       <div style={{ display: "flex", gap: "4px", background: "rgba(255,255,255,0.04)", borderRadius: "12px", padding: "3px" }}>

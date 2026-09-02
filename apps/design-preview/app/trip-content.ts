@@ -103,8 +103,6 @@ export function deleteActivity(id: string) {
   }
   saveActivities(map);
 }
-export const ALL_TRIP_DATES = ["2025-06-15", "2025-06-16", "2025-06-17", "2025-06-18", "2025-06-19", "2025-06-20", "2025-06-21", "2025-06-22", "2025-06-23", "2025-06-24", "2025-06-25", "2025-06-26", "2025-06-27", "2025-06-28"];
-
 export function cityForDate(date: string): string {
   const stops = loadStops();
   const stop = stops.find((s) => date >= s.startDate && date <= s.endDate);

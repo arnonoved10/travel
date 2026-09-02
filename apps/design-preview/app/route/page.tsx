@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LegacyCard as Card, LegacyIconSlot as IconSlot, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyStatusChip as StatusChip, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR } from "./legacy-shared";
 import { loadStops, addStop, updateStop, deleteStop, type TripStop, type StopStatus } from "../trip-content";
+import { activeTrip } from "../trips-data";
 import { StopEditSheet } from "./stop-edit-sheet";
 
 /**
@@ -59,9 +60,11 @@ export default function RoutePreviewScreen() {
   const router = useRouter();
   const [stops, setStops] = useState<TripStop[]>([]);
   const [editing, setEditing] = useState<{ mode: "add" | "edit"; stop: TripStop | null } | null>(null);
+  const [tripId, setTripId] = useState<string | null>(null);
 
   useEffect(() => {
     setStops(loadStops());
+    setTripId(activeTrip()?.id ?? null);
   }, []);
 
   function handleSave(patch: Omit<TripStop, "id">) {
@@ -85,7 +88,7 @@ export default function RoutePreviewScreen() {
 
   return (
     <ScreenShell>
-      <ScreenHeader title="מסלול הטיול" subtitle={`[דמו] ${stops.length} תחנות`} />
+      <ScreenHeader title="מסלול הטיול" subtitle={`${stops.length} תחנות`} />
 
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         <ActionButton label="הוסף תחנה" onClick={() => setEditing({ mode: "add", stop: null })} />
@@ -98,7 +101,7 @@ export default function RoutePreviewScreen() {
           <div key={stop.id} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <Card>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
-                <Link href={`/planner?day=${stop.startDate}&city=${encodeURIComponent(stop.city)}`} style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                <Link href={tripId ? `/trips/${tripId}/plan?day=${stop.startDate}` : "/trips"} style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
                   <span
                     aria-hidden
                     style={{
