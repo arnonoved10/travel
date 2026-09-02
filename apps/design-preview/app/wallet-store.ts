@@ -20,6 +20,7 @@ import {
   INITIAL_CARDS,
   nextId,
   resolveLocalCurrency,
+  defaultCurrencyPriority,
 } from "./wallet-data";
 
 /**
@@ -108,9 +109,17 @@ export function useWalletStore() {
 
   const localCurrency = useMemo(() => resolveLocalCurrency({ manualCountryCode, geoCountryCode, baseCurrency }), [manualCountryCode, geoCountryCode, baseCurrency]);
 
+  // 4 מטבעות-בסיס קבועים תמיד זמינים בארנק (יתרת-אפס אם עוד אין בהם כסף):
+  // המטבע המקומי של יעד הטיול, דולר, אירו ושקל — ניתן עדיין להסיר כל אחד
+  // מהם בנפרד, זו רק ברירת-מחדל שחוסכת "הוספת מטבע" ידנית לכל אחד.
   useEffect(() => {
     if (!hydrated) return;
-    setBalances((prev) => (prev.some((b) => b.code === localCurrency.currencyCode) ? prev : [...prev, { code: localCurrency.currencyCode, balance: 0, spent: 0, lastUpdated: today() }]));
+    const baseline = defaultCurrencyPriority(localCurrency.currencyCode);
+    setBalances((prev) => {
+      const missing = baseline.filter((code) => !prev.some((b) => b.code === code));
+      if (missing.length === 0) return prev;
+      return [...prev, ...missing.map((code) => ({ code, balance: 0, spent: 0, lastUpdated: today() }))];
+    });
   }, [localCurrency.currencyCode, hydrated]);
 
   function rateToILS(code: string): number | null {

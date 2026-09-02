@@ -30,6 +30,7 @@ import {
   INITIAL_EXPENSES,
   nextId,
   resolveLocalCurrency,
+  defaultCurrencyPriority,
 } from "../wallet-data";
 
 /**
@@ -166,11 +167,19 @@ export default function WalletPreviewScreen() {
   // ---------- מטבע מקומי (אוטומטי לפי יעד-הטיול הפעיל, ניתן-לעקיפה ידנית) ----------
   const localCurrency = useMemo(() => resolveLocalCurrency({ manualCountryCode, geoCountryCode, baseCurrency }), [manualCountryCode, geoCountryCode, baseCurrency]);
 
-  // מוסיף אוטומטית את מטבע-היעד לארנק אם עוד לא קיים בו (בלי לגעת ביתרות/
-  // בהיסטוריה של מטבעות אחרים) — לפי בקשה מפורשת.
+  // מוסיף אוטומטית 4 מטבעות-בסיס קבועים לארנק אם עוד לא קיימים בו (בלי
+  // לגעת ביתרות/בהיסטוריה של מטבעות אחרים): המטבע המקומי של יעד הטיול,
+  // דולר, אירו ושקל — תמיד זמינים מראש, גם עם יתרת-אפס, כדי שלא יהיה
+  // צריך "להוסיף מטבע" ידנית לכל אחד מהם. עדיין ניתן להסיר כל אחד מהם
+  // בנפרד דרך מסך פרטי-המטבע, לפי בקשה מפורשת — זו רק ברירת-מחדל.
   useEffect(() => {
     if (!hydrated) return;
-    setBalances((prev) => (prev.some((b) => b.code === localCurrency.currencyCode) ? prev : [...prev, { code: localCurrency.currencyCode, balance: 0, spent: 0, lastUpdated: today() }]));
+    const baseline = defaultCurrencyPriority(localCurrency.currencyCode);
+    setBalances((prev) => {
+      const missing = baseline.filter((code) => !prev.some((b) => b.code === code));
+      if (missing.length === 0) return prev;
+      return [...prev, ...missing.map((code) => ({ code, balance: 0, spent: 0, lastUpdated: today() }))];
+    });
   }, [localCurrency.currencyCode, hydrated]);
 
   // מיקום עוזר ה-AI במסך הארנק בלבד: הפינה השמאלית העליונה (אזור פנוי
@@ -343,7 +352,15 @@ export default function WalletPreviewScreen() {
   const menuCard = cards.find((c) => c.id === menuForCard) ?? null;
 
   const localBalance = balanceOf(localCurrency.currencyCode);
-  const secondaryBalances = balances.filter((b) => b.code !== localCurrency.currencyCode);
+  const currencyPriorityRank = new Map(defaultCurrencyPriority(localCurrency.currencyCode).map((code, i) => [code, i]));
+  const secondaryBalances = balances
+    .filter((b) => b.code !== localCurrency.currencyCode)
+    .sort((a, b) => {
+      const ra = currencyPriorityRank.has(a.code) ? currencyPriorityRank.get(a.code)! : Infinity;
+      const rb = currencyPriorityRank.has(b.code) ? currencyPriorityRank.get(b.code)! : Infinity;
+      if (ra !== rb) return ra - rb;
+      return a.code.localeCompare(b.code);
+    });
   const detailCurrency = dialog?.type === "currencyDetail" || dialog?.type === "history" ? dialog.currency : null;
 
   return (
