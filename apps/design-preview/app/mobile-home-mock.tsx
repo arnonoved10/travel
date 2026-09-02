@@ -10,6 +10,23 @@ import { formatMoney, today } from "./wallet-data";
 import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
 import { FlagIcon } from "./country-currency-data";
 
+// עוטפת קריאת server action ב"ניסיון-חוזר יחיד" — ראו הערה בשימוש למטה
+// (cold start ב-Vercel לפעמים מפיל רק את הקריאה הראשונה אחרי דיפלוי).
+async function fetchWithOneRetry<T>(fn: () => Promise<T | null>): Promise<T | null> {
+  try {
+    const first = await fn();
+    if (first) return first;
+  } catch {
+    // ממשיכים לניסיון השני
+  }
+  await new Promise((r) => setTimeout(r, 1500));
+  try {
+    return await fn();
+  } catch {
+    return null;
+  }
+}
+
 // שעון אמיתי לפי אזור-זמן — לא זמן קבוע. מתעדכן כל 30 שניות (מספיק לתצוגת
 // שעה, לא צריך רזולוציית-שנייה). אותה שיטה בדיוק כמו WorldClockCard האמיתי
 // באפליקציה (Intl.DateTimeFormat עם timeZone), רק בלי תלות ברכיב הישן.
@@ -1019,20 +1036,17 @@ export function MobileHomeMock() {
 
   useEffect(() => {
     let cancelled = false;
-    getDemoWeatherAction()
-      .then((res) => {
-        if (!cancelled) setWeather({ status: res ? "success" : "error", data: res });
-      })
-      .catch(() => {
-        if (!cancelled) setWeather({ status: "error", data: null });
-      });
-    getDemoCurrencyRatesAction()
-      .then((res) => {
-        if (!cancelled) setCurrency({ status: res ? "success" : "error", data: res });
-      })
-      .catch(() => {
-        if (!cancelled) setCurrency({ status: "error", data: null });
-      });
+    // ניסיון-חוזר יחיד אחרי השהיה קצרה: נצפה בפועל ש-server action שקורא
+    // ל-API חיצוני נכשל לפעמים דווקא בקריאה הראשונה אחרי דיפלוי חדש (cold
+    // start בצד Vercel), אך תמיד מצליח ברגע שהפונקציה כבר "חמה" — כמה שניות
+    // מספיקות. בלי זה המסך היה מציג "אין חיבור" לצמיתות על סמך כישלון חד-
+    // פעמי וחולף, במקום לתת לו הזדמנות שנייה אמיתית.
+    fetchWithOneRetry(getDemoWeatherAction).then((res) => {
+      if (!cancelled) setWeather({ status: res ? "success" : "error", data: res });
+    });
+    fetchWithOneRetry(getDemoCurrencyRatesAction).then((res) => {
+      if (!cancelled) setCurrency({ status: res ? "success" : "error", data: res });
+    });
     return () => {
       cancelled = true;
     };

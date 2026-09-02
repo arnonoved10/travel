@@ -9,6 +9,11 @@ import { openMeteoWeatherProvider } from "../lib/providers/open-meteo-provider";
 import { boiFrankfurterCurrencyRateProvider } from "../lib/providers/boi-frankfurter-provider";
 import { getOcrProvider } from "../lib/ocr/get-ocr-provider";
 
+// הערה: קובץ "use server" מחייב שכל export יהיה פונקציה async בלבד (לא ניתן
+// לייצא maxDuration/קבוע כאן) — תקציב-הריצה המורחב (ל"קור" ראשוני של
+// Vercel) מוגדר במקום התקף: app/layout.tsx (מיושם על כל המסכים שקוראים
+// ל-actions כאן, כולל דף-הבית/מפה/מסלול/מזג-אוויר).
+
 /**
  * חיבור-קריאה-בלבד למסך-ההדגמה אל שכבות-השירות שכבר קיימות ועובדות
  * במערכת האמיתית (Open-Meteo למזג-אוויר, בנק ישראל+Frankfurter לשערי-מטבע —

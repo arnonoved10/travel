@@ -23,6 +23,15 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+// ברירת-המחדל של Vercel (כ-10 שניות) נמצאה קצרה מדי בפועל ל"קור" ראשוני
+// של פונקציית-שרת (cold start) בשילוב עם קריאת server action ל-API חיצוני
+// איטי — נצפה ישירות: מזג-האוויר נכשל באופן לא-עקבי מיד אחרי דיפלוי חדש
+// (הקריאה הראשונה מ-app/actions.ts), אך תמיד הצליח ברגע שהפונקציה כבר
+// "חמה". route segment config כאן ב-layout השורש חל על כל server action
+// שנקרא מכל מסך תחתיו — לא ניתן להגדיר את זה בקובץ "use server" עצמו
+// (שם מותר לייצא רק פונקציות async).
+export const maxDuration = 30;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="he" dir="rtl" className={assistant.variable}>

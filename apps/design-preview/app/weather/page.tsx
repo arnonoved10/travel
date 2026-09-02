@@ -7,13 +7,31 @@ import { getDemoWeatherAction, type DemoWeatherResult } from "../actions";
 /** מסך "מזג אוויר והתראות" (25) — נתונים אמיתיים מ-Open-Meteo (getDemoWeatherAction,
  * זהה למקור בדף-הבית ובמסך היומן). ההתראות עצמן (חום קיצוני/גשם) הן דמו
  * מוצהר — אין מקור-התראות-אמיתי מחובר. */
+
+// ניסיון-חוזר יחיד אחרי השהיה קצרה — ראו הערה מקבילה ב-mobile-home-mock.tsx:
+// נצפה בפועל ש-server action שקורא ל-API חיצוני נכשל לפעמים דווקא בקריאה
+// הראשונה אחרי דיפלוי חדש (cold start ב-Vercel), ותמיד מצליח ברגע שהפונקציה
+// כבר "חמה" — בלי זה המסך היה נועל "לא ידוע" על סמך כישלון חד-פעמי וחולף.
+async function fetchWithOneRetry<T>(fn: () => Promise<T | null>): Promise<T | null> {
+  try {
+    const first = await fn();
+    if (first) return first;
+  } catch {
+    // ממשיכים לניסיון השני
+  }
+  await new Promise((r) => setTimeout(r, 1500));
+  try {
+    return await fn();
+  } catch {
+    return null;
+  }
+}
+
 export default function WeatherScreen() {
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
 
   useEffect(() => {
-    getDemoWeatherAction()
-      .then((res) => setWeather({ status: res ? "success" : "error", data: res }))
-      .catch(() => setWeather({ status: "error", data: null }));
+    fetchWithOneRetry(getDemoWeatherAction).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
   }, []);
 
   return (
