@@ -124,7 +124,11 @@ export async function reverseGeocodeCountryAction(lat: number, lng: number): Pro
 export async function getDemoCurrencyRatesAction(): Promise<DemoCurrencyResult | null> {
   try {
     const provider = boiFrankfurterCurrencyRateProvider;
-    const snapshots = await provider.getRatesToILS(["USD", "EUR", "GBP", "THB"]);
+    // כל 7 המטבעות הלא-שקליים בקטלוג המובנה (ר' CURRENCY_CATALOG ב-
+    // wallet-data.ts) — לא רק תת-קבוצה — אחרת המרה/דוחות ל-ILS מתעלמים
+    // בשקט מהוצאה/יתרה במטבע שלא ברשימה (למשל ין יפני, מטבע-ברירת-המחדל
+    // של טיול-הדמו) ומחשבים אותה כ-0.
+    const snapshots = await provider.getRatesToILS(["USD", "EUR", "GBP", "THB", "JPY", "AUD", "CHF"]);
     if (snapshots.length === 0) return null;
     const ratesToILS: Record<string, number> = { ILS: 1 };
     for (const s of snapshots) ratesToILS[s.currencyCode] = s.rateToILS;

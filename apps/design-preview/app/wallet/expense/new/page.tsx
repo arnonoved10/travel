@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, IconPill, Field, PrimaryButton, CameraIcon, inputStyle, textareaStyle, COLOR, SPACE } from "../../../design-system";
 import { CurrencyPickerButton } from "../../../pickers";
 import { runDemoReceiptOcrAction } from "../../../actions";
-import { compressImageFile, today, nowTime, defaultCurrencyPriority, type Category, type PaymentMethod } from "../../../wallet-data";
+import { compressImageFile, today, nowTime, defaultCurrencyPriority, type Category, type PaymentMethod, type Expense } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
 
 const CATEGORIES: Category[] = ["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"];
@@ -43,6 +43,7 @@ function AddExpenseForm() {
   const [category, setCategory] = useState<Category>("אחר");
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
+  const [tip, setTip] = useState("");
   const [date, setDate] = useState(today());
   const [time, setTime] = useState(nowTime());
   const [method, setMethod] = useState<PaymentMethod>("cash");
@@ -81,6 +82,7 @@ function AddExpenseForm() {
       setCategory(editing.category);
       setCurrency(editing.currency);
       setAmount(String(editing.amount));
+      setTip(editing.tipAmount ? String(editing.tipAmount) : "");
       setDate(editing.date);
       setTime(editing.time ?? nowTime());
       setMethod(editing.paymentMethod === "credit" ? "credit" : "cash");
@@ -133,15 +135,37 @@ function AddExpenseForm() {
     }
   }
 
+  // הוצאות קודמות לבחירה מהירה — שמות ייחודיים, האחרון-שנרשם מכל שם, כדי
+  // שלא יצטרכו להקליד "עיסוי"/"מסאז'" מחדש בכל פעם שחוזרים על אותה הוצאה.
+  const recentExpenseSuggestions = useMemo(() => {
+    const seen = new Map<string, Expense>();
+    for (const e of store.expenses) {
+      const key = e.title.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.set(key, e);
+    }
+    return Array.from(seen.values()).slice(0, 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.expenses.length]);
+
+  function pickSuggestion(e: Expense) {
+    setTitle(e.title);
+    setCategory(e.category);
+    setMerchant(e.merchant ?? "");
+    setCurrency(e.currency);
+    currencyTouched.current = true;
+  }
+
   if (!store.hydrated) return null;
   if (isEditMode && !editing) return null;
 
   function handleSave() {
     if (!title.trim()) return setError("יש להזין שם הוצאה");
     if (!(Number(amount) > 0)) return setError("יש להזין סכום גדול מ-0");
+    if (tip && Number(tip) > Number(amount)) return setError("הטיפ לא יכול להיות גדול מהסכום הכולל");
     setError(null);
     store.saveExpense(
-      { title: title.trim(), merchant: merchant || undefined, category, currency, amount: Number(amount), date, time, paymentMethod: method, cardId, notes: notes || undefined },
+      { title: title.trim(), merchant: merchant || undefined, category, currency, amount: Number(amount), tipAmount: tip && Number(tip) > 0 ? Number(tip) : undefined, date, time, paymentMethod: method, cardId, notes: notes || undefined },
       receiptDataUrl,
       editId ?? undefined
     );
@@ -158,6 +182,26 @@ function AddExpenseForm() {
   return (
     <ScreenShell>
       <ScreenHeader title={isEditMode ? "עריכת הוצאה" : "הוספת הוצאה"} />
+
+      {!isEditMode && recentExpenseSuggestions.length > 0 ? (
+        <div>
+          <div style={{ fontSize: "12.5px", fontWeight: 600, color: COLOR.textSecondary, marginBottom: SPACE.sm }}>מהוצאות קודמות</div>
+          <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto" }}>
+            {recentExpenseSuggestions.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => pickSuggestion(e)}
+                style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px", padding: "8px 13px", borderRadius: "12px", background: COLOR.card, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary, cursor: "pointer" }}
+              >
+                <span style={{ fontSize: "12.5px", fontWeight: 700 }}>{e.title}</span>
+                <span style={{ fontSize: "10px", color: COLOR.textSecondary }}>{e.category}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <PillTabs options={METHOD_TABS} value={method} onChange={setMethod} />
 
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
@@ -173,6 +217,10 @@ function AddExpenseForm() {
         </div>
         <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
       </div>
+
+      <Field label="טיפ מתוך הסכום (אופציונלי)">
+        <input type="number" value={tip} onChange={(e) => setTip(e.target.value)} placeholder="0" style={{ ...inputStyle, textAlign: "left" }} />
+      </Field>
 
       {method === "credit" ? (
         <div>

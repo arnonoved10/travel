@@ -53,6 +53,9 @@ export interface Expense {
   category: Category;
   currency: string;
   amount: number;
+  /** טיפ ששולם מתוך amount (לא נוסף עליו) — לצורך פילוח נפרד בדוחות, בלי
+   * לכפול את הסכום שכבר יורד מהארנק/מדווח בקטגוריה. */
+  tipAmount?: number;
   date: string;
   time?: string;
   paymentMethod: PaymentMethod;
@@ -312,10 +315,10 @@ export function parseBackupJSON(raw: string): WalletState | null {
 }
 
 export function buildExpenseReportCSV(expenses: Expense[], cards: CreditCardInfo[]): string {
-  const rows = [["תאריך", "שעה", "כותרת", "קטגוריה", "מטבע", "סכום", "אמצעי תשלום", "כרטיס", "בית עסק"]];
+  const rows = [["תאריך", "שעה", "כותרת", "קטגוריה", "מטבע", "סכום", "טיפ", "אמצעי תשלום", "כרטיס", "בית עסק"]];
   for (const e of expenses) {
     const card = cards.find((c) => c.id === e.cardId);
-    rows.push([e.date, e.time ?? "", e.title, e.category, e.currency, String(e.amount), PAYMENT_METHOD_LABEL[e.paymentMethod], card ? `${card.nickname} (${card.last4})` : "", e.merchant ?? ""]);
+    rows.push([e.date, e.time ?? "", e.title, e.category, e.currency, String(e.amount), e.tipAmount ? String(e.tipAmount) : "", PAYMENT_METHOD_LABEL[e.paymentMethod], card ? `${card.nickname} (${card.last4})` : "", e.merchant ?? ""]);
   }
   return rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
 }

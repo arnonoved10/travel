@@ -31,6 +31,18 @@ export default function ReportsScreen() {
   }
   const categories = Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1]);
 
+  // טיפים: תת-סכום של amount (לא הוצאה נוספת) — מוצג כפילוח נפרד לפי
+  // השירות שעליו ניתן הטיפ, בלי לשנות את סכומי הקטגוריות למעלה.
+  const tipsByCategory = new Map<Category, number>();
+  let totalTips = 0;
+  for (const e of store.expenses) {
+    if (!e.tipAmount) continue;
+    const ils = store.convertAmount(e.tipAmount, e.currency, "ILS") ?? 0;
+    tipsByCategory.set(e.category, (tipsByCategory.get(e.category) ?? 0) + ils);
+    totalTips += ils;
+  }
+  const tipRows = Array.from(tipsByCategory.entries()).sort((a, b) => b[1] - a[1]);
+
   return (
     <ScreenShell>
       <ScreenHeader title="דוחות ותקציב" />
@@ -75,6 +87,29 @@ export default function ReportsScreen() {
           </div>
         )}
       </div>
+
+      {totalTips > 0 ? (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SPACE.sm }}>
+            <span style={{ fontSize: "13.5px", fontWeight: 700, color: COLOR.textPrimary }}>טיפים</span>
+            <span style={{ fontSize: "12.5px", fontWeight: 700, color: COLOR.textPrimary }}>
+              <Money text={formatMoney(totalTips, "ILS")} />
+            </span>
+          </div>
+          <div style={{ fontSize: "11px", color: COLOR.textSecondary, marginBottom: SPACE.sm }}>כלולים כבר בסכום ההוצאה של כל קטגוריה למעלה — מוצג כאן בנפרד לפי השירות שעליו ניתן הטיפ</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs }}>
+            {tipRows.map(([cat, amount]) => (
+              <div key={cat} style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
+                <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: CATEGORY_COLOR[cat], flexShrink: 0 }} />
+                <span style={{ fontSize: "12px", color: COLOR.textPrimary, flex: 1 }}>{cat}</span>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: COLOR.textPrimary, minWidth: "70px", textAlign: "left" }}>
+                  <Money text={formatMoney(amount, "ILS")} />
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </ScreenShell>
   );
 }
