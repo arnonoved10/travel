@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { ScreenShell, ScreenHeader, Card, Field, PrimaryButton, IconPill, inputStyle, COLOR, SPACE, PinIcon } from "../../design-system";
 import { CountryPickerButton } from "../../pickers";
+import { COUNTRIES } from "../../country-currency-data";
 import { saveCustomTrip } from "../../trips-data";
 import { ToastBar } from "../../toast-bar";
 import type { ToastState } from "../../toast-bar";
@@ -20,12 +21,12 @@ function NewTripForm() {
   const router = useRouter();
   const params = useSearchParams();
   const [countryCode, setCountryCode] = useState<string | null>(params.get("country"));
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(params.get("start") ?? "");
+  const [endDate, setEndDate] = useState(params.get("end") ?? "");
   const [style, setStyle] = useState<(typeof STYLES)[number]["key"]>("vacation");
   const [budgetMin, setBudgetMin] = useState(6000);
   const [budgetMax, setBudgetMax] = useState(10000);
-  const [countryName, setCountryName] = useState<string>("");
+  const [countryName, setCountryName] = useState<string>(() => COUNTRIES.find((c) => c.code === params.get("country"))?.nameHe ?? "");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 

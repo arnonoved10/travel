@@ -1,4 +1,4 @@
-import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, DEMO_REFERENCE_DATE, loadJSON, saveJSON, nextId } from "./wallet-data";
+import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, today, loadJSON, saveJSON, nextId } from "./wallet-data";
 
 /**
  * מאגר-הטיולים המשותף למסכי "דף הבית" / "הטיולים שלי" / "סקירת הטיול" /
@@ -53,11 +53,11 @@ export const DEMO_TRIPS: DemoTrip[] = [
   { id: "thailand-2026", name: "תאילנד", countryCode: "TH", status: "upcoming", startDate: "2026-10-24", endDate: "2026-11-03", nights: 10, travelers: 2 },
 ];
 
-export function daysUntil(dateISO: string, referenceDate = DEMO_REFERENCE_DATE): number {
+export function daysUntil(dateISO: string, referenceDate = today()): number {
   return daysBetween(referenceDate, dateISO);
 }
 
-export function tripProgress(trip: DemoTrip, referenceDate = DEMO_REFERENCE_DATE): { dayIndex: number; totalDays: number; daysRemaining: number; percent: number } {
+export function tripProgress(trip: DemoTrip, referenceDate = today()): { dayIndex: number; totalDays: number; daysRemaining: number; percent: number } {
   const totalDays = daysBetween(trip.startDate, trip.endDate) + 1;
   const dayIndex = Math.min(totalDays, Math.max(1, daysBetween(trip.startDate, referenceDate) + 1));
   const daysRemaining = Math.max(0, daysBetween(referenceDate, trip.endDate));
@@ -77,10 +77,11 @@ export function loadCustomTrips(): DemoTrip[] {
 }
 export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status">): DemoTrip {
   const trips = loadCustomTrips();
-  // סטטוס ראשוני לפי תאריכים בלבד — לעולם לא "active" אוטומטית, כדי שלא
-  // יהיו כמה טיולים "פעילים" בו-זמנית: הפיכה לטיול-הפעיל היא תמיד פעולה
-  // מפורשת דרך setActiveTrip (שגם מוריד את הטיול-הפעיל-הקודם).
-  const full: DemoTrip = { ...trip, id: nextId("trip"), status: new Date(trip.endDate) < new Date(DEMO_REFERENCE_DATE) ? "completed" : "upcoming" };
+  // סטטוס ראשוני לפי תאריכים אמיתיים (today(), לא תאריך-דמו קבוע) בלבד —
+  // לעולם לא "active" אוטומטית, כדי שלא יהיו כמה טיולים "פעילים" בו-זמנית:
+  // הפיכה לטיול-הפעיל היא תמיד פעולה מפורשת דרך setActiveTrip (שגם מוריד
+  // את הטיול-הפעיל-הקודם).
+  const full: DemoTrip = { ...trip, id: nextId("trip"), status: new Date(trip.endDate) < new Date(today()) ? "completed" : "upcoming" };
   saveJSON(SK_CUSTOM_TRIPS, [...trips, full]);
   return full;
 }
@@ -124,12 +125,22 @@ export function updateTrip(id: string, patch: Partial<Omit<DemoTrip, "id">>): De
   return updated;
 }
 
-export function allTrips(): DemoTrip[] {
+/** סטטוס-בפועל של טיול: תאריך-סיום שעבר גובר על כל דבר אחר (כולל "active"
+ * ששמור בעבר) — כדי שטיול שהסתיים יעבור אוטומטית ל"היסטוריה" בלי תלות
+ * בפעולה ידנית. משתמש בתאריך-אמיתי (today()), לא בתאריך-דמו קבוע, כי
+ * המשתמש בפועל עוקב אחרי טיולים אמיתיים בזמן אמת. */
+function effectiveStatus(trip: DemoTrip, referenceDate: string): TripStatus {
+  if (trip.endDate < referenceDate) return "completed";
+  return trip.status;
+}
+
+export function allTrips(referenceDate = today()): DemoTrip[] {
   const overrides = loadTripOverrides();
   const hidden = new Set(loadJSON<string[]>(SK_HIDDEN_TRIPS, []));
   return [...DEMO_TRIPS, ...loadCustomTrips()]
     .filter((t) => !hidden.has(t.id))
-    .map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t));
+    .map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t))
+    .map((t) => ({ ...t, status: effectiveStatus(t, referenceDate) }));
 }
 export function findTrip(id: string): DemoTrip | null {
   return DEMO_TRIPS.find((t) => t.id === id) ?? null;
@@ -147,7 +158,7 @@ export function activeTrip(): DemoTrip {
 /** מעביר את "הטיול הפעיל" לטיול אחר — פעולה מפורשת ויחידה שמשנה status
  * ל-"active", ומורידה כל טיול אחר שהיה "active" (לפי תאריכים, ל-upcoming/
  * completed) כדי שלעולם לא יהיו כמה טיולים "פעילים" בו-זמנית. */
-export function setActiveTrip(id: string, referenceDate = DEMO_REFERENCE_DATE): DemoTrip | null {
+export function setActiveTrip(id: string, referenceDate = today()): DemoTrip | null {
   if (!findAnyTrip(id)) return null;
   for (const t of allTrips()) {
     if (t.id === id || t.status !== "active") continue;

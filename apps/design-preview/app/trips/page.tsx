@@ -7,14 +7,15 @@ import { FlagIcon } from "../country-currency-data";
 import { allTrips, setActiveTrip, type DemoTrip, type TripStatus } from "../trips-data";
 
 const TABS: { key: TripStatus; label: string }[] = [
-  { key: "upcoming", label: "הבאים" },
-  { key: "active", label: "פעילים" },
-  { key: "completed", label: "הסתיימו" },
+  { key: "active", label: "בהווה" },
+  { key: "upcoming", label: "עתידיים" },
+  { key: "completed", label: "היסטוריה" },
 ];
 
 export default function TripsListScreen() {
   const router = useRouter();
-  const [tab, setTab] = useState<TripStatus>("upcoming");
+  // נפתח כברירת מחדל על "בהווה" — הטיול שמשתמשים בו עכשיו, לא על הבאים.
+  const [tab, setTab] = useState<TripStatus>("active");
   const [trips, setTrips] = useState<DemoTrip[]>([]);
 
   useEffect(() => {
