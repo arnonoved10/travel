@@ -32,12 +32,34 @@ export default function TripOverviewScreen() {
 
   const isJapan = trip.id === "japan-2025";
 
+  async function handleShareTrip() {
+    if (!trip) return;
+    const shareData = { title: trip.name, text: `הטיול שלי ל${trip.name}: ${fmt(trip.startDate)} - ${fmt(trip.endDate)}`, url: typeof window !== "undefined" ? window.location.href : undefined };
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch {
+        // המשתמש ביטל את השיתוף
+      }
+    }
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url ?? ""}`);
+      alert("פרטי הטיול הועתקו");
+    }
+  }
+
   return (
     <ScreenShell>
       <ScreenHeader
         title="סקירת הטיול"
         action={
-          <button type="button" aria-label="שיתוף" style={{ width: "40px", height: "40px", borderRadius: "50%", background: COLOR.card, border: `1px solid ${COLOR.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button
+            type="button"
+            aria-label="שיתוף"
+            onClick={() => void handleShareTrip()}
+            style={{ width: "40px", height: "40px", borderRadius: "50%", background: COLOR.card, border: `1px solid ${COLOR.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          >
             <ShareIcon />
           </button>
         }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ScreenShell, ScreenHeader, Card, PrimaryButton, Ltr, PhoneIcon, COLOR, SPACE } from "../design-system";
 
 const LOCAL_NUMBERS = [
@@ -17,6 +18,37 @@ const CONTACTS = [
 /** מסך "אנשי קשר לחירום" (33) — מספרי-חירום כלליים לתיירים ביפן/איטליה
  * (ציבוריים, לא ספציפיים-למשתמש) + אנשי-קשר מדמו הפרופיל/ההזמנות. */
 export default function EmergencyScreen() {
+  const [locationStatus, setLocationStatus] = useState<string | null>(null);
+
+  async function handleShareLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationStatus("המכשיר אינו תומך באיתור מיקום");
+      return;
+    }
+    setLocationStatus("מאתר מיקום...");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const url = `https://www.openstreetmap.org/?mlat=${pos.coords.latitude}&mlon=${pos.coords.longitude}#map=16/${pos.coords.latitude}/${pos.coords.longitude}`;
+        if (navigator.share) {
+          try {
+            await navigator.share({ title: "המיקום שלי", url });
+            setLocationStatus(null);
+            return;
+          } catch {
+            // המשתמש ביטל את השיתוף
+          }
+        }
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+          setLocationStatus("קישור למיקום שלך הועתק");
+        } else {
+          setLocationStatus(url);
+        }
+      },
+      () => setLocationStatus("ההרשאה לאיתור מיקום נדחתה"),
+    );
+  }
+
   return (
     <ScreenShell>
       <ScreenHeader title="אנשי קשר לחירום" action={<PhoneIcon />} />
@@ -53,7 +85,8 @@ export default function EmergencyScreen() {
         </div>
       </div>
 
-      <PrimaryButton>שיתוף מיקום נוכחי</PrimaryButton>
+      <PrimaryButton onClick={() => void handleShareLocation()}>שיתוף מיקום נוכחי</PrimaryButton>
+      {locationStatus ? <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, textAlign: "center" }}>{locationStatus}</div> : null}
     </ScreenShell>
   );
 }

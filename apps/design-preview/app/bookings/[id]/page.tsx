@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, SecondaryButton, Money, CheckIcon, COLOR, SPACE } from "../../design-system";
-import { findBooking, type Booking } from "../../bookings-data";
+import { findBooking, updateBooking, type Booking } from "../../bookings-data";
 
 export default function BookingDetailsScreen() {
   const router = useRouter();
@@ -24,11 +24,27 @@ export default function BookingDetailsScreen() {
     );
   }
 
+  function handleCancel() {
+    if (!booking || booking.status === "cancelled") return;
+    if (!confirm(`לבטל את ההזמנה "${booking.title}"?`)) return;
+    const updated = updateBooking(booking.id, { status: "cancelled" });
+    if (updated) setBooking(updated);
+  }
+
+  function handleViewConfirmation() {
+    if (!booking) return;
+    alert(`אישור הזמנה\n\n${booking.title}\nמספר אישור: ${booking.confirmationNumber}\nתאריך: ${fmt(booking.checkIn)}${booking.checkOut ? ` – ${fmt(booking.checkOut)}` : ""}`);
+  }
+
   return (
     <ScreenShell>
       <ScreenHeader title="פרטי הזמנה" />
 
-      {booking.status === "confirmed" ? (
+      {booking.status === "cancelled" ? (
+        <div style={{ background: `${COLOR.danger}1A`, border: `1px solid ${COLOR.danger}55`, borderRadius: "16px", padding: SPACE.lg, textAlign: "center" }}>
+          <div style={{ fontSize: "13.5px", fontWeight: 700, color: COLOR.danger }}>ההזמנה בוטלה</div>
+        </div>
+      ) : booking.status === "confirmed" ? (
         <div style={{ background: `${COLOR.success}1A`, border: `1px solid ${COLOR.success}55`, borderRadius: "16px", padding: SPACE.lg, display: "flex", alignItems: "center", gap: SPACE.sm }}>
           <CheckIcon />
           <div>
@@ -47,10 +63,14 @@ export default function BookingDetailsScreen() {
         {booking.totalPrice ? <Row label="סכום כולל" value={<Money text={booking.totalPrice} />} badge="שולם במלואו" last /> : null}
       </Card>
 
-      <div style={{ display: "flex", gap: SPACE.sm }}>
-        <DangerButton onClick={() => router.back()}>ביטול הזמנה</DangerButton>
-        <SecondaryButton onClick={() => {}}>צפייה באישור ההזמנה</SecondaryButton>
-      </div>
+      {booking.status !== "cancelled" ? (
+        <div style={{ display: "flex", gap: SPACE.sm }}>
+          <DangerButton onClick={handleCancel}>ביטול הזמנה</DangerButton>
+          <SecondaryButton onClick={handleViewConfirmation}>צפייה באישור ההזמנה</SecondaryButton>
+        </div>
+      ) : (
+        <SecondaryButton onClick={() => router.push("/bookings")}>חזרה להזמנות שלי</SecondaryButton>
+      )}
     </ScreenShell>
   );
 }

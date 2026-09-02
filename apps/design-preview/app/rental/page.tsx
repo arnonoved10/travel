@@ -10,8 +10,11 @@ const TABS = [
 
 /** מסך "השכרת רכב וקטנוע" (36) — נתוני-דמו מוצהרים; אין חיבור לספק-
  * השכרה אמיתי. */
+const PICKUP_LOCATION = "Rome Fiumicino Airport (FCO)";
+
 export default function RentalScreen() {
   const [tab, setTab] = useState<"car" | "scooter">("car");
+  const [active, setActive] = useState(false);
   return (
     <ScreenShell>
       <ScreenHeader title="השכרת רכב וקטנוע" />
@@ -30,14 +33,14 @@ export default function RentalScreen() {
       <Card>
         <Row label="איסוף" value="28/05/2025" />
         <Row label="החזרה" value="04/06/2025" />
-        <Row label="מיקום איסוף" value="Rome Fiumicino Airport (FCO)" />
+        <Row label="מיקום איסוף" value={PICKUP_LOCATION} />
         <Row label="פיקדון" value="€300" />
         <Row label="ביטוח" value="Full Coverage" last />
       </Card>
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
-        <SecondaryButton>נווט למיקום איסוף</SecondaryButton>
-        <PrimaryButton>סמן כפעיל</PrimaryButton>
+        <SecondaryButton onClick={() => window.open(`https://www.openstreetmap.org/search?query=${encodeURIComponent(PICKUP_LOCATION)}`, "_blank", "noopener,noreferrer")}>נווט למיקום איסוף</SecondaryButton>
+        <PrimaryButton onClick={() => setActive(true)} disabled={active}>{active ? "ההשכרה פעילה ✓" : "סמן כפעיל"}</PrimaryButton>
       </div>
     </ScreenShell>
   );

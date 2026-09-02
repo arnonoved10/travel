@@ -897,7 +897,7 @@ const RIDE_STATUS_COLOR: Record<RideStatus, string> = {
 // מערכת". הסטטוס נגזר אוטומטית מהזמן שנותר (שעון-דמו) — "מתעכב"/"בוטל"
 // יתאפשרו כשמקור-נתונים אמיתי (שירות-שילוח) יחובר; כרגע ההדגמה עוברת באמת
 // בין "בדרך" ל"הגיע" (לא מדומה בכפתור-דמו נפרד).
-function RideStatusCard({ event, demoClock, onOpenDetail }: { event: HomeTimerEvent; demoClock: number; onOpenDetail: () => void }) {
+function RideStatusCard({ event, demoClock, showToast }: { event: HomeTimerEvent; demoClock: number; showToast: (message: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   if (!event.ride) return null;
   const r = event.ride;
@@ -936,20 +936,20 @@ function RideStatusCard({ event, demoClock, onOpenDetail }: { event: HomeTimerEv
           </div>
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {status === "הגיע" ? (
-              <button type="button" onClick={onOpenDetail} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(67,214,170,0.2)", border: `1px solid ${COLOR.success}55`, color: COLOR.success }}>
+              <button type="button" onClick={() => showToast(`הודעה נשלחה ל${r.driverName}: "אני בדרך" (הדגמה בלבד)`)} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(67,214,170,0.2)", border: `1px solid ${COLOR.success}55`, color: COLOR.success }}>
                 אני בדרך
               </button>
             ) : null}
-            <button type="button" onClick={() => {}} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(255,255,255,0.1)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff" }}>
+            <button type="button" onClick={() => showToast(`מתקשר ל${r.driverName}... (הדגמה בלבד, אין מספר טלפון אמיתי)`)} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(255,255,255,0.1)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff" }}>
               התקשרות לנהג
             </button>
             {status === "הגיע" ? (
-              <button type="button" onClick={() => {}} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(255,255,255,0.1)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff" }}>
+              <button type="button" onClick={() => showToast(`${r.vehicleType} ${r.vehicleColor} · ${r.plate} — ${r.pickupPoint}`)} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(255,255,255,0.1)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff" }}>
                 מצא את הרכב
               </button>
             ) : (
               <>
-                <button type="button" onClick={() => {}} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(255,255,255,0.1)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff" }}>
+                <button type="button" onClick={() => showToast(`הודעה נשלחה ל${r.driverName} (הדגמה בלבד)`)} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "32px", padding: "0 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", background: "rgba(255,255,255,0.1)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff" }}>
                   שליחת הודעה
                 </button>
                 <a
@@ -1309,6 +1309,10 @@ export function MobileHomeMock() {
                     <div style={{ height: 1, background: COLOR.cardBorder, margin: "4px 0 10px" }} />
                     <button
                       type="button"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        router.push("/profile");
+                      }}
                       style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "9px 8px", borderRadius: "10px", border: "none", background: "transparent", color: COLOR.textPrimary, fontSize: "13px", fontWeight: 600, cursor: "pointer", textAlign: "start" }}
                     >
                       <PersonIcon color={COLOR.textSecondary} />
@@ -1584,21 +1588,21 @@ export function MobileHomeMock() {
               title="נותר יום אחד ללא תוכנית"
               subtitle="הוסיפו פעילויות ליום הפנוי"
               cta="לתכנון היום"
-              onClick={() => showToast("פותח את היומן היומי (בהדגמה)")}
+              onClick={() => router.push("/planner")}
             />
             <ActionTile
               icon={<TransferAlertIcon size={42} badge={1} />}
               title="חסרה הסעה משדה התעופה"
               subtitle="הוסיפו הסעה כדי לא להגיע לבד"
               cta="להוספת הסעה"
-              onClick={() => showToast("פותח הוספת הסעה (בהדגמה)")}
+              onClick={() => router.push("/transport")}
             />
             <ActionTile
               icon={<InsuranceAlertIcon size={42} badge={1} />}
               title="חסר מסמך ביטוח"
               subtitle="העלו את פוליסת הביטוח לפני הטיסה"
               cta="להעלאת מסמך"
-              onClick={() => showToast("פותח העלאת מסמכים (בהדגמה)")}
+              onClick={() => router.push("/documents")}
             />
           </div>
         </Card>
@@ -1607,7 +1611,7 @@ export function MobileHomeMock() {
             הבדיקה). טיסה/מעבורת מקבלות כרטיס-ייעודי איכותי; שאר הסוגים
             משתמשים בכרטיס הגנרי. לחיצה על הכרטיס הגנרי פותחת פרטים מלאים. */}
         {nearestTimerEvent?.kind === "pickup" ? (
-          <RideStatusCard event={nearestTimerEvent} demoClock={demoClock} onOpenDetail={() => {}} />
+          <RideStatusCard event={nearestTimerEvent} demoClock={demoClock} showToast={showToast} />
         ) : nearestTimerEvent?.kind === "boarding" ? (
           <FlightBoardingCard event={nearestTimerEvent} demoClock={demoClock} onOpenDetail={() => {}} />
         ) : nearestTimerEvent?.kind === "ferry" ? (
@@ -1938,8 +1942,8 @@ export function MobileHomeMock() {
                 { icon: <SuitcaseNavIcon size={19} color={COLOR.textPrimary} />, label: "המסלול שלי", href: "/route" },
                 { icon: <JournalNavIcon size={19} color={COLOR.textPrimary} />, label: "היומן היומי", href: "/planner?day=2026-05-04&city=%D7%91%D7%A0%D7%92%D7%A7%D7%95%D7%A7" },
                 { icon: <WalletNavIcon size={19} color={COLOR.textPrimary} />, label: "הארנק שלי", href: "/wallet" },
-                { icon: <ShieldNavIcon size={19} color={COLOR.textPrimary} />, label: "מסמכים וביטוח", href: null },
-                { icon: <MoreNavIcon size={19} color={COLOR.textPrimary} />, label: "הגדרות", href: null },
+                { icon: <ShieldNavIcon size={19} color={COLOR.textPrimary} />, label: "מסמכים וביטוח", href: "/documents" },
+                { icon: <MoreNavIcon size={19} color={COLOR.textPrimary} />, label: "הגדרות", href: "/settings" },
               ].map((item) =>
                 item.href ? (
                   <Link

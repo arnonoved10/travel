@@ -23,6 +23,20 @@ export default function PlaceDetailsScreen() {
     setStop(loadStops().find((s) => s.id === params.id) ?? null);
   }, [params.id]);
 
+  async function handleShare(city: string) {
+    const shareData = { title: city, text: `בואו לגלות את ${city}!`, url: typeof window !== "undefined" ? window.location.href : undefined };
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // המשתמש ביטל את השיתוף — לא שגיאה אמיתית
+      }
+    } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(shareData.url ?? city);
+      window.alert("הקישור הועתק");
+    }
+  }
+
   if (stop === undefined) return null;
   if (stop === null) {
     return (
@@ -53,9 +67,14 @@ export default function PlaceDetailsScreen() {
       </div>
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
-        <IconAction icon={<ShareIcon size={17} />} label="שיתוף" />
-        <IconAction icon={<HeartIcon size={17} />} label="שמירה" />
-        <IconAction icon={<NavigateIcon size={17} />} label="נווט" active />
+        <IconAction icon={<ShareIcon size={17} />} label="שיתוף" onClick={() => void handleShare(stop.city)} />
+        <IconAction icon={<HeartIcon size={17} filled={saved} />} label={saved ? "נשמר" : "שמירה"} active={saved} onClick={() => setSaved((s) => !s)} />
+        <IconAction
+          icon={<NavigateIcon size={17} />}
+          label="נווט"
+          active
+          onClick={() => window.open(`https://www.openstreetmap.org/search?query=${encodeURIComponent(stop.city)}`, "_blank", "noopener,noreferrer")}
+        />
       </div>
 
       <div>
@@ -73,11 +92,15 @@ export default function PlaceDetailsScreen() {
   );
 }
 
-function IconAction({ icon, label, active }: { icon: React.ReactNode; label: string; active?: boolean }) {
+function IconAction({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }) {
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 4px", borderRadius: "14px", background: active ? `${COLOR.primary}22` : COLOR.card, border: `1px solid ${active ? COLOR.primary : COLOR.border}` }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 4px", borderRadius: "14px", background: active ? `${COLOR.primary}22` : COLOR.card, border: `1px solid ${active ? COLOR.primary : COLOR.border}`, cursor: "pointer" }}
+    >
       {icon}
       <span style={{ fontSize: "10px", fontWeight: 700, color: active ? COLOR.primaryLight : COLOR.textSecondary }}>{label}</span>
-    </div>
+    </button>
   );
 }

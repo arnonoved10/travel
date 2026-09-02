@@ -1,4 +1,4 @@
-import { loadJSON } from "./wallet-data";
+import { loadJSON, saveJSON } from "./wallet-data";
 
 /**
  * נתוני-הזמנות דמו (מלונות/טיסות/תחבורה/רכבים/אטרקציות) למסכי "ההזמנות
@@ -45,6 +45,18 @@ export function loadBookings(): Booking[] {
 }
 export function findBooking(id: string): Booking | null {
   return loadBookings().find((b) => b.id === id) ?? null;
+}
+/** מעדכן הזמנה קיימת (למשל ביטול) — לפני כן לא הייתה שום דרך לבטל הזמנה
+ * בפועל, כפתור "ביטול הזמנה" רק ניווט אחורה בלי לשנות כלום. */
+export function updateBooking(id: string, patch: Partial<Omit<Booking, "id">>): Booking | null {
+  const bookings = loadBookings();
+  const idx = bookings.findIndex((b) => b.id === id);
+  if (idx === -1) return null;
+  const updated = { ...bookings[idx]!, ...patch };
+  const arr = [...bookings];
+  arr[idx] = updated;
+  saveJSON(SK_BOOKINGS, arr);
+  return updated;
 }
 export function bookingsByCategory(): Record<BookingCategory, Booking[]> {
   const all = loadBookings();
