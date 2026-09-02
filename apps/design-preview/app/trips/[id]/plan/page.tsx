@@ -123,10 +123,16 @@ function ChevronDownIcon({ size = 14 }: { size?: number }) {
 
 function WeatherCard({ weather, cityLabel }: { weather: { status: "loading" | "success" | "error"; data: DemoWeatherResult | null }; cityLabel: string }) {
   const [expanded, setExpanded] = useState(false);
-  const isNight = (() => {
+  // isNight נקבע רק בצד-הלקוח (לא ברנדור עצמו): שרת ה-SSR ולקוח יכולים
+  // להיות באזורי-זמן שונים, כך ש-new Date().getHours() בזמן-רנדור עלול
+  // להחזיר ערך שונה משני הצדדים ולגרום ל-hydration mismatch אמיתי (React
+  // error #418, נצפה בפועל בבדיקה מול production) — ברירת-המחדל "יום"
+  // זהה בשני הצדדים, והלקוח מתקן את עצמו מיד אחרי ה-mount הראשון.
+  const [isNight, setIsNight] = useState(false);
+  useEffect(() => {
     const hour = new Date().getHours();
-    return hour < 6 || hour >= 19;
-  })();
+    setIsNight(hour < 6 || hour >= 19);
+  }, []);
   const d = weather.data;
   const Icon = weatherIconFor(d?.condition ?? null, isNight);
   const rainSoon = (d?.precipitationProbabilityPercent ?? 0) >= 50;
