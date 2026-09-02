@@ -42,13 +42,14 @@ export interface DemoWeatherResult {
   provider: string;
 }
 
-export async function getDemoWeatherAction(): Promise<DemoWeatherResult | null> {
+export async function getDemoWeatherAction(location?: { lat: number; lng: number }): Promise<DemoWeatherResult | null> {
   try {
     const provider = openMeteoWeatherProvider;
+    const coords = location ?? BANGKOK;
     const [current, daily, hourly] = await Promise.all([
-      provider.getCurrentConditions(BANGKOK),
-      provider.getDailyForecast(BANGKOK, { days: 1 }),
-      provider.getHourlyForecast(BANGKOK, { hours: 6 }),
+      provider.getCurrentConditions(coords),
+      provider.getDailyForecast(coords, { days: 1 }),
+      provider.getHourlyForecast(coords, { hours: 6 }),
     ]);
     return {
       temperatureC: current.temperatureC,
@@ -116,6 +117,33 @@ export async function reverseGeocodeCountryAction(lat: number, lng: number): Pro
     const name = data?.address?.country ?? null;
     if (!code) return null;
     return { countryCode: code, countryName: name ?? code };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * הופכת שם-מקום (עיר/אתר/כתובת חופשית) לקואורדינטות אמיתיות — משמשת את
+ * מסך המסלול (מיקום תחנה) ואת הוספת-פעילות (מיקום נקודתי בתוך היום), כדי
+ * שהמפה תציג נקודות/מסלול אמיתיים ולא ממציאה מיקום. אותו Nominatim
+ * (OpenStreetMap) חינמי-בלי-מפתח כמו reverseGeocodeCountryAction למעלה,
+ * נקרא משרת מאותה סיבה בדיוק (CORS + User-Agent תקין). countryCode
+ * מצמצם את החיפוש למדינה הנכונה כשידוע (חובה כדי לא לבלבל בין ערים
+ * באותו שם במדינות שונות).
+ */
+export async function geocodeQueryAction(query: string, countryCode?: string | null): Promise<{ lat: number; lon: number; displayName: string } | null> {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  try {
+    const params = new URLSearchParams({ format: "jsonv2", q: trimmed, limit: "1" });
+    if (countryCode) params.set("countrycodes", countryCode.toLowerCase());
+    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    const res = await fetch(url, { headers: { "User-Agent": "trip-master-design-preview/1.0 (demo, read-only)" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hit = Array.isArray(data) ? data[0] : null;
+    if (!hit || hit.lat == null || hit.lon == null) return null;
+    return { lat: Number(hit.lat), lon: Number(hit.lon), displayName: String(hit.display_name ?? trimmed) };
   } catch {
     return null;
   }

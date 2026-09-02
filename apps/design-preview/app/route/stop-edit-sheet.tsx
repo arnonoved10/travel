@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CountryPickerButton } from "../pickers";
 import { DateRangePicker } from "../date-range-picker";
 import type { TripStop, StopStatus } from "../trip-content";
+import { geocodeQueryAction } from "../actions";
 
 /**
  * עריכת/הוספת תחנה במסלול הטיול — קודם לא הייתה שום דרך אמיתית לערוך,
@@ -43,11 +44,24 @@ export function StopEditSheet({
   const [attractionsText, setAttractionsText] = useState((initial?.attractions ?? []).join("\n"));
   const [restaurantsText, setRestaurantsText] = useState((initial?.restaurants ?? []).join("\n"));
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const canSave = city.trim().length > 0 && !!countryCode && !!startDate && !!endDate;
 
-  function handleSave() {
-    if (!canSave || !countryCode) return;
+  async function handleSave() {
+    if (!canSave || !countryCode || saving) return;
+    setSaving(true);
+    // מאתרים קואורדינטות אמיתיות רק אם העיר/המדינה השתנו (או שאין עדיין
+    // קואורדינטות) — כדי לא לשלוח קריאת-geocoding מיותרת בכל עריכה, ולא
+    // לדרוס מיקום שכבר אותר נכון בעריכה שלא נגעה בעיר עצמה.
+    const cityChanged = city.trim() !== initial?.city || countryCode !== initial?.countryCode;
+    let lat = initial?.lat;
+    let lon = initial?.lon;
+    if (cityChanged || lat == null || lon == null) {
+      const geo = await geocodeQueryAction(city.trim(), countryCode);
+      lat = geo?.lat;
+      lon = geo?.lon;
+    }
     onSave({
       city: city.trim(),
       countryCode,
@@ -58,6 +72,8 @@ export function StopEditSheet({
       hotel: hotel.trim() || undefined,
       attractions: attractionsText.split("\n").map((s) => s.trim()).filter(Boolean),
       restaurants: restaurantsText.split("\n").map((s) => s.trim()).filter(Boolean),
+      lat,
+      lon,
     });
   }
 
@@ -163,21 +179,21 @@ export function StopEditSheet({
           <button
             type="button"
             data-testid="stop-save"
-            disabled={!canSave}
+            disabled={!canSave || saving}
             onClick={handleSave}
             style={{
               flex: 1,
               padding: "13px",
               borderRadius: "12px",
-              background: canSave ? COLORS.primary : "rgba(255,255,255,0.08)",
+              background: canSave && !saving ? COLORS.primary : "rgba(255,255,255,0.08)",
               border: "none",
-              color: canSave ? "#fff" : COLORS.textMuted,
+              color: canSave && !saving ? "#fff" : COLORS.textMuted,
               fontSize: "14.5px",
               fontWeight: 800,
-              cursor: canSave ? "pointer" : "default",
+              cursor: canSave && !saving ? "pointer" : "default",
             }}
           >
-            שמירה
+            {saving ? "מאתר מיקום..." : "שמירה"}
           </button>
         </div>
       </div>

@@ -3,8 +3,8 @@
 import { loadJSON, saveJSON, nextId } from "./wallet-data";
 
 /**
- * תוכן-הטיול (תחנות-מסלול + פעילויות-יומיות) לטיול-הדמו של יפן, לפי
- * חבילת-העיצוב המחייבת (מסכי מסלול/שינוי-סדר/יומן/מפה/פעילות). נשמר
+ * תוכן-הטיול (תחנות-מסלול + פעילויות-יומיות) של הטיול האמיתי של המשתמש —
+ * מקור-האמת המשותף למסכי מסלול/שינוי-סדר/תוכנית-יומית/מפה/פעילות. נשמר
  * ב-localStorage כדי ששינוי-סדר/הוספת-פעילות/מחיקה יהיו פעולות אמיתיות
  * שנשמרות (לא רק state זמני שנעלם ברענון), באותו עיקרון כמו wallet-data.ts.
  */
@@ -17,6 +17,8 @@ export interface TripActivity {
   category: "אתר" | "אוכל" | "קניות" | "טיול" | "עוד";
   location: string;
   notes: string;
+  lat?: number;
+  lon?: number;
 }
 
 export type StopStatus = "בוצע" | "מאושר" | "ממתין לאישור";
@@ -32,6 +34,8 @@ export interface TripStop {
   hotel?: string;
   attractions?: string[];
   restaurants?: string[];
+  lat?: number;
+  lon?: number;
 }
 
 const SK_STOPS = "design-preview-trip-stops-v1";

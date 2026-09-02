@@ -3,8 +3,9 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Field, PrimaryButton, IconPill, inputStyle, textareaStyle, COLOR, SPACE, PinIcon, SuitcaseIcon, DocumentIcon } from "../../../../design-system";
-import { saveActivity, findActivity, type TripActivity } from "../../../../trip-content";
+import { saveActivity, findActivity, loadStops, type TripActivity } from "../../../../trip-content";
 import { nextId, today } from "../../../../wallet-data";
+import { geocodeQueryAction } from "../../../../actions";
 
 const CATEGORIES: { key: TripActivity["category"]; label: string }[] = [
   { key: "עוד", label: "עוד" },
@@ -26,6 +27,8 @@ function AddActivityForm() {
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [existingLatLon, setExistingLatLon] = useState<{ lat?: number; lon?: number }>({});
 
   // עריכה (לא רק הוספה): אם הגענו עם ?id=, טוענים את הפעילות הקיימת
   // ושומרים תחת אותו id — לפני התיקון הזה "עריכת פעילות" יצרה בטעות
@@ -40,12 +43,25 @@ function AddActivityForm() {
     setDuration(found.activity.durationLabel);
     setLocation(found.activity.location);
     setNotes(found.activity.notes);
+    setExistingLatLon({ lat: found.activity.lat, lon: found.activity.lon });
   }, [editId]);
 
-  function handleSave() {
-    if (!title.trim()) return setError("יש להזין שם פעילות");
+  async function handleSave() {
+    if (!title.trim() || saving) return setError(title.trim() ? null : "יש להזין שם פעילות");
     setError(null);
-    saveActivity(date, { id: editId ?? nextId("act"), time, durationLabel: duration, title: title.trim(), category, location, notes });
+    setSaving(true);
+    // מאתרים קואורדינטות אמיתיות למיקום (על בסיס העיר של התחנה שהיום הזה
+    // שייך אליה, כדי לא לבלבל בין מקומות באותו שם) — רק אם הוזן מיקום
+    // ואין עדיין אחד שמור, כדי לא לשלוח קריאה מיותרת בכל שמירה.
+    let lat = existingLatLon.lat;
+    let lon = existingLatLon.lon;
+    if (location.trim() && (lat == null || lon == null)) {
+      const stop = loadStops().find((s) => date >= s.startDate && date <= s.endDate);
+      const geo = await geocodeQueryAction(stop ? `${location.trim()}, ${stop.city}` : location.trim(), stop?.countryCode);
+      lat = geo?.lat;
+      lon = geo?.lon;
+    }
+    saveActivity(date, { id: editId ?? nextId("act"), time, durationLabel: duration, title: title.trim(), category, location, notes, lat, lon });
     router.back();
   }
 
@@ -81,7 +97,7 @@ function AddActivityForm() {
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="הערות (אופציונלי)" style={textareaStyle} />
       </Field>
       {error ? <div style={{ color: COLOR.danger, fontSize: "12.5px" }}>{error}</div> : null}
-      <PrimaryButton onClick={handleSave}>{editId ? "עדכן פעילות" : "שמור פעילות"}</PrimaryButton>
+      <PrimaryButton onClick={handleSave} disabled={saving}>{saving ? "מאתר מיקום..." : editId ? "עדכן פעילות" : "שמור פעילות"}</PrimaryButton>
     </ScreenShell>
   );
 }
