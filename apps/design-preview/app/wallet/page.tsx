@@ -82,7 +82,7 @@ export default function WalletPreviewScreen() {
 
   const [dialog, setDialog] = useState<
     | { type: "addMoney" | "reduceMoney" | "history" | "currencyDetail"; currency: string }
-    | { type: "convert" }
+    | { type: "convert"; from: string }
     | { type: "addExpense" | "editExpense"; id?: string; autoCamera?: boolean }
     | { type: "addCurrency" }
     | { type: "changeCountry" }
@@ -683,12 +683,12 @@ export default function WalletPreviewScreen() {
             onClose={() => setDialog(null)}
             onAddMoney={() => openDialog({ type: "addMoney", currency: detailCurrency })}
             onReduceMoney={() => openDialog({ type: "reduceMoney", currency: detailCurrency })}
-            onConvert={() => openDialog({ type: "convert" })}
+            onConvert={() => openDialog({ type: "convert", from: detailCurrency })}
             onHistory={() => openDialog({ type: "history", currency: detailCurrency })}
           />
         )
       ) : null}
-      {dialog?.type === "convert" ? <ConvertForm balances={balances} rates={rates} defaultFrom={localCurrency.currencyCode} onClose={() => setDialog(null)} onSave={handleConvert} /> : null}
+      {dialog?.type === "convert" ? <ConvertForm balances={balances} rates={rates} defaultFrom={dialog.from} onClose={() => setDialog(null)} onSave={handleConvert} /> : null}
       {dialog?.type === "addCurrency" ? (
         <AddCurrencySheet
           existingCodes={balances.map((b) => b.code)}
@@ -985,7 +985,7 @@ function ConvertForm({
 }) {
   const [fromCcy, setFromCcy] = useState(balances.some((b) => b.code === defaultFrom) ? defaultFrom : balances[0]?.code ?? "ILS");
   const [fromAmount, setFromAmount] = useState("");
-  const [toCcy, setToCcy] = useState(balances.find((b) => b.code !== defaultFrom)?.code ?? "USD");
+  const [toCcy, setToCcy] = useState<string | null>(null);
   const [toAmount, setToAmount] = useState("");
   const [fee, setFee] = useState("");
   const [location, setLocation] = useState("");
@@ -993,17 +993,18 @@ function ConvertForm({
 
   const fromBalance = balances.find((b) => b.code === fromCcy)?.balance ?? 0;
   const fromCountry = primaryCountryForCurrency(fromCcy);
-  const toCountry = primaryCountryForCurrency(toCcy);
+  const toCountry = toCcy ? primaryCountryForCurrency(toCcy) : null;
   const marketInfo = (() => {
-    if (rates.status !== "success" || !rates.data) return null;
+    if (!toCcy || rates.status !== "success" || !rates.data) return null;
     const f = fromCcy === "ILS" ? 1 : rates.data.ratesToILS[fromCcy];
     const t = toCcy === "ILS" ? 1 : rates.data.ratesToILS[toCcy];
     if (!f || !t) return null;
     return f / t;
   })();
-  const canSave = Number(fromAmount) > 0 && Number(toAmount) > 0 && Number(fromAmount) <= fromBalance;
+  const canSave = toCcy != null && Number(fromAmount) > 0 && Number(toAmount) > 0 && Number(fromAmount) <= fromBalance;
 
   function swap() {
+    if (!toCcy) return;
     setFromCcy(toCcy);
     setToCcy(fromCcy);
     setFromAmount(toAmount);
@@ -1024,7 +1025,7 @@ function ConvertForm({
           </button>
           <div style={{ flex: 1 }}>
             <Field label="אל מדינה / מטבע יעד">
-              <CurrencyPickerButton selectedCode={toCcy} onSelect={setToCcy} testId="convert-to-ccy" />
+              <CurrencyPickerButton selectedCode={toCcy} onSelect={setToCcy} placeholder="בחירת מטבע יעד" testId="convert-to-ccy" />
             </Field>
           </div>
         </div>
@@ -1069,7 +1070,7 @@ function ConvertForm({
           <input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} style={inputStyle()} />
         </Field>
         {Number(fromAmount) > fromBalance ? <div style={{ fontSize: "12px", color: COLOR.danger, fontWeight: 700 }}>היתרה במטבע המקור אינה מספיקה</div> : null}
-        <button type="button" disabled={!canSave} onClick={() => onSave(fromCcy, Number(fromAmount), toCcy, Number(toAmount), Number(fee) || 0, location, dateTime)} style={{ padding: "13px", borderRadius: "12px", background: canSave ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: canSave ? "#fff" : COLOR.textMuted, fontSize: "14.5px", fontWeight: 800, cursor: canSave ? "pointer" : "default" }}>
+        <button type="button" disabled={!canSave} onClick={() => canSave && onSave(fromCcy, Number(fromAmount), toCcy!, Number(toAmount), Number(fee) || 0, location, dateTime)} style={{ padding: "13px", borderRadius: "12px", background: canSave ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: canSave ? "#fff" : COLOR.textMuted, fontSize: "14.5px", fontWeight: 800, cursor: canSave ? "pointer" : "default" }}>
           ביצוע ההמרה
         </button>
       </div>

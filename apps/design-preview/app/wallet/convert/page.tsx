@@ -17,13 +17,22 @@ export default function ConvertScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const marketRate = store.hydrated ? store.convertAmount(1, from, to) : null;
+  const rateStillLoading = store.rates.status === "loading";
+  const rateUnavailable = !rateStillLoading && marketRate == null;
 
   const effectiveToAmount = toAmount > 0 ? toAmount : marketRate != null ? Math.round(fromAmount * marketRate * 100) / 100 : 0;
   const fee = 12;
 
   if (!store.hydrated) return null;
 
+  const canSubmit = effectiveToAmount > 0 && fromAmount > 0;
+
   function handleSubmit() {
+    if (!canSubmit) {
+      if (rateStillLoading) return setError("שער ההמרה עדיין נטען — נסו שוב בעוד רגע");
+      if (rateUnavailable) return setError(`אין שער חי זמין ל-${to} כרגע — יש להזין ידנית את הסכום שהתקבל בפועל בשדה "אל"`);
+      return setError("יש להזין סכום תקין שיתקבל");
+    }
     const ok = store.convertCurrency(from, fromAmount, to, effectiveToAmount, fee, "", new Date().toISOString());
     if (!ok) return setError("היתרה במטבע המקור אינה מספיקה");
     router.push("/wallet");
@@ -63,7 +72,13 @@ export default function ConvertScreen() {
         </div>
       </Card>
 
-      {marketRate != null ? <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, textAlign: "center" }}>שער המרה: 1 {from} = {marketRate.toFixed(2)} {to}</div> : null}
+      {marketRate != null ? (
+        <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, textAlign: "center" }}>שער המרה: 1 {from} = {marketRate.toFixed(2)} {to}</div>
+      ) : rateStillLoading ? (
+        <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, textAlign: "center" }}>טוען שער המרה...</div>
+      ) : rateUnavailable ? (
+        <div style={{ fontSize: "11.5px", color: COLOR.warning, textAlign: "center" }}>אין שער חי זמין ל-{to} כרגע — הזינו ידנית את הסכום שהתקבל בפועל</div>
+      ) : null}
 
       <Card style={{ display: "flex", justifyContent: "space-between" }}>
         <span style={{ fontSize: "12px", color: COLOR.textSecondary }}>סכום שיתקבל</span>
@@ -74,7 +89,7 @@ export default function ConvertScreen() {
       <div style={{ fontSize: "11px", color: COLOR.textSecondary, textAlign: "center" }}>עמלת המרה: ₪{fee}</div>
 
       {error ? <div style={{ color: COLOR.danger, fontSize: "12.5px", textAlign: "center" }}>{error}</div> : null}
-      <PrimaryButton onClick={handleSubmit}>המר עכשיו</PrimaryButton>
+      <PrimaryButton onClick={handleSubmit} disabled={!canSubmit}>{rateStillLoading && !canSubmit ? "טוען שער המרה..." : "המר עכשיו"}</PrimaryButton>
     </ScreenShell>
   );
 }
