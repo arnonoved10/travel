@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { ScreenShell, ScreenHeader, Card, WeatherSunIcon, ThermometerIcon, WindIcon, DropletIcon, COLOR, SPACE } from "../design-system";
-import { getDemoWeatherAction, type DemoWeatherResult } from "../actions";
+import type { DemoWeatherResult } from "../actions";
+import { fetchWeather } from "../weather-client";
 
-/** מסך "מזג אוויר והתראות" (25) — נתונים אמיתיים מ-Open-Meteo (getDemoWeatherAction,
+/** מסך "מזג אוויר והתראות" (25) — נתונים אמיתיים מ-Open-Meteo (fetchWeather,
  * זהה למקור בדף-הבית ובמסך היומן). ההתראות עצמן (חום קיצוני/גשם) הן דמו
  * מוצהר — אין מקור-התראות-אמיתי מחובר. */
 
@@ -31,7 +32,7 @@ export default function WeatherScreen() {
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
 
   useEffect(() => {
-    fetchWithOneRetry(getDemoWeatherAction).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
+    fetchWithOneRetry(() => fetchWeather()).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
   }, []);
 
   return (

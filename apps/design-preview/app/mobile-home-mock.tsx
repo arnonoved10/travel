@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOutCurrentUser, useCurrentUser } from "./auth-session";
-import { getDemoWeatherAction, getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
+import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
+import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
 import { formatMoney, today } from "./wallet-data";
 import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
@@ -1041,7 +1042,7 @@ export function MobileHomeMock() {
     // start בצד Vercel), אך תמיד מצליח ברגע שהפונקציה כבר "חמה" — כמה שניות
     // מספיקות. בלי זה המסך היה מציג "אין חיבור" לצמיתות על סמך כישלון חד-
     // פעמי וחולף, במקום לתת לו הזדמנות שנייה אמיתית.
-    fetchWithOneRetry(getDemoWeatherAction).then((res) => {
+    fetchWithOneRetry(() => fetchWeather()).then((res) => {
       if (!cancelled) setWeather({ status: res ? "success" : "error", data: res });
     });
     fetchWithOneRetry(getDemoCurrencyRatesAction).then((res) => {

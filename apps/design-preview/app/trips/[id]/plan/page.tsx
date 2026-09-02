@@ -4,7 +4,8 @@ import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, PlusIcon, ChevronIcon, COLOR, SPACE, RADIUS } from "../../../design-system";
 import { activitiesForDate, cityForDate, loadStops, type TripActivity } from "../../../trip-content";
-import { getDemoWeatherAction, type DemoWeatherResult } from "../../../actions";
+import type { DemoWeatherResult } from "../../../actions";
+import { fetchWeather } from "../../../weather-client";
 import { today } from "../../../wallet-data";
 
 const CATEGORY_LABEL: Record<TripActivity["category"], string> = { אתר: "אתר היסטורי", אוכל: "קולינרי", קניות: "שופינג", טיול: "סיור עירוני", עוד: "פעילות" };
@@ -247,7 +248,7 @@ function DailyPlanContent() {
     const stop = loadStops().find((s) => date >= s.startDate && date <= s.endDate);
     const coords = stop?.lat != null && stop?.lon != null ? { lat: stop.lat, lng: stop.lon } : undefined;
     setWeather({ status: "loading", data: null });
-    fetchWithOneRetry(() => getDemoWeatherAction(coords)).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
+    fetchWithOneRetry(() => fetchWeather(coords)).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
   }, [date]);
 
   const monthLabel = new Date(date).toLocaleDateString("he-IL", { month: "long", year: "numeric" });

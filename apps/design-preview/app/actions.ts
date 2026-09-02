@@ -1,30 +1,31 @@
 "use server";
 
-// עותק מקומי של ספקי מזג-האוויר/שער-המטבע (ר' lib/providers/) במקום ייבוא
+// עותק מקומי של ספק שער-המטבע (ר' lib/providers/) במקום ייבוא
 // מ-@travel-app/data-layer של ה-monorepo: כך לאפליקציה המבודדת הזו אין שום
 // תלות-workspace בפרויקטים אחרים בריפו — ניתנת לפריסה כתיקייה עצמאית
 // לגמרי (npm install מהריפו-הזה-בלבד מספיק), בלי סיכון לגרור בטעות קוד
 // הקשור ל-Prisma/DB דרך ה-barrel של data-layer.
-import { openMeteoWeatherProvider } from "../lib/providers/open-meteo-provider";
 import { boiFrankfurterCurrencyRateProvider } from "../lib/providers/boi-frankfurter-provider";
 import { getOcrProvider } from "../lib/ocr/get-ocr-provider";
 
-// הערה: קובץ "use server" מחייב שכל export יהיה פונקציה async בלבד (לא ניתן
-// לייצא maxDuration/קבוע כאן) — תקציב-הריצה המורחב (ל"קור" ראשוני של
-// Vercel) מוגדר במקום התקף: app/layout.tsx (מיושם על כל המסכים שקוראים
-// ל-actions כאן, כולל דף-הבית/מפה/מסלול/מזג-אוויר).
-
 /**
  * חיבור-קריאה-בלבד למסך-ההדגמה אל שכבות-השירות שכבר קיימות ועובדות
- * במערכת האמיתית (Open-Meteo למזג-אוויר, בנק ישראל+Frankfurter לשערי-מטבע —
- * שתיהן חינמיות לגמרי, בלי מפתח API, ולא תלויות ב-DATA_SOURCE כי אין בהן
- * נתוני-משתמש שצריך לבודד). קובץ נפרד לגמרי מ-app/(app)/today/actions.ts —
- * לא נוגע בו, לא יוצר ספק חדש, רק קורא לאותן פונקציות מיוצאות בדיוק. אם
- * הקריאה נכשלת (בלי אינטרנט/הספק לא זמין), מוחזר null במקום להמציא נתון —
- * הצד הקורא (mobile-home-mock.tsx) חייב להציג זאת בבירור כשגיאה/הדגמה.
+ * במערכת האמיתית (בנק ישראל+Frankfurter לשערי-מטבע — חינמי לגמרי, בלי
+ * מפתח API, ולא תלוי ב-DATA_SOURCE כי אין בו נתוני-משתמש שצריך לבודד).
+ * קובץ נפרד לגמרי מ-app/(app)/today/actions.ts — לא נוגע בו, לא יוצר ספק
+ * חדש, רק קורא לאותן פונקציות מיוצאות בדיוק. אם הקריאה נכשלת (בלי
+ * אינטרנט/הספק לא זמין), מוחזר null במקום להמציא נתון — הצד הקורא חייב
+ * להציג זאת בבירור כשגיאה/הדגמה.
+ *
+ * מזג-האוויר (DemoWeatherResult/DemoWeatherHour, הטיפוסים בלבד נשארים כאן
+ * לשימוש הצדדים הקוראים) עבר ל-app/api/weather/route.ts — Route Handler
+ * רגיל, לא server action. נמצא ונתפס ישירות מול production: אותה קריאה
+ * בדיוק, לאותו ספק, הצליחה ב-100% מהניסיונות כ-Route Handler, אך נכשלה
+ * לעיתים קרובות (מוחזר null בלי חריגה כלל) כשנקראה כ-server action
+ * מרכיב-לקוח — התנהגות ספציפית למנגנון-הזימון של server actions ב-Vercel
+ * (currency, server action באותו קובץ ובאותה שיטה בדיוק, לא נכשל אף פעם
+ * באותן בדיקות) — לא בעיה בספק/ברשת/בקוד עצמו.
  */
-
-const BANGKOK = { lat: 13.7563, lng: 100.5018 };
 
 export interface DemoWeatherHour {
   time: string;
@@ -45,34 +46,6 @@ export interface DemoWeatherResult {
   sunset: string | null;
   hourly: DemoWeatherHour[];
   provider: string;
-}
-
-export async function getDemoWeatherAction(location?: { lat: number; lng: number }): Promise<DemoWeatherResult | null> {
-  try {
-    const provider = openMeteoWeatherProvider;
-    const coords = location ?? BANGKOK;
-    const [current, daily, hourly] = await Promise.all([
-      provider.getCurrentConditions(coords),
-      provider.getDailyForecast(coords, { days: 1 }),
-      provider.getHourlyForecast(coords, { hours: 6 }),
-    ]);
-    return {
-      temperatureC: current.temperatureC,
-      feelsLikeC: current.feelsLikeC,
-      minTemperatureC: daily[0]?.minTemperatureC ?? null,
-      maxTemperatureC: daily[0]?.maxTemperatureC ?? null,
-      condition: current.condition,
-      precipitationProbabilityPercent: daily[0]?.precipitationProbabilityPercent ?? null,
-      humidityPercent: current.humidityPercent,
-      windSpeedKph: current.windSpeedKph,
-      sunrise: daily[0]?.sunrise ?? null,
-      sunset: daily[0]?.sunset ?? null,
-      hourly: hourly.map((h) => ({ time: h.forecastAt, temperatureC: h.temperatureC, condition: h.condition, precipitationProbabilityPercent: h.precipitationProbabilityPercent })),
-      provider: current.provider,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export interface DemoOcrResult {
