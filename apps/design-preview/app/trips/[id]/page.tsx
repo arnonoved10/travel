@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ScreenShell, ScreenHeader, Card, ElevatedCard, Badge, PrimaryButton, DangerButton, Money, COLOR, SPACE, ShareIcon, SuitcaseIcon, CalendarIcon, ProfileIcon } from "../../design-system";
+import { ScreenShell, ScreenHeader, Card, ElevatedCard, Badge, PrimaryButton, DangerButton, Field, Money, COLOR, SPACE, ShareIcon, SuitcaseIcon, CalendarIcon, ProfileIcon, inputStyle } from "../../design-system";
 import { FlagIcon } from "../../country-currency-data";
-import { findAnyTrip, updateTrip, deleteCustomTrip, type DemoTrip } from "../../trips-data";
+import { CountryPickerButton } from "../../pickers";
+import { findAnyTrip, updateTrip, deleteCustomTrip, setActiveTrip, type DemoTrip } from "../../trips-data";
 import { loadStops } from "../../trip-content";
 import { DateRangePicker } from "../../date-range-picker";
 
@@ -14,6 +15,7 @@ export default function TripOverviewScreen() {
   const [trip, setTrip] = useState<DemoTrip | null | undefined>(undefined);
   const [cityCount, setCityCount] = useState(0);
   const [editingDates, setEditingDates] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
 
   useEffect(() => {
     setTrip(findAnyTrip(params.id));
@@ -68,9 +70,20 @@ export default function TripOverviewScreen() {
       <div style={{ position: "relative", height: "150px", borderRadius: "16px", overflow: "hidden", background: `linear-gradient(160deg, ${COLOR.primary}55, ${COLOR.cardElevated})`, border: `1px solid ${COLOR.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <FlagIcon countryCode={trip.countryCode} size={56} />
         <span style={{ position: "absolute", top: SPACE.md, insetInlineStart: SPACE.md }}>
-          <Badge tone={trip.status === "active" ? "success" : "primary"}>{trip.status === "active" ? "מאושר" : "מתוכנן"}</Badge>
+          <Badge tone={trip.status === "active" ? "success" : "primary"}>{trip.status === "active" ? "✓ הטיול הפעיל" : trip.status === "completed" ? "הסתיים" : "מתוכנן"}</Badge>
         </span>
       </div>
+
+      {trip.status !== "active" ? (
+        <PrimaryButton
+          onClick={() => {
+            const updated = setActiveTrip(trip.id);
+            if (updated) setTrip(updated);
+          }}
+        >
+          הפוך לטיול הפעיל
+        </PrimaryButton>
+      ) : null}
 
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
         <FlagIcon countryCode={trip.countryCode} size={22} />
@@ -78,10 +91,20 @@ export default function TripOverviewScreen() {
         <span style={{ fontSize: "12px", color: COLOR.textSecondary }}>
           {fmt(trip.startDate)} - {fmt(trip.endDate)}
         </span>
+      </div>
+
+      <div style={{ display: "flex", gap: SPACE.sm }}>
+        <button
+          type="button"
+          onClick={() => setEditingDetails(true)}
+          style={{ flex: 1, padding: "8px 10px", borderRadius: "10px", background: COLOR.card, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary, fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+        >
+          עריכת פרטי הטיול
+        </button>
         <button
           type="button"
           onClick={() => setEditingDates(true)}
-          style={{ marginInlineStart: "auto", padding: "5px 10px", borderRadius: "999px", background: `${COLOR.primary}22`, border: `1px solid ${COLOR.primary}55`, color: COLOR.primaryLight, fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+          style={{ flex: 1, padding: "8px 10px", borderRadius: "10px", background: `${COLOR.primary}22`, border: `1px solid ${COLOR.primary}55`, color: COLOR.primaryLight, fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
         >
           עריכת תאריכים
         </button>
@@ -128,12 +151,56 @@ export default function TripOverviewScreen() {
           }}
         />
       ) : null}
+
+      {editingDetails ? (
+        <EditTripDetailsSheet
+          trip={trip}
+          onClose={() => setEditingDetails(false)}
+          onSave={(patch) => {
+            const updated = updateTrip(trip.id, patch);
+            if (updated) setTrip(updated);
+            setEditingDetails(false);
+          }}
+        />
+      ) : null}
     </ScreenShell>
   );
 }
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" });
+}
+
+function EditTripDetailsSheet({ trip, onClose, onSave }: { trip: DemoTrip; onClose: () => void; onSave: (patch: Partial<Omit<DemoTrip, "id">>) => void }) {
+  const [name, setName] = useState(trip.name);
+  const [countryCode, setCountryCode] = useState<string | null>(trip.countryCode);
+  const [travelers, setTravelers] = useState(String(trip.travelers));
+
+  const canSave = name.trim().length > 0 && !!countryCode && Number(travelers) > 0;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} />
+      <div style={{ position: "relative", width: "100%", maxWidth: "480px", background: "#0e1930", borderTop: "1px solid rgba(120,150,200,0.2)", borderTopLeftRadius: "20px", borderTopRightRadius: "20px", padding: "16px", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: SPACE.md }}>
+        <div style={{ fontSize: "15px", fontWeight: 800, color: "#f4f6fb" }}>עריכת פרטי הטיול</div>
+        <Field label="שם הטיול">
+          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="יעד">
+          <CountryPickerButton selectedCode={countryCode} onSelect={(c) => setCountryCode(c.code)} placeholder="בחר יעד" />
+        </Field>
+        <Field label="מספר נוסעים">
+          <input type="number" min={1} value={travelers} onChange={(e) => setTravelers(e.target.value)} style={inputStyle} />
+        </Field>
+        <PrimaryButton
+          disabled={!canSave}
+          onClick={() => canSave && countryCode && onSave({ name: name.trim(), countryCode, travelers: Number(travelers) })}
+        >
+          שמירה
+        </PrimaryButton>
+      </div>
+    </div>
+  );
 }
 
 function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {

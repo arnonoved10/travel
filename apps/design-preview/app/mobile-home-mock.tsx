@@ -8,6 +8,7 @@ import { getDemoWeatherAction, getDemoCurrencyRatesAction, type DemoWeatherResul
 import { useWalletStore } from "./wallet-store";
 import { formatMoney } from "./wallet-data";
 import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
+import { FlagIcon } from "./country-currency-data";
 
 // שעון אמיתי לפי אזור-זמן — לא זמן קבוע. מתעדכן כל 30 שניות (מספיק לתצוגת
 // שעה, לא צריך רזולוציית-שנייה). אותה שיטה בדיוק כמו WorldClockCard האמיתי
@@ -977,8 +978,11 @@ export function MobileHomeMock() {
   // קוראים מ-localStorage — אותו דפוס-בטיחות-הידרציה כמו useWalletStore.
   // מחושב מהטיול הפעיל האמיתי (כולל עריכות שנשמרו), לא מקבועים.
   const [tripProgress, setTripProgress] = useState<{ dayIndex: number; totalDays: number; daysRemaining: number; percent: number } | null>(null);
+  const [activeTripInfo, setActiveTripInfo] = useState<{ name: string; countryCode: string } | null>(null);
   useEffect(() => {
-    setTripProgress(computeTripProgressFor(activeTrip()));
+    const trip = activeTrip();
+    setTripProgress(computeTripProgressFor(trip));
+    setActiveTripInfo({ name: trip.name, countryCode: trip.countryCode });
   }, []);
 
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
@@ -1398,6 +1402,16 @@ export function MobileHomeMock() {
         <div style={{ textAlign: "center", fontSize: "11px", color: COLOR.textSecondary, marginTop: "-3px" }}>
           {timeDiffLabel("Asia/Jerusalem", "Asia/Bangkok")}
         </div>
+
+        {/* שם הטיול הפעיל + מעבר-מהיר למסך "הטיולים שלי" להחלפת טיול —
+            צ'יפ נפרד מחוץ ל-Link של כרטיס-ההתקדמות (לא ניתן לקנן קישורים). */}
+        {activeTripInfo ? (
+          <Link href="/trips" style={{ display: "flex", alignItems: "center", gap: "6px", textDecoration: "none", fontSize: "11.5px", fontWeight: 700, color: COLOR.textSecondary, padding: "0 2px" }}>
+            <FlagIcon countryCode={activeTripInfo.countryCode} size={14} />
+            <span>{activeTripInfo.name}</span>
+            <span style={{ color: COLOR.purple }}>· החלפת טיול</span>
+          </Link>
+        ) : null}
 
         {/* כרטיס טיול מרכזי + התקדמות — טבעת/בר בטורקיז, "נותרו X ימים" בסגול (בדיוק לפי המוקאפ). לחיץ אמיתית -> מסך המסלול. */}
         <Link href="/route" style={{ display: "block", textDecoration: "none", color: "inherit" }}>

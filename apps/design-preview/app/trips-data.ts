@@ -77,7 +77,10 @@ export function loadCustomTrips(): DemoTrip[] {
 }
 export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status">): DemoTrip {
   const trips = loadCustomTrips();
-  const full: DemoTrip = { ...trip, id: nextId("trip"), status: new Date(trip.startDate) > new Date(DEMO_REFERENCE_DATE) ? "upcoming" : "active" };
+  // סטטוס ראשוני לפי תאריכים בלבד — לעולם לא "active" אוטומטית, כדי שלא
+  // יהיו כמה טיולים "פעילים" בו-זמנית: הפיכה לטיול-הפעיל היא תמיד פעולה
+  // מפורשת דרך setActiveTrip (שגם מוריד את הטיול-הפעיל-הקודם).
+  const full: DemoTrip = { ...trip, id: nextId("trip"), status: new Date(trip.endDate) < new Date(DEMO_REFERENCE_DATE) ? "completed" : "upcoming" };
   saveJSON(SK_CUSTOM_TRIPS, [...trips, full]);
   return full;
 }
@@ -139,4 +142,16 @@ export function findAnyTrip(id: string): DemoTrip | null {
  * אחרת נופל חזרה לטיול-יפן (תמיד קיים). */
 export function activeTrip(): DemoTrip {
   return allTrips().find((t) => t.status === "active") ?? findAnyTrip(JAPAN_TRIP.id) ?? JAPAN_TRIP;
+}
+
+/** מעביר את "הטיול הפעיל" לטיול אחר — פעולה מפורשת ויחידה שמשנה status
+ * ל-"active", ומורידה כל טיול אחר שהיה "active" (לפי תאריכים, ל-upcoming/
+ * completed) כדי שלעולם לא יהיו כמה טיולים "פעילים" בו-זמנית. */
+export function setActiveTrip(id: string, referenceDate = DEMO_REFERENCE_DATE): DemoTrip | null {
+  if (!findAnyTrip(id)) return null;
+  for (const t of allTrips()) {
+    if (t.id === id || t.status !== "active") continue;
+    updateTrip(t.id, { status: new Date(t.endDate) < new Date(referenceDate) ? "completed" : "upcoming" });
+  }
+  return updateTrip(id, { status: "active" });
 }
