@@ -149,6 +149,110 @@ export async function geocodeQueryAction(query: string, countryCode?: string | n
   }
 }
 
+/**
+ * הופכת נקודה שנלחצה על המפה לשם-מקום קריא (עיר + מדינה) — משמשת את
+ * "בחירת מיקום על המפה" (גם כשאין עדיין טיול/מסלול): המשתמש לוחץ על
+ * המפה, ומקבל מיד שם-מקום אמיתי במקום קואורדינטות גולמיות. Nominatim
+ * reverse, אותו עיקרון בדיוק כמו reverseGeocodeCountryAction למעלה, רק
+ * ברזולוציית-עיר (zoom=12) ולא רזולוציית-מדינה בלבד.
+ */
+export async function reverseGeocodePlaceAction(lat: number, lon: number): Promise<{ displayName: string; city: string; countryCode: string } | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=12&addressdetails=1`;
+    const res = await fetch(url, { headers: { "User-Agent": "trip-master-design-preview/1.0 (demo, read-only)" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const addr = data?.address ?? {};
+    const city: string | null = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null;
+    const countryCode: string | null = addr.country_code ? String(addr.country_code).toUpperCase() : null;
+    if (!city || !countryCode) return null;
+    return { displayName: String(data.display_name ?? city), city, countryCode };
+  } catch {
+    return null;
+  }
+}
+
+export interface NearbyPlace {
+  id: string;
+  name: string;
+  category: "cafe" | "restaurant" | "bar" | "viewpoint" | "attraction";
+  lat: number;
+  lon: number;
+}
+
+// רדיוסים קטנים בכוונה: שאילתת "tourism=attraction" רחבה מאוד (מכסה כל
+// מיני דברים בעיר צפופה) ויקרה חישובית — שאילתה משולבת עם רדיוס גדול מדי
+// גרמה בפועל ל-timeout מלא בצד Overpass (עד 25+ שניות, גם עם [timeout:20]
+// בשאילתה עצמה) ולרשימה ריקה בכל פעם, גם כשיש המון מקומות אמיתיים
+// בקרבת-מקום. נמצא ונתפס בבדיקה בפועל.
+const OVERPASS_CATEGORY_QUERY: Record<NearbyPlace["category"], string> = {
+  cafe: `node["amenity"="cafe"]["name"](around:1200,{lat},{lon});`,
+  restaurant: `node["amenity"="restaurant"]["name"](around:1200,{lat},{lon});`,
+  bar: `node["amenity"~"^(bar|pub)$"]["name"](around:1200,{lat},{lon});`,
+  viewpoint: `node["tourism"="viewpoint"]["name"](around:2000,{lat},{lon});`,
+  attraction: `node["tourism"="attraction"]["name"](around:1200,{lat},{lon});`,
+};
+
+/**
+ * שולפת מקומות אמיתיים סביב נקודה (בתי קפה/מסעדות/ברים/תצפיות/אטרקציות)
+ * דרך Overpass API — שאילתת-מפה חופשית-לגמרי, בלי מפתח, על נתוני
+ * OpenStreetMap (אותו מקור-אמת בדיוק כמו אריחי המפה וה-geocoding כאן) —
+ * לפי בקשה מפורשת: "שברגע שאני כותב יעד תוכל להמליץ לי על מקומות". לא
+ * ממציאה מקומות — אם Overpass לא זמין/עמוס, מוחזרת רשימה ריקה במקום
+ * נתון מזויף, בדיוק כמו כל שאר הפעולות-החיצוניות באפליקציה הזו.
+ */
+export async function nearbyPlacesAction(lat: number, lon: number): Promise<NearbyPlace[]> {
+  try {
+    const query = `[out:json][timeout:10];(${Object.values(OVERPASS_CATEGORY_QUERY)
+      .map((q) => q.replace(/{lat}/g, String(lat)).replace(/{lon}/g, String(lon)))
+      .join("")});out center 60;`;
+    // AbortController נדיב אך סופי: Overpass החינמי-משותף לפעמים לא עומד אפילו
+    // ב-[timeout:10] הפנימי שלו (עמוס/מוגבל-קצב), ואז פשוט לא עונה בכלל —
+    // בלי זה הקריאה הייתה יכולה להיתקע דקות, במקום להיכשל בשקט לרשימה ריקה.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    let res: Response;
+    try {
+      res = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "User-Agent": "trip-master-design-preview/1.0 (demo, read-only)" },
+        body: query,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return [];
+    const data = await res.json();
+    const elements: { id: number; lat: number; lon: number; tags?: Record<string, string> }[] = Array.isArray(data?.elements) ? data.elements : [];
+    const results: NearbyPlace[] = [];
+    for (const el of elements) {
+      const tags = el.tags ?? {};
+      const name = tags.name;
+      if (!name || el.lat == null || el.lon == null) continue;
+      let category: NearbyPlace["category"] | null = null;
+      if (tags.amenity === "cafe") category = "cafe";
+      else if (tags.amenity === "restaurant") category = "restaurant";
+      else if (tags.amenity === "bar" || tags.amenity === "pub") category = "bar";
+      else if (tags.tourism === "viewpoint") category = "viewpoint";
+      else if (tags.tourism === "attraction") category = "attraction";
+      if (!category) continue;
+      results.push({ id: String(el.id), name, category, lat: el.lat, lon: el.lon });
+    }
+    // עד 10 לכל קטגוריה, כדי שקטגוריה עתירת-תוצאות (למשל מסעדות בעיר גדולה)
+    // לא תציף/תדחוק החוצה קטגוריות דלילות יותר (למשל תצפיות).
+    const perCategory = new Map<string, number>();
+    return results.filter((p) => {
+      const n = perCategory.get(p.category) ?? 0;
+      if (n >= 10) return false;
+      perCategory.set(p.category, n + 1);
+      return true;
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function getDemoCurrencyRatesAction(): Promise<DemoCurrencyResult | null> {
   try {
     const provider = boiFrankfurterCurrencyRateProvider;

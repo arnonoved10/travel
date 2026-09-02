@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { LEGACY_COLOR as COLOR, LegacyBottomNav as BottomNav, LEGACY_NAV_HEIGHT as NAV_HEIGHT } from "../route/legacy-shared";
 import { loadStops, loadActivities, addStop, updateStop, deleteStop, type TripStop, type TripActivity } from "../trip-content";
 import { activeTrip } from "../trips-data";
-import { geocodeQueryAction } from "../actions";
+import { geocodeQueryAction, reverseGeocodePlaceAction } from "../actions";
 import { StopEditSheet } from "../route/stop-edit-sheet";
 import type { MapPoint3D } from "./maplibre-map-inner";
 
@@ -18,6 +18,11 @@ import type { MapPoint3D } from "./maplibre-map-inner";
  * תחנה משתמשת ב-StopEditSheet הקיים (לא כפילות רכיב שלישית). קואורדינטות
  * אמיתיות מתקבלות מ-geocodeQueryAction (Nominatim) בזמן שמירת תחנה/
  * פעילות, עם איתור-רקע אוטומטי חד-פעמי לתחנות ישנות שנוצרו לפני התכונה.
+ *
+ * עודכן: המפה עצמה תמיד מוצגת ואינטראקטיבית — גם בלי טיול פעיל וגם בלי
+ * אף תחנה — כדי "שגם כשאין טיולים תהיה מפה תלת-ממדית שאוכל לבחור עליה
+ * מקומות" (בקשה מפורשת). לחיצה חופשית על המפה הופכת לשם-מקום אמיתי
+ * (reverse geocoding) עם אפשרות מיידית להוסיף אותו כתחנה.
  */
 
 const MapLibreMap = dynamic(() => import("./maplibre-map-inner").then((m) => m.DesignPreviewMapLibre), {
@@ -29,6 +34,7 @@ const MapLibreMap = dynamic(() => import("./maplibre-map-inner").then((m) => m.D
 
 const STOP_COLORS = ["#8a5adf", "#4f8fe0", "#43d6aa", "#f5a544", "#ef6f61", "#e0699a"];
 const ACTIVITY_COLOR = "#43d6aa";
+const PICKED_COLOR = "#f4f6fb";
 
 // בנוי כולו על UTC (לא זמן-מקומי) בכוונה: `new Date(iso + "T00:00:00")`
 // מתפרש כזמן-מקומי, ואז המרה חזרה ל-toISOString (שתמיד UTC) יכולה
@@ -46,6 +52,14 @@ function fmtRange(a: string, b: string): string {
   return a === b ? fmt(a) : `${fmt(a)} – ${fmt(b)}`;
 }
 
+interface PickedLocation {
+  lat: number;
+  lon: number;
+  city: string;
+  countryCode: string;
+  displayName: string;
+}
+
 export default function MapPreviewScreen() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
@@ -58,6 +72,9 @@ export default function MapPreviewScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingStop, setEditingStop] = useState<{ mode: "add" | "edit"; stop: TripStop | null } | null>(null);
   const [backfilling, setBackfilling] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+  const [pickingLoading, setPickingLoading] = useState(false);
 
   function reload() {
     setStops(loadStops());
@@ -68,6 +85,15 @@ export default function MapPreviewScreen() {
     setTripId(activeTrip()?.id ?? null);
     reload();
     setChecked(true);
+    // מיטב-מאמץ: אם המשתמש מרשה, זה נותן מרכז-פתיחה שימושי למפה כשאין
+    // עדיין אף תחנה — לא חוסם ולא נכשל אם אין הרשאה/דפדפן לא תומך.
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => {},
+        { timeout: 6000 },
+      );
+    }
   }, []);
 
   // איתור-רקע חד-פעמי לתחנות בלי קואורדינטות (נוצרו לפני שהתכונה קיימה,
@@ -139,14 +165,29 @@ export default function MapPreviewScreen() {
     ...dayActivities.map((a, i) => ({ id: a.id, lat: a.lat!, lon: a.lon!, label: a.title, sublabel: a.time, color: ACTIVITY_COLOR, isSelected: selectedId === a.id, order: (dayStop ? 2 : 1) + i })),
   ];
 
-  const points = mode === "trip" ? tripPoints : dayPoints;
+  const basePoints = mode === "trip" ? tripPoints : dayPoints;
+  const pickedPoint: MapPoint3D[] = pickedLocation
+    ? [{ id: "picked", lat: pickedLocation.lat, lon: pickedLocation.lon, label: pickedLocation.city, sublabel: "מיקום נבחר", color: PICKED_COLOR, excludeFromRoute: true }]
+    : [];
+  const points = [...basePoints, ...pickedPoint];
   const routeColor = mode === "trip" ? STOP_COLORS[0]! : ACTIVITY_COLOR;
+  const initialCenter = userLocation ? { lat: userLocation.lat, lon: userLocation.lon, zoom: 11 } : undefined;
+
+  async function handleMapClick(lat: number, lon: number) {
+    setSelectedId(null);
+    setPickingLoading(true);
+    const place = await reverseGeocodePlaceAction(lat, lon);
+    setPickingLoading(false);
+    if (!place) return;
+    setPickedLocation({ lat, lon, city: place.city, countryCode: place.countryCode, displayName: place.displayName });
+  }
 
   function handleSaveStop(patch: Omit<TripStop, "id">) {
     if (editingStop?.mode === "edit" && editingStop.stop) updateStop(editingStop.stop.id, patch);
     else addStop(patch);
     reload();
     setEditingStop(null);
+    setPickedLocation(null);
   }
   function handleDeleteStop() {
     if (editingStop?.mode !== "edit" || !editingStop.stop) return;
@@ -157,20 +198,6 @@ export default function MapPreviewScreen() {
   }
 
   if (!checked) return null;
-
-  if (!tripId) {
-    return (
-      <EmptyShell title="אין טיול פעיל" subtitle="בחרו או צרו טיול כדי לראות את המסלול שלו על המפה" ctaLabel="מעבר לטיולים שלי" onCta={() => router.push("/trips")} />
-    );
-  }
-
-  if (stops.length === 0) {
-    return (
-      <EmptyShell title="אין עדיין מסלול" subtitle="הוסיפו יעדים למסלול הטיול כדי לראות אותם כאן על המפה" ctaLabel="+ הוספת יעד ראשון" onCta={() => setEditingStop({ mode: "add", stop: null })}>
-        {editingStop ? <StopEditSheet initial={editingStop.stop} onClose={() => setEditingStop(null)} onSave={handleSaveStop} onDelete={editingStop.mode === "edit" ? handleDeleteStop : undefined} /> : null}
-      </EmptyShell>
-    );
-  }
 
   return (
     <div style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-assistant), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
@@ -194,51 +221,89 @@ export default function MapPreviewScreen() {
         </button>
       </div>
 
+      {!tripId ? (
+        <div style={{ margin: "0 16px 6px", fontSize: "11px", color: COLOR.textSecondary, background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}`, borderRadius: "10px", padding: "7px 10px" }}>
+          אין כרגע טיול פעיל — אפשר עדיין לחקור את המפה ולבחור מקומות; כדי לתכנן ימים מלאים{" "}
+          <button type="button" onClick={() => router.push("/trips")} style={{ background: "none", border: "none", color: COLOR.purple, fontWeight: 700, cursor: "pointer", padding: 0, fontSize: "11px", textDecoration: "underline" }}>
+            בחרו או צרו טיול
+          </button>
+          .
+        </div>
+      ) : null}
+
       {/* ציר-הטיול: "כל הטיול" + כל יום בטווח התאריכים של המסלול — לחיצה
-          על יום מסננת את המפה לתחנה+פעילויות אותו יום בלבד. */}
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", padding: "4px 16px 8px", flexShrink: 0 }}>
-        <button
-          type="button"
-          onClick={() => setMode("trip")}
-          style={{ flexShrink: 0, padding: "8px 14px", borderRadius: "999px", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", background: mode === "trip" ? COLOR.purple : "#12213f", border: `1px solid ${mode === "trip" ? COLOR.purple : COLOR.cardBorder}`, color: "#fff" }}
-        >
-          כל הטיול
-        </button>
-        {allDays.map((d) => {
-          const active = mode === d;
-          const dd = new Date(d);
-          const dotColor = stopColorForDate(d);
-          return (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setMode(d)}
-              style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", padding: "6px 10px", borderRadius: "12px", background: active ? COLOR.purple : "#12213f", border: `1px solid ${active ? COLOR.purple : COLOR.cardBorder}`, cursor: "pointer" }}
-            >
-              <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: dotColor }} />
-              <span style={{ fontSize: "9.5px", color: active ? "#fff" : COLOR.textSecondary }}>{dd.toLocaleDateString("he-IL", { weekday: "short" })}</span>
-              <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#fff" }}>{dd.getDate()}</span>
-            </button>
-          );
-        })}
-      </div>
+          על יום מסננת את המפה לתחנה+פעילויות אותו יום בלבד. מוצג רק כשיש
+          לפחות תחנה אחת (בלי תחנות אין "ימים" להציג). */}
+      {stops.length > 0 ? (
+        <div style={{ display: "flex", gap: "6px", overflowX: "auto", padding: "4px 16px 8px", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setMode("trip")}
+            style={{ flexShrink: 0, padding: "8px 14px", borderRadius: "999px", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", background: mode === "trip" ? COLOR.purple : "#12213f", border: `1px solid ${mode === "trip" ? COLOR.purple : COLOR.cardBorder}`, color: "#fff" }}
+          >
+            כל הטיול
+          </button>
+          {allDays.map((d) => {
+            const active = mode === d;
+            const dd = new Date(d);
+            const dotColor = stopColorForDate(d);
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setMode(d)}
+                style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", padding: "6px 10px", borderRadius: "12px", background: active ? COLOR.purple : "#12213f", border: `1px solid ${active ? COLOR.purple : COLOR.cardBorder}`, cursor: "pointer" }}
+              >
+                <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: dotColor }} />
+                <span style={{ fontSize: "9.5px", color: active ? "#fff" : COLOR.textSecondary }}>{dd.toLocaleDateString("he-IL", { weekday: "short" })}</span>
+                <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#fff" }}>{dd.getDate()}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div style={{ flex: 1, minHeight: 0, padding: "0 16px", position: "relative" }}>
         <div style={{ position: "relative", height: "100%", borderRadius: "18px", overflow: "hidden", border: `1px solid ${COLOR.cardBorder}` }}>
-          {points.length > 0 ? (
-            <MapLibreMap points={points} routeColor={routeColor} pitch={pitch} onSelect={setSelectedId} fitSignal={fitSignal} />
-          ) : (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "8px", padding: "20px", textAlign: "center" }}>
-              <div style={{ fontSize: "13px", color: COLOR.textSecondary }}>
-                {backfilling ? "מאתר מיקומים אמיתיים לתחנות..." : mode === "trip" ? "לא נמצאו עדיין קואורדינטות לאף תחנה" : "אין ליום הזה תחנה או פעילויות עם מיקום ידוע"}
-              </div>
+          <MapLibreMap points={points} routeColor={routeColor} pitch={pitch} onSelect={setSelectedId} onMapClick={handleMapClick} fitSignal={fitSignal} initialCenter={initialCenter} />
+          {backfilling ? (
+            <div style={{ position: "absolute", top: "10px", insetInlineStart: "10px", background: "rgba(10,20,40,0.85)", border: `1px solid ${COLOR.cardBorder}`, borderRadius: "10px", padding: "6px 10px", fontSize: "11px", color: COLOR.textSecondary, zIndex: 5 }}>
+              מאתר מיקומים אמיתיים לתחנות...
             </div>
-          )}
+          ) : null}
+          {pickingLoading ? (
+            <div style={{ position: "absolute", top: "10px", insetInlineStart: "10px", background: "rgba(10,20,40,0.85)", border: `1px solid ${COLOR.cardBorder}`, borderRadius: "10px", padding: "6px 10px", fontSize: "11px", color: COLOR.textSecondary, zIndex: 5 }}>
+              מזהה את המקום שנבחר...
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div style={{ padding: "10px 16px", flexShrink: 0, maxHeight: "34%", overflowY: "auto" }}>
-        {mode === "trip" ? (
+      {pickedLocation ? (
+        <div style={{ margin: "10px 16px 0", padding: "12px", borderRadius: "14px", background: "#12213f", border: `1px solid ${COLOR.purple}55`, display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>מיקום נבחר</div>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pickedLocation.displayName}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditingStop({ mode: "add", stop: null })}
+            style={{ padding: "8px 14px", borderRadius: "10px", background: COLOR.purple, border: "none", color: "#fff", fontSize: "11.5px", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+          >
+            + הוספה כתחנה
+          </button>
+          <button type="button" onClick={() => setPickedLocation(null)} aria-label="ביטול הבחירה" style={{ width: "28px", height: "28px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", cursor: "pointer", flexShrink: 0 }}>
+            ✕
+          </button>
+        </div>
+      ) : null}
+
+      <div style={{ padding: "10px 16px", flexShrink: 0, maxHeight: "30%", overflowY: "auto" }}>
+        {stops.length === 0 ? (
+          <div style={{ fontSize: "12px", color: COLOR.textSecondary, textAlign: "center", padding: "6px 2px" }}>
+            אין עדיין מסלול — לחצו על המפה כדי לבחור מקום, או על + כדי להוסיף יעד ישירות
+          </div>
+        ) : mode === "trip" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             {sortedStops.map((s, i) => (
               <div
@@ -288,51 +353,30 @@ export default function MapPreviewScreen() {
                   </div>
                 ))
             )}
-            <button
-              type="button"
-              onClick={() => router.push(`/trips/${tripId}/plan?day=${mode}`)}
-              style={{ marginTop: "4px", padding: "10px", borderRadius: "12px", background: "rgba(138,90,223,0.14)", border: `1px solid ${COLOR.purple}40`, color: COLOR.purple, fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
-            >
-              פתיחת התוכנית המלאה ליום זה ←
-            </button>
+            {tripId ? (
+              <button
+                type="button"
+                onClick={() => router.push(`/trips/${tripId}/plan?day=${mode}`)}
+                style={{ marginTop: "4px", padding: "10px", borderRadius: "12px", background: "rgba(138,90,223,0.14)", border: `1px solid ${COLOR.purple}40`, color: COLOR.purple, fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+              >
+                פתיחת התוכנית המלאה ליום זה ←
+              </button>
+            ) : null}
           </div>
         )}
       </div>
 
       <BottomNav active="map" />
 
-      {editingStop ? <StopEditSheet initial={editingStop.stop} onClose={() => setEditingStop(null)} onSave={handleSaveStop} onDelete={editingStop.mode === "edit" ? handleDeleteStop : undefined} /> : null}
-    </div>
-  );
-}
-
-function EmptyShell({
-  title,
-  subtitle,
-  ctaLabel,
-  onCta,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  ctaLabel: string;
-  onCta: () => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-assistant), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px 4px", flexShrink: 0 }}>
-        <h1 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#fff" }}>המסלול על המפה</h1>
-      </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", padding: "24px", textAlign: "center" }}>
-        <div style={{ fontSize: "15px", fontWeight: 800, color: "#fff" }}>{title}</div>
-        <div style={{ fontSize: "13px", color: COLOR.textSecondary, maxWidth: "280px" }}>{subtitle}</div>
-        <button type="button" onClick={onCta} style={{ padding: "10px 20px", borderRadius: "999px", background: COLOR.purple, border: "none", color: "#fff", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}>
-          {ctaLabel}
-        </button>
-      </div>
-      <BottomNav active="map" />
-      {children}
+      {editingStop ? (
+        <StopEditSheet
+          initial={editingStop.stop}
+          prefill={pickedLocation && editingStop.mode === "add" ? { city: pickedLocation.city, countryCode: pickedLocation.countryCode, lat: pickedLocation.lat, lon: pickedLocation.lon } : undefined}
+          onClose={() => setEditingStop(null)}
+          onSave={handleSaveStop}
+          onDelete={editingStop.mode === "edit" ? handleDeleteStop : undefined}
+        />
+      ) : null}
     </div>
   );
 }

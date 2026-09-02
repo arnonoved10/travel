@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CountryPickerButton } from "../pickers";
 import { DateRangePicker } from "../date-range-picker";
 import type { TripStop, StopStatus } from "../trip-content";
-import { geocodeQueryAction } from "../actions";
+import { geocodeQueryAction, nearbyPlacesAction, type NearbyPlace } from "../actions";
 
 /**
  * עריכת/הוספת תחנה במסלול הטיול — קודם לא הייתה שום דרך אמיתית לערוך,
  * להוסיף או למחוק תחנה (כפתור "הוסף תחנה" לא עשה כלום, ואין היה עריכה
  * בכלל). רכיב עצמאי (לא נוגע ב-legacy-shared.tsx/design-system.tsx).
+ *
+ * עודכן: קואורדינטות אמיתיות מתעדכנות באופן ריאקטיבי (לא רק בשמירה) —
+ * כמה שניות אחרי שהוקלדו עיר+מדינה, מאותר מיקום אמיתי ברקע, ומיד אחר-כך
+ * נשלפים מקומות אמיתיים סביבו (בתי קפה/מסעדות/ברים/תצפיות/אטרקציות) דרך
+ * Overpass — לפי בקשה מפורשת: "ברגע שאני כותב יעד תוכל להמליץ לי על
+ * מקומות". גם prefill (למשל מלחיצה על המפה) מדלג על האיתור הראשוני.
  */
 
 const STATUSES: StopStatus[] = ["מאושר", "ממתין לאישור", "בוצע"];
@@ -21,21 +27,35 @@ const COLORS = {
   textMuted: "#9aa3bd",
   primary: "#8a5adf",
   danger: "#ef6f61",
+  success: "#43d6aa",
 };
+
+const CATEGORY_LABEL: Record<NearbyPlace["category"], string> = {
+  cafe: "בתי קפה",
+  restaurant: "מסעדות",
+  bar: "ברים",
+  viewpoint: "תצפיות",
+  attraction: "אטרקציות",
+};
+const CATEGORY_FILTERS: (NearbyPlace["category"] | "all")[] = ["all", "cafe", "restaurant", "bar", "viewpoint", "attraction"];
 
 export function StopEditSheet({
   initial,
+  prefill,
   onClose,
   onSave,
   onDelete,
 }: {
   initial: TripStop | null;
+  /** מילוי-מראש של עיר/מדינה/קואורדינטות כשמגיעים מלחיצה על המפה — לא
+   * "עריכה" (initial עדיין null, הכותרת נשארת "הוספת תחנה"). */
+  prefill?: { city: string; countryCode: string; lat?: number; lon?: number };
   onClose: () => void;
   onSave: (stop: Omit<TripStop, "id">) => void;
   onDelete?: () => void;
 }) {
-  const [city, setCity] = useState(initial?.city ?? "");
-  const [countryCode, setCountryCode] = useState<string | null>(initial?.countryCode ?? null);
+  const [city, setCity] = useState(initial?.city ?? prefill?.city ?? "");
+  const [countryCode, setCountryCode] = useState<string | null>(initial?.countryCode ?? prefill?.countryCode ?? null);
   const [startDate, setStartDate] = useState(initial?.startDate ?? "");
   const [endDate, setEndDate] = useState(initial?.endDate ?? "");
   const [hotel, setHotel] = useState(initial?.hotel ?? "");
@@ -46,21 +66,71 @@ export function StopEditSheet({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const [lat, setLat] = useState<number | undefined>(initial?.lat ?? prefill?.lat);
+  const [lon, setLon] = useState<number | undefined>(initial?.lon ?? prefill?.lon);
+  const [locating, setLocating] = useState(false);
+  const resolvedForRef = useRef<string | null>(lat != null && lon != null ? `${city.trim()}|${countryCode}` : null);
+
+  // איתור-מיקום ריאקטיבי: כמה שניות אחרי שהמשתמש הפסיק להקליד עיר (או
+  // בחר מדינה), ואם עדיין לא אותרו קואורדינטות בדיוק לצירוף הזה.
+  useEffect(() => {
+    const key = `${city.trim()}|${countryCode}`;
+    if (!city.trim() || !countryCode || resolvedForRef.current === key) return;
+    const timer = setTimeout(async () => {
+      setLocating(true);
+      const geo = await geocodeQueryAction(city.trim(), countryCode);
+      resolvedForRef.current = key;
+      setLat(geo?.lat);
+      setLon(geo?.lon);
+      setLocating(false);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [city, countryCode]);
+
+  // מקומות אמיתיים מומלצים סביב הקואורדינטות שאותרו — נטענים פעם אחת לכל
+  // מיקום (לא בכל הקלדה), נכשלים בשקט לרשימה ריקה אם Overpass לא זמין.
+  const [places, setPlaces] = useState<NearbyPlace[]>([]);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<(typeof CATEGORY_FILTERS)[number]>("all");
+  const placesForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (lat == null || lon == null) return;
+    const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+    if (placesForRef.current === key) return;
+    placesForRef.current = key;
+    setPlacesLoading(true);
+    nearbyPlacesAction(lat, lon)
+      .then(setPlaces)
+      .finally(() => setPlacesLoading(false));
+  }, [lat, lon]);
+
+  const selectedPlaceNames = new Set([...attractionsText.split("\n"), ...restaurantsText.split("\n")].map((s) => s.trim()).filter(Boolean));
+
+  function togglePlace(place: NearbyPlace) {
+    const isRestaurant = place.category === "restaurant";
+    const [text, setText] = isRestaurant ? [restaurantsText, setRestaurantsText] : [attractionsText, setAttractionsText];
+    const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (lines.includes(place.name)) {
+      setText(lines.filter((l) => l !== place.name).join("\n"));
+    } else {
+      setText([...lines, place.name].join("\n"));
+    }
+  }
+
   const canSave = city.trim().length > 0 && !!countryCode && !!startDate && !!endDate;
 
   async function handleSave() {
     if (!canSave || !countryCode || saving) return;
     setSaving(true);
-    // מאתרים קואורדינטות אמיתיות רק אם העיר/המדינה השתנו (או שאין עדיין
-    // קואורדינטות) — כדי לא לשלוח קריאת-geocoding מיותרת בכל עריכה, ולא
-    // לדרוס מיקום שכבר אותר נכון בעריכה שלא נגעה בעיר עצמה.
-    const cityChanged = city.trim() !== initial?.city || countryCode !== initial?.countryCode;
-    let lat = initial?.lat;
-    let lon = initial?.lon;
-    if (cityChanged || lat == null || lon == null) {
+    // רשת-ביטחון: אם המשתמש שמר לפני שאיתור-הרקע הספיק לרוץ (למשל הקליד
+    // ולחץ שמירה תוך פחות משנייה), מנסים איתור סופי אחד כאן.
+    let finalLat = lat;
+    let finalLon = lon;
+    if (finalLat == null || finalLon == null) {
       const geo = await geocodeQueryAction(city.trim(), countryCode);
-      lat = geo?.lat;
-      lon = geo?.lon;
+      finalLat = geo?.lat;
+      finalLon = geo?.lon;
     }
     onSave({
       city: city.trim(),
@@ -72,12 +142,13 @@ export function StopEditSheet({
       hotel: hotel.trim() || undefined,
       attractions: attractionsText.split("\n").map((s) => s.trim()).filter(Boolean),
       restaurants: restaurantsText.split("\n").map((s) => s.trim()).filter(Boolean),
-      lat,
-      lon,
+      lat: finalLat,
+      lon: finalLon,
     });
   }
 
   const dateLabel = startDate && endDate ? `${fmt(startDate)} - ${fmt(endDate)}` : "בחירת תאריכים";
+  const filteredPlaces = places.filter((p) => categoryFilter === "all" || p.category === categoryFilter);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 150, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -162,6 +233,83 @@ export function StopEditSheet({
           <textarea value={restaurantsText} onChange={(e) => setRestaurantsText(e.target.value)} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
         </FieldLabel>
 
+        {city.trim() && countryCode ? (
+          <div>
+            <div style={{ fontSize: "11.5px", fontWeight: 600, color: COLORS.textMuted, marginBottom: "6px" }}>
+              מקומות מומלצים {city.trim() ? `ב${city.trim()}` : ""}
+            </div>
+            {locating || placesLoading ? (
+              <div style={{ fontSize: "12px", color: COLORS.textMuted, padding: "6px 2px" }}>
+                {locating ? "מאתר את המיקום..." : "מחפש מקומות מומלצים..."}
+              </div>
+            ) : lat == null || lon == null ? (
+              <div style={{ fontSize: "12px", color: COLORS.textMuted, padding: "6px 2px" }}>לא נמצא מיקום מדויק לעיר הזו</div>
+            ) : places.length === 0 ? (
+              <div style={{ fontSize: "12px", color: COLORS.textMuted, padding: "6px 2px" }}>לא נמצאו מקומות מומלצים סביב המיקום הזה</div>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: "6px", overflowX: "auto", marginBottom: "8px" }}>
+                  {CATEGORY_FILTERS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCategoryFilter(c)}
+                      style={{
+                        flexShrink: 0,
+                        padding: "6px 12px",
+                        borderRadius: "999px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                        cursor: "pointer",
+                        background: categoryFilter === c ? COLORS.primary : "rgba(255,255,255,0.06)",
+                        border: `1px solid ${categoryFilter === c ? COLORS.primary : COLORS.border}`,
+                        color: "#fff",
+                      }}
+                    >
+                      {c === "all" ? "הכול" : CATEGORY_LABEL[c]}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "180px", overflowY: "auto" }}>
+                  {filteredPlaces.length === 0 ? (
+                    <div style={{ fontSize: "12px", color: COLORS.textMuted, padding: "4px 2px" }}>אין תוצאות בקטגוריה הזו</div>
+                  ) : (
+                    filteredPlaces.map((p) => {
+                      const selected = selectedPlaceNames.has(p.name);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => togglePlace(p)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "8px",
+                            padding: "9px 12px",
+                            borderRadius: "10px",
+                            background: selected ? "rgba(67,214,170,0.14)" : "rgba(255,255,255,0.04)",
+                            border: `1px solid ${selected ? COLORS.success : COLORS.border}`,
+                            cursor: "pointer",
+                            textAlign: "start",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                            <div style={{ fontSize: "10.5px", color: COLORS.textMuted }}>{CATEGORY_LABEL[p.category]}</div>
+                          </div>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: selected ? COLORS.success : COLORS.textMuted, flexShrink: 0 }}>{selected ? "✓ נוסף" : "+ הוספה"}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
+
         <FieldLabel label="מעבר לתחנה הבאה (לא חובה)">
           <input data-testid="stop-transport" value={transportToNext} onChange={(e) => setTransportToNext(e.target.value)} style={fieldStyle} placeholder="למשל: רכבת · כשעה" />
         </FieldLabel>
@@ -193,7 +341,7 @@ export function StopEditSheet({
               cursor: canSave && !saving ? "pointer" : "default",
             }}
           >
-            {saving ? "מאתר מיקום..." : "שמירה"}
+            {saving ? "שומר..." : "שמירה"}
           </button>
         </div>
       </div>
