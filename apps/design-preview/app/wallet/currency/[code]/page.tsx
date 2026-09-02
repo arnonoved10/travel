@@ -19,6 +19,10 @@ export default function CurrencyDetailsScreen() {
   const recent = [
     ...store.additions.filter((a) => a.currency === code).map((a) => ({ id: a.id, label: currencyMeta(a.currency).name, amount: a.amount, date: a.date, kind: "addition" as const })),
     ...store.expenses.filter((e) => e.currency === code).map((e) => ({ id: e.id, label: e.title, amount: -e.amount, date: e.date, kind: "expense" as const })),
+    ...store.deposits.filter((d) => d.currency === code).map((d) => ({ id: `${d.id}-given`, label: `פיקדון: ${d.title}`, amount: -d.amount, date: d.dateGiven, kind: "deposit" as const })),
+    ...store.deposits
+      .filter((d) => d.currency === code && d.status === "returned")
+      .map((d) => ({ id: `${d.id}-returned`, label: `פיקדון הוחזר: ${d.title}`, amount: d.amount, date: d.returnedDate!, kind: "deposit" as const })),
   ]
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .slice(0, 8);

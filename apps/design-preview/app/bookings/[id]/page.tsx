@@ -4,10 +4,16 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, PrimaryButton, SecondaryButton, Field, Money, CheckIcon, COLOR, SPACE, inputStyle } from "../../design-system";
 import { findBooking, updateBooking, deleteBooking, type Booking } from "../../bookings-data";
+import { formatMoney } from "../../wallet-data";
+import { useWalletStore } from "../../wallet-store";
+import { ToastBar } from "../../toast-bar";
+
+const DEPOSIT_CATEGORIES = new Set(["hotel", "car"]);
 
 export default function BookingDetailsScreen() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const store = useWalletStore();
   const [booking, setBooking] = useState<Booking | null | undefined>(undefined);
   const [editing, setEditing] = useState(false);
 
@@ -15,7 +21,7 @@ export default function BookingDetailsScreen() {
     setBooking(findBooking(params.id));
   }, [params.id]);
 
-  if (booking === undefined) return null;
+  if (booking === undefined || !store.hydrated) return null;
   if (booking === null) {
     return (
       <ScreenShell>
@@ -44,6 +50,14 @@ export default function BookingDetailsScreen() {
     alert(`אישור הזמנה\n\n${booking.title}\nמספר אישור: ${booking.confirmationNumber}\nתאריך: ${fmt(booking.checkIn)}${booking.checkOut ? ` – ${fmt(booking.checkOut)}` : ""}`);
   }
 
+  function handleMarkDepositReturned(id: string, title: string) {
+    if (!confirm(`לסמן את "${title}" כהוחזר? הסכום יחזור לארנק/יזוכה בכרטיס.`)) return;
+    store.markDepositReturned(id);
+  }
+
+  const linkedDeposits = store.deposits.filter((d) => d.bookingId === booking.id);
+  const canHaveDeposit = DEPOSIT_CATEGORIES.has(booking.category);
+
   return (
     <ScreenShell>
       <ScreenHeader title="פרטי הזמנה" />
@@ -70,6 +84,50 @@ export default function BookingDetailsScreen() {
         {booking.guests ? <Row label="אורחים" value={String(booking.guests)} /> : null}
         {booking.totalPrice ? <Row label="סכום כולל" value={<Money text={booking.totalPrice} />} badge="שולם במלואו" last /> : null}
       </Card>
+
+      {canHaveDeposit && booking.status !== "cancelled" ? (
+        <div>
+          <div style={{ fontSize: "13.5px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.sm }}>פיקדון</div>
+          {linkedDeposits.length === 0 ? (
+            <SecondaryButton
+              onClick={() =>
+                router.push(`/wallet/deposit/new?bookingId=${booking.id}&title=${encodeURIComponent(`פיקדון - ${booking.title}`)}`)
+              }
+            >
+              + הוספת פיקדון
+            </SecondaryButton>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xs }}>
+              {linkedDeposits.map((d) => (
+                <Card key={d.id}>
+                  <div onClick={() => router.push(`/wallet/deposit/new?edit=${d.id}`)} style={{ cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>{d.title}</span>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: COLOR.textPrimary }}>
+                        <Money text={formatMoney(d.amount, d.currency)} />
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "11px", color: COLOR.textSecondary, marginTop: "2px" }}>
+                      {d.status === "pending" ? `ניתן ב-${d.dateGiven}` : `הוחזר ב-${d.returnedDate}`}
+                    </div>
+                  </div>
+                  {d.status === "pending" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleMarkDepositReturned(d.id, d.title)}
+                      style={{ width: "100%", marginTop: SPACE.sm, padding: "9px", borderRadius: "10px", background: `${COLOR.success}1A`, border: `1px solid ${COLOR.success}55`, color: COLOR.success, fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      ✓ סמן כהוחזר
+                    </button>
+                  ) : (
+                    <Badge tone="success">✓ הוחזר</Badge>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
         <SecondaryButton onClick={() => setEditing(true)}>עריכת הפרטים</SecondaryButton>
@@ -100,6 +158,7 @@ export default function BookingDetailsScreen() {
           }}
         />
       ) : null}
+      <ToastBar toast={store.toast} />
     </ScreenShell>
   );
 }

@@ -76,6 +76,7 @@ export interface Deposit {
   currency: string;
   paymentMethod: PaymentMethod;
   cardId?: string;
+  bookingId?: string;
   dateGiven: string;
   expectedReturnDate?: string;
   expectedReturnTime?: string;

@@ -30,8 +30,11 @@ function NewDepositForm() {
   const editId = searchParams.get("edit");
   const editing = store.hydrated ? store.deposits.find((d) => d.id === editId) ?? null : null;
   const isEditMode = !!editId;
+  const bookingId = searchParams.get("bookingId") ?? undefined;
+  const prefillTitle = searchParams.get("title");
+  const backHref = bookingId ? `/bookings/${bookingId}` : "/wallet/deposits";
 
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(prefillTitle ?? "");
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
@@ -88,6 +91,7 @@ function NewDepositForm() {
       amount: Number(amount),
       paymentMethod: method,
       cardId,
+      bookingId: editing?.bookingId ?? bookingId,
       dateGiven,
       expectedReturnDate: expectedReturnDate || undefined,
       expectedReturnTime: expectedReturnDate ? expectedReturnTime || undefined : undefined,
@@ -99,14 +103,14 @@ function NewDepositForm() {
     } else {
       store.addDeposit(patch);
     }
-    router.push("/wallet/deposits");
+    router.push(backHref);
   }
 
   function handleDelete() {
     if (!editing) return;
     if (!confirm(`למחוק את הפיקדון "${editing.title}"?${editing.status === "pending" ? " הסכום יוחזר לארנק." : ""}`)) return;
     store.deleteDeposit(editing.id);
-    router.push("/wallet/deposits");
+    router.push(backHref);
   }
 
   return (

@@ -382,6 +382,15 @@ export default function WalletPreviewScreen() {
     .sort((a, b) => (a.expectedReturnDate! < b.expectedReturnDate! ? -1 : 1))[0];
   const depositDueNow = pendingDeposits.some((d) => d.expectedReturnDate && d.expectedReturnDate <= today());
 
+  function cardTotalLabel(cardId: string): string {
+    const totals = new Map<string, number>();
+    for (const e of expenses) if (e.cardId === cardId) totals.set(e.currency, (totals.get(e.currency) ?? 0) + e.amount);
+    for (const d of deposits) if (d.paymentMethod === "credit" && d.cardId === cardId && d.status === "pending") totals.set(d.currency, (totals.get(d.currency) ?? 0) + d.amount);
+    return Array.from(totals.entries())
+      .map(([code, sum]) => formatMoney(sum, code))
+      .join(" · ");
+  }
+
   return (
     <ScreenShell>
       <ScreenHeader title="הארנק שלי" subtitle="[דמו] כל מטבעות הטיול" />
@@ -470,6 +479,44 @@ export default function WalletPreviewScreen() {
                 })
               )}
             </div>
+          </div>
+
+          {/* כרטיסי אשראי — נראים גם בסקירה הראשית (לא רק בטאב "כרטיסים"),
+              כמו המטבעות, כדי לדעת כמה שולם בכל כרטיס כולל היסטוריה מלאה
+              במסך הפרטים שלו */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+              <span style={{ fontSize: "12.5px", fontWeight: 800, color: COLOR.textSecondary }}>כרטיסי אשראי</span>
+              <button type="button" onClick={() => openDialog({ type: "addCard" })} style={{ padding: "4px 10px", borderRadius: "999px", background: "rgba(138,90,223,0.18)", border: `1px solid ${COLOR.purple}55`, color: "#c9b3ff", fontSize: "10.5px", fontWeight: 700, cursor: "pointer" }}>
+                + הוספת כרטיס
+              </button>
+            </div>
+            {cards.length === 0 ? (
+              <div style={{ fontSize: "11.5px", color: COLOR.textMuted, padding: "8px 2px" }}>לא נוספו כרטיסי אשראי</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {cards.map((c) => {
+                  const totalLabel = cardTotalLabel(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => router.push(`/wallet/cards/${c.id}`)}
+                      style={{ display: "flex", alignItems: "center", gap: "10px", padding: "9px 12px", borderRadius: "12px", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, cursor: "pointer", textAlign: "start" }}
+                    >
+                      <span aria-hidden style={{ width: "34px", height: "22px", borderRadius: "5px", background: c.color, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#fff" }}>{c.nickname}</div>
+                        <div style={{ fontSize: "10px", color: COLOR.textSecondary }}>
+                          {c.issuer} · •••• {c.last4}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: "13px", fontWeight: 800, color: totalLabel ? "#fff" : COLOR.textMuted, whiteSpace: "nowrap" }}>{totalLabel || "—"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* ארנק הפקדונות — כרטיס קבוע, כמו כרטיסי המטבעות, שמציג את סך כל
@@ -687,7 +734,7 @@ export default function WalletPreviewScreen() {
         </>
       ) : null}
 
-      {tab === "history" ? <AllHistoryList expenses={expenses} additions={additions} conversions={conversions} /> : null}
+      {tab === "history" ? <AllHistoryList expenses={expenses} additions={additions} conversions={conversions} deposits={deposits} /> : null}
 
       <BottomNav active="wallet" />
 
@@ -718,7 +765,7 @@ export default function WalletPreviewScreen() {
       {dialog?.type === "reduceMoney" ? <ReduceMoneyForm currency={dialog.currency} balance={balanceOf(dialog.currency).balance} onClose={() => setDialog(null)} onSave={handleReduceMoney} /> : null}
       {(dialog?.type === "history" || dialog?.type === "currencyDetail") && detailCurrency ? (
         dialog.type === "history" ? (
-          <HistorySheet currency={detailCurrency} expenses={expenses} additions={additions} conversions={conversions} onClose={() => setDialog(null)} />
+          <HistorySheet currency={detailCurrency} expenses={expenses} additions={additions} conversions={conversions} deposits={deposits} onClose={() => setDialog(null)} />
         ) : (
           <CurrencyDetailSheet
             currency={detailCurrency}
@@ -821,7 +868,7 @@ function CurrencyDetailSheet({
 
 // ============================== היסטוריה מלאה (כל המטבעות) ==============================
 
-function AllHistoryList({ expenses, additions, conversions }: { expenses: Expense[]; additions: MoneyAddition[]; conversions: ConversionRecord[] }) {
+function AllHistoryList({ expenses, additions, conversions, deposits }: { expenses: Expense[]; additions: MoneyAddition[]; conversions: ConversionRecord[]; deposits: Deposit[] }) {
   const router = useRouter();
   type Row = { sortKey: string; displayDate: string; label: string; amountLabel: string; color: string; currency: string; ltr?: boolean; href?: string };
   const rows: Row[] = [];
@@ -859,6 +906,28 @@ function AllHistoryList({ expenses, additions, conversions }: { expenses: Expens
       ltr: true,
       href: `/wallet/convert?edit=${c.id}`,
     });
+  for (const d of deposits) {
+    rows.push({
+      sortKey: `${d.dateGiven}T00:00`,
+      displayDate: d.dateGiven,
+      label: `פיקדון: ${d.title}`,
+      amountLabel: `-${formatMoney(d.amount, d.currency)}`,
+      color: COLOR.warning,
+      currency: d.currency,
+      href: `/wallet/deposit/new?edit=${d.id}`,
+    });
+    if (d.status === "returned" && d.returnedDate) {
+      rows.push({
+        sortKey: `${d.returnedDate}T00:00`,
+        displayDate: d.returnedDate,
+        label: `פיקדון הוחזר: ${d.title}`,
+        amountLabel: `+${formatMoney(d.amount, d.currency)}`,
+        color: COLOR.success,
+        currency: d.currency,
+        href: `/wallet/deposit/new?edit=${d.id}`,
+      });
+    }
+  }
   rows.sort((a, b) => (a.sortKey < b.sortKey ? 1 : -1));
 
   return (
@@ -1143,12 +1212,14 @@ function HistorySheet({
   expenses,
   additions,
   conversions,
+  deposits,
   onClose,
 }: {
   currency: string;
   expenses: Expense[];
   additions: MoneyAddition[];
   conversions: ConversionRecord[];
+  deposits: Deposit[];
   onClose: () => void;
 }) {
   type Row = { dateTime: string; label: string; amountLabel: string; color: string };
@@ -1158,6 +1229,10 @@ function HistorySheet({
   for (const c of conversions.filter((x) => x.fromCurrency === currency || x.toCurrency === currency)) {
     if (c.fromCurrency === currency) rows.push({ dateTime: c.dateTime, label: `המרה ל-${c.toCurrency}`, amountLabel: `-${formatMoney(c.fromAmount, currency)}`, color: COLOR.warning });
     if (c.toCurrency === currency) rows.push({ dateTime: c.dateTime, label: `המרה מ-${c.fromCurrency}`, amountLabel: `+${formatMoney(c.toAmount, currency)}`, color: COLOR.success });
+  }
+  for (const d of deposits.filter((x) => x.currency === currency)) {
+    rows.push({ dateTime: d.dateGiven, label: `פיקדון: ${d.title}`, amountLabel: `-${formatMoney(d.amount, currency)}`, color: COLOR.warning });
+    if (d.status === "returned" && d.returnedDate) rows.push({ dateTime: d.returnedDate, label: `פיקדון הוחזר: ${d.title}`, amountLabel: `+${formatMoney(d.amount, currency)}`, color: COLOR.success });
   }
   rows.sort((a, b) => (a.dateTime < b.dateTime ? 1 : -1));
 
