@@ -1,19 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { ScreenShell, ScreenHeader, Card, Badge, PrimaryButton, EditIcon, TrashIcon, Money, COLOR, SPACE } from "../../design-system";
-import { formatMoney, type CreditCardInfo } from "../../wallet-data";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ScreenShell, ScreenHeader, Card, Badge, PrimaryButton, EditIcon, TrashIcon, COLOR, SPACE } from "../../design-system";
+import { type CreditCardInfo } from "../../wallet-data";
 import { useWalletStore } from "../../wallet-store";
 
 const CARD_COLORS = ["#7C3AED", "#4f8fe0", "#34D399", "#EF4444"];
 
 export default function CreditCardsScreen() {
+  return (
+    <Suspense fallback={null}>
+      <CreditCardsScreenInner />
+    </Suspense>
+  );
+}
+
+function CreditCardsScreenInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const store = useWalletStore();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nickname, setNickname] = useState("");
   const [issuer, setIssuer] = useState("Visa");
   const [last4, setLast4] = useState("");
+  const openedFromQuery = searchParams.get("edit");
+
+  useEffect(() => {
+    if (openedFromQuery && store.hydrated) {
+      const c = store.cards.find((card) => card.id === openedFromQuery);
+      if (c) openEditForm(c);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openedFromQuery, store.hydrated]);
 
   if (!store.hydrated) return null;
 
@@ -65,38 +85,37 @@ export default function CreditCardsScreen() {
       ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
-        {store.cards.map((c) => (
-          <Card key={c.id} style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
-            <div style={{ width: "36px", height: "24px", borderRadius: "5px", background: c.color }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>
-                {c.issuer} •••• {c.last4}
+        {store.cards.length === 0 ? (
+          <div style={{ fontSize: "12.5px", color: COLOR.textSecondary, padding: "6px 2px" }}>לא נוספו כרטיסי אשראי</div>
+        ) : (
+          store.cards.map((c) => (
+            <Card key={c.id} style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
+              <div onClick={() => router.push(`/wallet/cards/${c.id}`)} style={{ display: "flex", alignItems: "center", gap: SPACE.md, flex: 1, minWidth: 0, cursor: "pointer" }}>
+                <div style={{ width: "36px", height: "24px", borderRadius: "5px", background: c.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>
+                    {c.issuer} •••• {c.last4}
+                  </div>
+                  <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>{c.nickname}</div>
+                </div>
               </div>
-              <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>{c.nickname}</div>
-            </div>
-            {c.isPrimary ? (
-              <Badge tone="success">מועדף</Badge>
-            ) : (
-              <button type="button" onClick={() => store.setPrimaryCard(c.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10.5px", fontWeight: 700, color: COLOR.primaryLight, whiteSpace: "nowrap" }}>
-                הפוך למועדף
+              {c.isPrimary ? (
+                <Badge tone="success">מועדף</Badge>
+              ) : (
+                <button type="button" onClick={() => store.setPrimaryCard(c.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10.5px", fontWeight: 700, color: COLOR.primaryLight, whiteSpace: "nowrap" }}>
+                  הפוך למועדף
+                </button>
+              )}
+              <button type="button" onClick={() => openEditForm(c)} aria-label="עריכת הכרטיס" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+                <EditIcon />
               </button>
-            )}
-            <button type="button" onClick={() => openEditForm(c)} aria-label="עריכת הכרטיס" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
-              <EditIcon />
-            </button>
-            <button type="button" onClick={() => handleDelete(c)} aria-label="מחיקת הכרטיס" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
-              <TrashIcon size={16} color={COLOR.danger} />
-            </button>
-          </Card>
-        ))}
+              <button type="button" onClick={() => handleDelete(c)} aria-label="מחיקת הכרטיס" style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+                <TrashIcon size={16} color={COLOR.danger} />
+              </button>
+            </Card>
+          ))
+        )}
       </div>
-
-      <Card>
-        <div style={{ fontSize: "12px", color: COLOR.textSecondary, marginBottom: "4px" }}>סך כל המסגרות</div>
-        <div style={{ fontSize: "20px", fontWeight: 700, color: COLOR.textPrimary }}>
-          <Money text={formatMoney(84500, "ILS")} />
-        </div>
-      </Card>
     </ScreenShell>
   );
 }

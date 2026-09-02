@@ -562,10 +562,18 @@ export default function WalletPreviewScreen() {
               filteredExpenses.map((t) => {
                 const card = cards.find((c) => c.id === t.cardId);
                 return (
-                  <Card key={t.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px" }}>
+                  <Card key={t.id} onClick={() => router.push(`/wallet/expense/new?edit=${t.id}`)} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px", cursor: "pointer" }}>
                     <span aria-hidden style={{ width: "36px", height: "36px", borderRadius: "10px", background: `${CATEGORY_COLOR[t.category]}22`, border: `1px solid ${CATEGORY_COLOR[t.category]}55`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
                       {t.receiptId && receipts[t.receiptId] ? (
-                        <button type="button" onClick={() => setViewingReceiptId(t.receiptId!)} aria-label="הצגת הקבלה" style={{ position: "absolute", inset: 0, borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "pointer" }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingReceiptId(t.receiptId!);
+                          }}
+                          aria-label="הצגת הקבלה"
+                          style={{ position: "absolute", inset: 0, borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "pointer" }}
+                        >
                           <img src={receipts[t.receiptId]} alt="קבלה" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         </button>
                       ) : (
@@ -580,7 +588,15 @@ export default function WalletPreviewScreen() {
                       </div>
                     </div>
                     <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff", whiteSpace: "nowrap" }}>{formatMoney(t.amount, t.currency)}</div>
-                    <button type="button" onClick={() => setMenuForExpense(t.id)} aria-label={`פעולות עבור ${t.title}`} style={{ width: "32px", height: "32px", borderRadius: "9px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuForExpense(t.id);
+                      }}
+                      aria-label={`פעולות עבור ${t.title}`}
+                      style={{ width: "32px", height: "32px", borderRadius: "9px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+                    >
                       <DotsIcon size={14} />
                     </button>
                   </Card>
@@ -610,15 +626,17 @@ export default function WalletPreviewScreen() {
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {cards.map((c) => (
                 <Card key={c.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span aria-hidden style={{ width: "40px", height: "26px", borderRadius: "5px", background: c.color, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
-                      {c.nickname}
-                      {c.isPrimary ? <span style={{ fontSize: "9px", fontWeight: 800, color: COLOR.success, background: "rgba(67,214,170,0.14)", border: `1px solid ${COLOR.success}40`, borderRadius: "999px", padding: "1px 6px" }}>ראשי</span> : null}
-                    </div>
-                    <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>
-                      {c.issuer} · •••• {c.last4} · {c.currency}
-                      {c.feePercent ? ` · עמלה ${c.feePercent}%` : ""}
+                  <div onClick={() => router.push(`/wallet/cards/${c.id}`)} style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0, cursor: "pointer" }}>
+                    <span aria-hidden style={{ width: "40px", height: "26px", borderRadius: "5px", background: c.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
+                        {c.nickname}
+                        {c.isPrimary ? <span style={{ fontSize: "9px", fontWeight: 800, color: COLOR.success, background: "rgba(67,214,170,0.14)", border: `1px solid ${COLOR.success}40`, borderRadius: "999px", padding: "1px 6px" }}>ראשי</span> : null}
+                      </div>
+                      <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>
+                        {c.issuer} · •••• {c.last4} · {c.currency}
+                        {c.feePercent ? ` · עמלה ${c.feePercent}%` : ""}
+                      </div>
                     </div>
                   </div>
                   <button type="button" onClick={() => setMenuForCard(c.id)} aria-label={`פעולות עבור ${c.nickname}`} style={{ width: "32px", height: "32px", borderRadius: "9px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
