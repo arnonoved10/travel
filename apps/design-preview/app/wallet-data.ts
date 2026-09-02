@@ -78,6 +78,7 @@ export interface Deposit {
   cardId?: string;
   dateGiven: string;
   expectedReturnDate?: string;
+  expectedReturnTime?: string;
   status: "pending" | "returned";
   returnedDate?: string;
   notes?: string;

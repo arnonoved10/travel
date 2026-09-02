@@ -45,7 +45,7 @@ export default function DepositsScreen() {
                     </div>
                     <div style={{ fontSize: "11px", color: COLOR.textSecondary, marginTop: "2px" }}>
                       ניתן ב-{d.dateGiven} · {PAYMENT_METHOD_LABEL[d.paymentMethod]}
-                      {d.expectedReturnDate ? ` · צפוי חזרה ${d.expectedReturnDate}` : ""}
+                      {d.expectedReturnDate ? ` · צפוי חזרה ${d.expectedReturnDate}${d.expectedReturnTime ? ` בשעה ${d.expectedReturnTime}` : ""}` : ""}
                     </div>
                     {isDue ? <Badge tone="warning">תזכורת: זמן להחזרה הגיע — ודאו שקיבלתם את הפיקדון בחזרה</Badge> : null}
                   </div>

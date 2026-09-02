@@ -22,6 +22,7 @@ import {
   type Expense,
   type MoneyAddition,
   type ConversionRecord,
+  type Deposit,
   SK,
   loadJSON,
   saveJSON,
@@ -71,6 +72,7 @@ export default function WalletPreviewScreen() {
   const [cards, setCards] = useState<CreditCardInfo[]>([]);
   const [additions, setAdditions] = useState<MoneyAddition[]>([]);
   const [conversions, setConversions] = useState<ConversionRecord[]>([]);
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [receipts, setReceipts] = useState<Record<string, string>>({});
   const [baseCurrency, setBaseCurrency] = useState("ILS");
   const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
@@ -120,6 +122,9 @@ export default function WalletPreviewScreen() {
     setCards(loadJSON(SK.cards, []));
     setAdditions(loadJSON(SK.additions, []));
     setConversions(loadJSON(SK.conversions, []));
+    // פיקדונות: קריאה בלבד — היצירה/העריכה/ההחזרה מתבצעות דרך useWalletStore
+    // במסכי /wallet/deposit(s), כדי לא לשכפל שם את לוגיקת-העדכון של הארנק.
+    setDeposits(loadJSON(SK.deposits, []));
     setReceipts(loadJSON(SK.receipts, {}));
     setBaseCurrency(loadJSON(SK.baseCcy, "ILS"));
     setManualCountryCode(loadJSON<string | null>(SK.manualCountry, null));
@@ -366,6 +371,17 @@ export default function WalletPreviewScreen() {
     });
   const detailCurrency = dialog?.type === "currencyDetail" || dialog?.type === "history" ? dialog.currency : null;
 
+  const pendingDeposits = deposits.filter((d) => d.status === "pending");
+  const depositTotalsByCurrency = new Map<string, number>();
+  for (const d of pendingDeposits) depositTotalsByCurrency.set(d.currency, (depositTotalsByCurrency.get(d.currency) ?? 0) + d.amount);
+  const depositTotalLabel = Array.from(depositTotalsByCurrency.entries())
+    .map(([code, sum]) => formatMoney(sum, code))
+    .join(" · ");
+  const nextDepositDue = pendingDeposits
+    .filter((d) => d.expectedReturnDate)
+    .sort((a, b) => (a.expectedReturnDate! < b.expectedReturnDate! ? -1 : 1))[0];
+  const depositDueNow = pendingDeposits.some((d) => d.expectedReturnDate && d.expectedReturnDate <= today());
+
   return (
     <ScreenShell>
       <ScreenHeader title="הארנק שלי" subtitle="[דמו] כל מטבעות הטיול" />
@@ -455,6 +471,25 @@ export default function WalletPreviewScreen() {
               )}
             </div>
           </div>
+
+          {/* ארנק הפקדונות — כרטיס קבוע, כמו כרטיסי המטבעות, שמציג את סך כל
+              הפקדונות הפתוחים ומוביל לפירוט המלא (למי ניתן, באיזה מטבע, ומתי
+              צפוי להחזר) */}
+          <button
+            type="button"
+            onClick={() => router.push("/wallet/deposits")}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 14px", borderRadius: "14px", background: COLOR.cardBg, border: `1px solid ${depositDueNow ? COLOR.warning : COLOR.cardBorder}`, cursor: "pointer", textAlign: "start" }}
+          >
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>
+                פקדונות פתוחים{pendingDeposits.length > 0 ? ` (${pendingDeposits.length})` : ""}
+              </div>
+              <div style={{ fontSize: "10.5px", color: depositDueNow ? COLOR.warning : COLOR.textSecondary, marginTop: "1px" }}>
+                {pendingDeposits.length === 0 ? "אין כרגע פקדונות פתוחים · לחצו לרישום פיקדון" : depositDueNow ? "יש פיקדון שזמן ההחזרה שלו הגיע" : nextDepositDue?.expectedReturnDate ? `הקרוב לחזרה: ${nextDepositDue.expectedReturnDate}` : "לא נקבע תאריך החזרה"}
+              </div>
+            </div>
+            <div style={{ fontSize: "15px", fontWeight: 800, color: pendingDeposits.length === 0 ? COLOR.textMuted : "#fff", whiteSpace: "nowrap" }}>{depositTotalLabel || "—"}</div>
+          </button>
 
           {/* פעולות מהירות */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "6px" }}>

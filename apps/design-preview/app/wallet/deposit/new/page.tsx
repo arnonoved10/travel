@@ -38,6 +38,7 @@ function NewDepositForm() {
   const [cardId, setCardId] = useState<string | undefined>(undefined);
   const [dateGiven, setDateGiven] = useState(today());
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
+  const [expectedReturnTime, setExpectedReturnTime] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const prefilled = useRef(false);
@@ -60,6 +61,7 @@ function NewDepositForm() {
       setCardId(editing.cardId);
       setDateGiven(editing.dateGiven);
       setExpectedReturnDate(editing.expectedReturnDate ?? "");
+      setExpectedReturnTime(editing.expectedReturnTime ?? "");
       setNotes(editing.notes ?? "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,7 +82,17 @@ function NewDepositForm() {
     if (!title.trim()) return setError("יש להזין שם לפיקדון (למשל: פיקדון מלון)");
     if (!(Number(amount) > 0)) return setError("יש להזין סכום גדול מ-0");
     setError(null);
-    const patch = { title: title.trim(), currency, amount: Number(amount), paymentMethod: method, cardId, dateGiven, expectedReturnDate: expectedReturnDate || undefined, notes: notes || undefined };
+    const patch = {
+      title: title.trim(),
+      currency,
+      amount: Number(amount),
+      paymentMethod: method,
+      cardId,
+      dateGiven,
+      expectedReturnDate: expectedReturnDate || undefined,
+      expectedReturnTime: expectedReturnDate ? expectedReturnTime || undefined : undefined,
+      notes: notes || undefined,
+    };
     if (isEditMode && editing) {
       store.deleteDeposit(editing.id);
       store.addDeposit(patch);
@@ -173,6 +185,16 @@ function NewDepositForm() {
           </Field>
         </div>
       </div>
+
+      {expectedReturnDate ? (
+        <div style={{ display: "flex", gap: SPACE.sm }}>
+          <div style={{ flex: 1 }}>
+            <Field label="שעה משוערת להחזר (לא חובה)">
+              <input type="time" value={expectedReturnTime} onChange={(e) => setExpectedReturnTime(e.target.value)} style={inputStyle} />
+            </Field>
+          </div>
+        </div>
+      ) : null}
 
       <Field label="הערות (אופציונלי)">
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={textareaStyle} />
