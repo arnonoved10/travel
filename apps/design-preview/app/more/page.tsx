@@ -558,16 +558,36 @@ interface SettingsData {
 }
 const DEFAULT_SETTINGS: SettingsData = { temperatureUnit: "C" };
 
+// אומדן שמרני-בכוונה (לא "המכסה האמיתית" — היא משתנה בין דפדפנים ולא
+// ניתנת-לקריאה ישירות) — רק כדי לתת למשתמש אינדיקציה מוקדמת לפני שנתקל
+// בכשל-שמירה בפועל (ר' התיקון ל-saveJSON: כשל אמיתי כן יוצג מיידית, זה
+// כאן רק אזהרה-מונעת). מחשב לפי כל מפתחות "design-preview-" בלבד — לא
+// כל localStorage של הדפדפן (עלול לכלול אתרים/הרחבות אחרים באותו פרופיל,
+// אבל localStorage ממילא מבודד-לפי-origin כך שבפועל כל המפתחות כאן שייכים
+// לאפליקציה הזו בלבד).
+const ESTIMATED_QUOTA_BYTES = 5 * 1024 * 1024;
+function computeStorageUsageBytes(): number {
+  if (typeof localStorage === "undefined") return 0;
+  let total = 0;
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith("design-preview-")) continue;
+    total += key.length + (localStorage.getItem(key)?.length ?? 0);
+  }
+  return total;
+}
+
 export function SettingsSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
   const [baseCurrency, setBaseCurrency] = useState("ILS");
   const [notifStatus, setNotifStatus] = useState<NotificationPermission | "unsupported">("default");
   const [comingSoon, setComingSoon] = useState<string | null>(null);
+  const [storageBytes, setStorageBytes] = useState(0);
 
   useEffect(() => {
     setSettings(loadJSON(SK.settings, DEFAULT_SETTINGS));
     setBaseCurrency(loadJSON(SK.baseCcy, "ILS"));
     setNotifStatus(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+    setStorageBytes(computeStorageUsageBytes());
   }, []);
 
   function updateSettings(patch: Partial<SettingsData>) {
@@ -607,6 +627,24 @@ export function SettingsSection({ onBack, showToast }: { onBack: () => void; sho
   return (
     <>
       <SubHeader title="הגדרות" onBack={onBack} />
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>מקום אחסון בשימוש</span>
+          <span style={{ fontSize: "12px", fontWeight: 700, color: storageBytes / ESTIMATED_QUOTA_BYTES > 0.8 ? COLOR.danger : COLOR.textSecondary }}>
+            {(storageBytes / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 })} KB
+          </span>
+        </div>
+        <div style={{ width: "100%", height: "6px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+          <div style={{ width: `${Math.min(100, (storageBytes / ESTIMATED_QUOTA_BYTES) * 100)}%`, height: "100%", background: storageBytes / ESTIMATED_QUOTA_BYTES > 0.8 ? COLOR.danger : COLOR.purple }} />
+        </div>
+        {storageBytes / ESTIMATED_QUOTA_BYTES > 0.7 ? (
+          <div style={{ fontSize: "11px", color: COLOR.danger, marginTop: "6px" }}>
+            מתקרב למכסת האחסון של הדפדפן — אם השמירה תתחיל להיכשל, מחקו תמונות קבלות/מסמכים ישנים שכבר לא צריך (דרך "עוד" ← מסמכים, או קבלות בהוצאות ישנות).
+          </div>
+        ) : (
+          <div style={{ fontSize: "10.5px", color: COLOR.textMuted, marginTop: "6px" }}>אומדן — כל הנתונים נשמרים רק בדפדפן הזה, כולל תמונות קבלות ומסמכים</div>
+        )}
+      </Card>
       <Card>
         <Field label="מטבע בסיס">
           <CurrencyPickerButton selectedCode={baseCurrency} onSelect={changeBaseCurrency} />
