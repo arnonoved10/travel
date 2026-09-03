@@ -4,6 +4,7 @@ import { Assistant } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "../components/service-worker-registration";
 import { AIAssistantGate } from "./ai-assistant-gate";
+import { ImageMigrationRunner } from "./image-migration-runner";
 
 const assistant = Assistant({
   subsets: ["latin", "hebrew"],
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="he" dir="rtl" className={assistant.variable}>
       <body>
         <ServiceWorkerRegistration />
+        <ImageMigrationRunner />
         {children}
         <AIAssistantGate />
       </body>

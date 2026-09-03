@@ -1,4 +1,5 @@
-import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, today, loadJSON, saveJSON, nextId, SK, tripScopedKey } from "./wallet-data";
+import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, today, loadJSON, saveJSON, nextId, SK, tripScopedKey, notifyStorageFailure } from "./wallet-data";
+import { putImage, deleteImages, PROFILE_PHOTO_ID } from "./image-store";
 
 /**
  * מאגר-הטיולים המשותף למסכי "דף הבית" / "הטיולים שלי" / "סקירת הטיול" /
@@ -127,6 +128,12 @@ export const TRIP_SCOPED_BASE_KEYS: string[] = [
  * לטיול הנתון — קרוא גם ממחיקת-טיול (כאן, למטה) וגם מ"איפוס נתוני הדגמה". */
 export function clearTripScopedData(tripId: string) {
   if (typeof localStorage === "undefined") return;
+  // חייב לקרוא את ההוצאות *לפני* לולאת-המחיקה למטה (שמוחקת בין השאר את
+  // מפתח ההוצאות עצמו) — אחרת אין עוד דרך לדעת אילו תמונות-קבלה שייכות
+  // לטיול הזה ב-IndexedDB (ר' image-store.ts), והן היו נשארות יתומות שם.
+  const expenses = loadJSON<{ receiptId?: string }[]>(tripScopedKey(SK.expenses, tripId), []);
+  const receiptIds = expenses.map((e) => e.receiptId).filter((id): id is string => !!id);
+  if (receiptIds.length) deleteImages(receiptIds).catch((err) => console.error("clearTripScopedData: deleteImages failed:", err));
   for (const baseKey of TRIP_SCOPED_BASE_KEYS) localStorage.removeItem(tripScopedKey(baseKey, tripId));
 }
 
@@ -157,6 +164,95 @@ function ensureTripScopeMigrated() {
     }
   }
   saveJSON(SK_TRIP_SCOPE_MIGRATED, true);
+}
+
+export const SK_IMAGE_MIGRATED = "design-preview-image-migration-v1";
+let imageMigrationStarted = false; // אותו תפקיד כמו migrationChecked למעלה — לא קשור אליו (ר' הסבר למטה)
+
+/** מיגרציה חד-פעמית נפרדת: מעבירה תמונות (קבלות/מסמכים/תמונת-פרופיל)
+ * שיושבות היום כ-base64 בתוך localStorage אל IndexedDB (ר' image-store.ts)
+ * — לפי בקשה מפורשת "תדאג שלא יחסר מקום": ל-localStorage מכסה קטנה מאוד,
+ * וזו הייתה הסיבה האמיתית לכשלי-שמירה בפועל. אותו עיקרון-בטיחות כמו
+ * ensureTripScopeMigrated למעלה (העתקה-בלבד, לעולם לא מוחקים מקור לפני
+ * שהיעד אושר בהצלחה, סמן-סיום נשמר רק אם הכול הצליח כדי שכל כשל יגרום
+ * לניסיון-חוזר מלא בטעינה הבאה — putImage הוא דריסה דטרמיניסטית, אז ניסיון
+ * חוזר על משהו שכבר הצליח לא מזיק).
+ *
+ * שונה במכוון מ-ensureTripScopeMigrated בשתי נקודות:
+ * 1. אסינכרונית מטבעה (IndexedDB) — לא יכולה לרוץ מתוך currentScopeTripId
+ *    הסינכרונית (שנקראת מכל מסך תלוי-טיול). רצה במקום זה פעם אחת מרכיב-
+ *    לקוח שתמיד מותקן (ImageMigrationRunner, מותקן ב-layout.tsx), בלי
+ *    תלות בשום החלטת-scope.
+ * 2. בודקת גם מפתחות-קבלות לא-משויכים (SK.receipts הגולמי, לא רק הגרסה
+ *    המתויגת-לטיול) — כי היא עלולה לרוץ בעמוד שמעולם לא קרא
+ *    currentScopeTripId, ולכן לפני שמיגרציית-ההיקף-לכל-טיול בכלל רצה. */
+export async function runImageMigration(): Promise<void> {
+  if (imageMigrationStarted) return;
+  imageMigrationStarted = true;
+  if (typeof localStorage === "undefined") return;
+  if (loadJSON(SK_IMAGE_MIGRATED, false)) return;
+
+  let anyFailure = false;
+  try {
+    const allTripIds = [...DEMO_TRIPS.map((t) => t.id), ...loadCustomTrips().map((t) => t.id), NO_ACTIVE_TRIP_ID];
+    const receiptKeys = [...allTripIds.map((tripId) => tripScopedKey(SK.receipts, tripId)), SK.receipts];
+    for (const key of receiptKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      let receipts: Record<string, string>;
+      try {
+        receipts = JSON.parse(raw) ?? {};
+      } catch {
+        continue; // רשומה פגומה — מדלגים, לא קריטי-לעצירה
+      }
+      let keyOk = true;
+      for (const [id, dataUrl] of Object.entries(receipts)) {
+        try {
+          await putImage(id, dataUrl);
+        } catch (err) {
+          keyOk = false;
+          anyFailure = true;
+          console.error(`runImageMigration: receipt "${id}" failed:`, err);
+        }
+      }
+      if (keyOk) localStorage.setItem(key, JSON.stringify({}));
+    }
+
+    const documents = loadJSON<(Record<string, unknown> & { id: string; dataUrl?: string })[]>(SK.documents, []);
+    let documentsOk = true;
+    const stripped = documents.map((doc) => {
+      const { dataUrl, ...rest } = doc;
+      return { rest, dataUrl };
+    });
+    for (const { rest, dataUrl } of stripped) {
+      if (!dataUrl) continue;
+      try {
+        await putImage(rest.id as string, dataUrl);
+      } catch (err) {
+        documentsOk = false;
+        anyFailure = true;
+        console.error(`runImageMigration: document "${rest.id}" failed:`, err);
+      }
+    }
+    if (documentsOk) saveJSON(SK.documents, stripped.map((s) => s.rest));
+
+    const profile = loadJSON<Record<string, unknown> & { photoDataUrl?: string | null }>(SK.profile, {});
+    if (profile.photoDataUrl) {
+      try {
+        await putImage(PROFILE_PHOTO_ID, profile.photoDataUrl);
+        const { photoDataUrl: _removed, ...rest } = profile;
+        saveJSON(SK.profile, rest);
+      } catch (err) {
+        anyFailure = true;
+        console.error("runImageMigration: profile photo failed:", err);
+      }
+    }
+
+    if (!anyFailure) saveJSON(SK_IMAGE_MIGRATED, true);
+    else notifyStorageFailure("חלק מהתמונות הישנות לא הועברו בהצלחה לאחסון החדש — ייתכן שהן עדיין לא נטענות. ננסה שוב באופן אוטומטי בפעם הבאה שהאפליקציה נטענת.");
+  } catch (err) {
+    console.error("runImageMigration: aborted:", err);
+  }
 }
 
 /** נקודת-הכניסה היחידה שדרכה כל דומיין תלוי-טיול שאינו כבר יודע את

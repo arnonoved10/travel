@@ -7,6 +7,7 @@ import { CurrencyPickerButton } from "../../../pickers";
 import { runDemoReceiptOcrAction } from "../../../actions";
 import { compressImageFile, today, nowTime, defaultCurrencyPriority, allCategories, addCustomCategory, categoryColor, type Category, type PaymentMethod, type Expense } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
+import { getImage } from "../../../image-store";
 
 const CATEGORY_COLOR: Record<string, string> = { מלון: COLOR.primary, מסעדות: COLOR.warning, תחבורה: "#4f8fe0", פעילויות: COLOR.success, קניות: "#e0699a", אחר: COLOR.textSecondary };
 const METHOD_TABS: { key: PaymentMethod; label: string }[] = [
@@ -106,7 +107,10 @@ function AddExpenseForm() {
       setMethod(editing.paymentMethod === "credit" ? "credit" : "cash");
       setCardId(editing.cardId);
       setNotes(editing.notes ?? "");
-      if (editing.receiptId && store.receipts[editing.receiptId]) setReceiptDataUrl(store.receipts[editing.receiptId]!);
+      if (editing.receiptId) {
+        const receiptId = editing.receiptId;
+        getImage(receiptId).then((url) => { if (url) setReceiptDataUrl(url); });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);

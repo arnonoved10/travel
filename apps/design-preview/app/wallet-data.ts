@@ -1,4 +1,5 @@
 import { CURRENCY_META, COUNTRY_BY_CODE, type CountryEntry } from "./country-currency-data";
+import { getImage, putImage } from "./image-store";
 
 /**
  * לוגיקה/טיפוסים/אחסון משותפים לארנק (wallet/page.tsx) ולמסך "עוד"
@@ -105,17 +106,17 @@ export interface ConversionRecord {
   marketRateAtTime?: number;
 }
 
+// dataUrl הוסר בכוונה: תמונת-המסמך עברה ל-IndexedDB (ר' image-store.ts),
+// לפי מזהה — id כבר משמש כמפתח-החיפוש שם, אין טעם בשדה שני.
 export interface DocumentEntry {
   id: string;
   kind: "insurance" | "passport" | "flight" | "hotel" | "other";
   title: string;
-  dataUrl: string;
   createdAt: string;
 }
 
 export interface ProfileInfo {
   name: string;
-  photoDataUrl: string | null;
   phone: string;
   email: string;
   countryCode: string;
@@ -215,22 +216,24 @@ export function loadJSON<T>(key: string, fallback: T): T {
 // שמירות שנכשלות באותו רגע (למשל כמה useEffect שרצים יחד) היו פותחות כמה
 // חלונות-alert חוסמים ברצף, שזה גרוע יותר מהבעיה שמנסים לפתור.
 let storageErrorShown = false;
-/** באג אמיתי שתוקן: קודם, כשל-שמירה ב-localStorage (למשל "אין מקום פנוי
- * באחסון" — קורה בפועל אחרי הצטברות תמונות-קבלות/מסמכים רבות, שנשמרות
- * כ-base64 ישירות בתוך localStorage) נבלע בשקט לגמרי — המסך הראה "נשמר
- * בהצלחה" והמשתמש עבר הלאה, בעוד שהנתונים בפועל מעולם לא נשמרו. זה בדיוק
- * מסביר דיווח כמו "הזנתי הרבה פרטים... כל פעם זה לא נשמר": הנתונים נראו
- * שמורים ברגע ההזנה אך פשוט לא היו שם בפעם הבאה. עכשיו כשל אמיתי מוצג
- * מיידית ובבירור למשתמש, לא נבלע בשקט. */
+/** באג אמיתי שתוקן: קודם, כשל-שמירה ב-localStorage/IndexedDB נבלע בשקט
+ * לגמרי — המסך הראה "נשמר בהצלחה" והמשתמש עבר הלאה, בעוד שהנתונים בפועל
+ * מעולם לא נשמרו. זה בדיוק מסביר דיווח כמו "הזנתי הרבה פרטים... כל פעם זה
+ * לא נשמר". פונקציה משותפת (לא רק בתוך saveJSON) כי מאז שתמונות עברו
+ * ל-IndexedDB (ר' image-store.ts) יש עוד נקודת-כשל אפשרית מעבר ל-
+ * localStorage, וכשל אמיתי חייב תמיד להיות מוצג מיידית וברור, לא נבלע. */
+export function notifyStorageFailure(message?: string) {
+  if (storageErrorShown || typeof window === "undefined") return;
+  storageErrorShown = true;
+  window.alert(message ?? "שמירת הנתונים נכשלה — נראה שיש בעיה באחסון של הדפדפן (למשל אין מקום פנוי). השינוי האחרון כנראה לא נשמר. נסו לרענן ולנסות שוב.");
+}
+
 export function saveJSON(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (err) {
     console.error(`saveJSON failed for key "${key}":`, err);
-    if (!storageErrorShown && typeof window !== "undefined") {
-      storageErrorShown = true;
-      window.alert("שמירת הנתונים נכשלה — כנראה שאין מספיק מקום פנוי באחסון בדפדפן. השינוי האחרון כנראה לא נשמר. מומלץ למחוק תמונות/מסמכים ישנים שכבר לא צריך (דרך \"עוד\" ← מסמכים, או קבלות ישנות) ולנסות שוב.");
-    }
+    notifyStorageFailure();
   }
 }
 
@@ -382,25 +385,42 @@ export function buildExpenseReportCSV(expenses: Expense[], cards: CreditCardInfo
  * מחזיק state חי של הארנק) להצגת "תאריך גיבוי אחרון" ולבניית גיבוי/דוח.
  * מקבל tripId מפורש (לא קורא currentScopeTripId בעצמו) כדי לא ליצור מעגל-
  * ייבוא בין wallet-data.ts ל-trips-data.ts — הקורא (BackupSection) מחשב
- * את הטיול-הנוכחי ומעביר אותו. */
-export function readWalletStateFromStorage(tripId: string): WalletState {
+ * את הטיול-הנוכחי ומעביר אותו. אסינכרונית (לא הייתה קודם): תמונות-הקבלות
+ * עברו ל-IndexedDB (ר' image-store.ts) — כדי שקובץ-הגיבוי הכולל ימשיך
+ * להכיל אותן inline בדיוק כמו קודם (בלי לשנות את פורמט-הקובץ שהמשתמש
+ * מכיר), צריך לאסוף אותן בנפרד מ-IndexedDB לפי receiptId מתוך ההוצאות. */
+export async function readWalletStateFromStorage(tripId: string): Promise<WalletState> {
+  const expenses = loadJSON(tripScopedKey(SK.expenses, tripId), INITIAL_EXPENSES);
+  const receipts: Record<string, string> = {};
+  for (const e of expenses) {
+    if (!e.receiptId) continue;
+    const url = await getImage(e.receiptId);
+    if (url) receipts[e.receiptId] = url;
+  }
   return {
     balances: loadJSON(tripScopedKey(SK.balances, tripId), INITIAL_BALANCES),
-    expenses: loadJSON(tripScopedKey(SK.expenses, tripId), INITIAL_EXPENSES),
+    expenses,
     cards: loadJSON(tripScopedKey(SK.cards, tripId), INITIAL_CARDS),
     additions: loadJSON(tripScopedKey(SK.additions, tripId), []),
     conversions: loadJSON(tripScopedKey(SK.conversions, tripId), []),
-    receipts: loadJSON(tripScopedKey(SK.receipts, tripId), {}),
+    receipts,
     baseCurrency: loadJSON(tripScopedKey(SK.baseCcy, tripId), "ILS"),
   };
 }
-export function writeWalletStateToStorage(state: WalletState, tripId: string) {
+export async function writeWalletStateToStorage(state: WalletState, tripId: string): Promise<void> {
   saveJSON(tripScopedKey(SK.balances, tripId), state.balances);
   saveJSON(tripScopedKey(SK.expenses, tripId), state.expenses);
   saveJSON(tripScopedKey(SK.cards, tripId), state.cards);
   saveJSON(tripScopedKey(SK.additions, tripId), state.additions);
   saveJSON(tripScopedKey(SK.conversions, tripId), state.conversions);
-  saveJSON(tripScopedKey(SK.receipts, tripId), state.receipts);
+  for (const [id, dataUrl] of Object.entries(state.receipts)) {
+    try {
+      await putImage(id, dataUrl);
+    } catch (err) {
+      console.error(`writeWalletStateToStorage: putImage failed for receipt "${id}":`, err);
+      notifyStorageFailure();
+    }
+  }
   saveJSON(tripScopedKey(SK.baseCcy, tripId), state.baseCurrency);
 }
 

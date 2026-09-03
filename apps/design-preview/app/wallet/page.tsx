@@ -16,6 +16,7 @@ import {
 import { type DemoCurrencyResult } from "../actions";
 import { useWalletStore } from "../wallet-store";
 import { TripSwitcherPill } from "../trip-switcher";
+import { useStoredImage } from "../use-stored-image";
 import { FlagIcon } from "../country-currency-data";
 import { CountryPickerSheet, CurrencyPickerButton, AddCurrencySheet } from "../pickers";
 import { Field, Sheet, ActionRow, PillSelect, DotsIcon, CameraIcon, inputStyle, ToastView } from "../ui-kit";
@@ -68,6 +69,31 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "history", label: "היסטוריה" },
 ];
 
+// שני רכיבים קטנים שנשלפו החוצה בכוונה: useStoredImage הוא Hook, ואי-אפשר
+// לקרוא ל-Hook בתוך .map() ישירות — צריך רכיב-שורה נפרד שקורא לו בעצמו.
+function ReceiptThumbnail({ receiptId, catColor, onView }: { receiptId: string; catColor: string; onView: () => void }) {
+  const url = useStoredImage(receiptId);
+  if (!url) return <LegacyExpenseIcon color={catColor} size={18} />;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onView();
+      }}
+      aria-label="הצגת הקבלה"
+      style={{ position: "absolute", inset: 0, borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "pointer" }}
+    >
+      <img src={url} alt="קבלה" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    </button>
+  );
+}
+function ReceiptViewerImage({ receiptId }: { receiptId: string }) {
+  const url = useStoredImage(receiptId);
+  if (!url) return null;
+  return <img src={url} alt="קבלה" style={{ width: "100%", borderRadius: "12px" }} />;
+}
+
 export default function WalletPreviewScreen() {
   const router = useRouter();
   // ---------- ארנק: מאוחד על useWalletStore (לא עוד עותק-עצמאי) ----------
@@ -77,7 +103,7 @@ export default function WalletPreviewScreen() {
   // (החל מתוכנית ההיקף-לכל-טיול) את היגיון "לאיזה טיול לשייך". אוחד לעותק
   // אחד: כל מה שהיה state/effect מקומי כאן עכשיו מגיע מה-hook המשותף.
   const store = useWalletStore();
-  const { balances, expenses, cards, additions, conversions, deposits, receipts, baseCurrency, setBaseCurrency, manualCountryCode, setManualCountryCode, rates, toast, showToast, dismissToast, rateToILS, balanceOf, adjustBalance, totalConvertedToBase } = store;
+  const { balances, expenses, cards, additions, conversions, deposits, baseCurrency, setBaseCurrency, manualCountryCode, setManualCountryCode, rates, toast, showToast, dismissToast, rateToILS, balanceOf, adjustBalance, totalConvertedToBase } = store;
   const convert = store.convertAmount;
   const localCurrency = store.localCurrency;
 
@@ -466,18 +492,8 @@ export default function WalletPreviewScreen() {
                 return (
                   <Card key={t.id} onClick={() => router.push(`/wallet/expense/new?edit=${t.id}`)} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px", cursor: "pointer" }}>
                     <span aria-hidden style={{ width: "36px", height: "36px", borderRadius: "10px", background: `${catColor}22`, border: `1px solid ${catColor}55`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
-                      {t.receiptId && receipts[t.receiptId] ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setViewingReceiptId(t.receiptId!);
-                          }}
-                          aria-label="הצגת הקבלה"
-                          style={{ position: "absolute", inset: 0, borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "pointer" }}
-                        >
-                          <img src={receipts[t.receiptId]} alt="קבלה" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        </button>
+                      {t.receiptId ? (
+                        <ReceiptThumbnail receiptId={t.receiptId} catColor={catColor} onView={() => setViewingReceiptId(t.receiptId!)} />
                       ) : (
                         <LegacyExpenseIcon color={catColor} size={18} />
                       )}
@@ -572,9 +588,9 @@ export default function WalletPreviewScreen() {
         </Sheet>
       ) : null}
 
-      {viewingReceiptId && receipts[viewingReceiptId] ? (
+      {viewingReceiptId ? (
         <Sheet title="הקבלה" onClose={() => setViewingReceiptId(null)}>
-          <img src={receipts[viewingReceiptId]} alt="קבלה" style={{ width: "100%", borderRadius: "12px" }} />
+          <ReceiptViewerImage receiptId={viewingReceiptId} />
         </Sheet>
       ) : null}
 

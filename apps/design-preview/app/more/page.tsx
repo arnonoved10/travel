@@ -25,11 +25,14 @@ import {
   downloadBlob,
   parseBackupJSON,
   buildExpenseReportCSV,
+  notifyStorageFailure,
   type DocumentEntry,
   type ProfileInfo,
 } from "../wallet-data";
 import { type WalletStore } from "../wallet-store";
 import { currentScopeTripId, resetAllTripScopedData } from "../trips-data";
+import { putImage, deleteImage, clearAllImages, PROFILE_PHOTO_ID } from "../image-store";
+import { useStoredImage } from "../use-stored-image";
 
 /**
  * מסך "עוד" (design-preview בלבד) — כל אפשרות מובילה לתת-מסך אמיתי
@@ -257,8 +260,8 @@ export function BackupSection({ onBack, showToast, tripId }: { onBack: () => voi
     setLastBackupAt(loadJSON<string | null>(tripScopedKey(SK.lastBackupAt, tripId), null));
   }, [tripId]);
 
-  function handleBackup() {
-    const state = readWalletStateFromStorage(tripId);
+  async function handleBackup() {
+    const state = await readWalletStateFromStorage(tripId);
     downloadBlob(buildBackupBlob(state), `wallet-backup-${today()}.json`);
     const now = new Date().toISOString();
     saveJSON(tripScopedKey(SK.lastBackupAt, tripId), now);
@@ -267,19 +270,19 @@ export function BackupSection({ onBack, showToast, tripId }: { onBack: () => voi
   }
   function handleRestore(file: File) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const parsed = parseBackupJSON(String(reader.result));
       if (!parsed) {
         showToast("קובץ הגיבוי אינו תקין — השחזור בוטל");
         return;
       }
-      writeWalletStateToStorage(parsed, tripId);
+      await writeWalletStateToStorage(parsed, tripId);
       showToast("נתוני הארנק שוחזרו מהגיבוי בהצלחה");
     };
     reader.readAsText(file);
   }
-  function handleReport() {
-    const state = readWalletStateFromStorage(tripId);
+  async function handleReport() {
+    const state = await readWalletStateFromStorage(tripId);
     const csv = buildExpenseReportCSV(state.expenses, state.cards);
     downloadBlob(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }), `expense-report-${today()}.csv`);
     showToast("דוח ההוצאות יוצא בהצלחה");
@@ -350,7 +353,13 @@ export function DocumentsSection({ onBack, showToast }: { onBack: () => void; sh
         arr.splice(pending.index, 0, pending.doc);
         return arr;
       });
+      pendingDelete.current = null;
     });
+    // מוחקת גם את תמונת-המסמך עצמה מ-IndexedDB — מושהית עד אחרי חלון-הביטול
+    // (4200ms ב-showToast), כדי ש"בטל" ישחזר את התמונה במלואה, לא רק את הרשומה.
+    setTimeout(() => {
+      if (pendingDelete.current?.doc.id === id) deleteImage(id).catch((err) => console.error("DocumentsSection.remove: deleteImage failed:", err));
+    }, 4300);
   }
 
   return (
@@ -368,7 +377,7 @@ export function DocumentsSection({ onBack, showToast }: { onBack: () => void; sh
           {documents.map((d) => (
             <Card key={d.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <button type="button" onClick={() => setViewing(d)} style={{ width: "44px", height: "44px", borderRadius: "10px", overflow: "hidden", border: `1px solid ${COLOR.cardBorder}`, padding: 0, cursor: "pointer", flexShrink: 0 }}>
-                <img src={d.dataUrl} alt={d.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <DocumentThumbnail id={d.id} title={d.title} />
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#fff" }}>{d.title}</div>
@@ -387,7 +396,7 @@ export function DocumentsSection({ onBack, showToast }: { onBack: () => void; sh
 
       {viewing ? (
         <Sheet title={viewing.title} onClose={() => setViewing(null)}>
-          <img src={viewing.dataUrl} alt={viewing.title} style={{ width: "100%", borderRadius: "12px" }} />
+          <DocumentViewerImage id={viewing.id} title={viewing.title} />
         </Sheet>
       ) : null}
 
@@ -416,8 +425,16 @@ export function DocumentsSection({ onBack, showToast }: { onBack: () => void; sh
       {addOpen ? (
         <AddDocumentForm
           onClose={() => setAddOpen(false)}
-          onSave={(doc) => {
-            setDocuments((prev) => [{ id: nextId("doc"), createdAt: today(), ...doc }, ...prev]);
+          onSave={async (doc, dataUrl) => {
+            const id = nextId("doc");
+            try {
+              await putImage(id, dataUrl);
+            } catch (err) {
+              console.error("AddDocumentForm.onSave: putImage failed:", err);
+              notifyStorageFailure();
+              return;
+            }
+            setDocuments((prev) => [{ id, createdAt: today(), ...doc }, ...prev]);
             setAddOpen(false);
             showToast("המסמך נוסף");
           }}
@@ -427,7 +444,18 @@ export function DocumentsSection({ onBack, showToast }: { onBack: () => void; sh
   );
 }
 
-function AddDocumentForm({ onClose, onSave }: { onClose: () => void; onSave: (doc: Omit<DocumentEntry, "id" | "createdAt">) => void }) {
+function DocumentThumbnail({ id, title }: { id: string; title: string }) {
+  const url = useStoredImage(id);
+  if (!url) return null;
+  return <img src={url} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
+}
+function DocumentViewerImage({ id, title }: { id: string; title: string }) {
+  const url = useStoredImage(id);
+  if (!url) return null;
+  return <img src={url} alt={title} style={{ width: "100%", borderRadius: "12px" }} />;
+}
+
+function AddDocumentForm({ onClose, onSave }: { onClose: () => void; onSave: (doc: Omit<DocumentEntry, "id" | "createdAt">, dataUrl: string) => void }) {
   const [kind, setKind] = useState<DocumentEntry["kind"]>("insurance");
   const [title, setTitle] = useState("");
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -467,7 +495,7 @@ function AddDocumentForm({ onClose, onSave }: { onClose: () => void; onSave: (do
         <Field label="שם המסמך">
           <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle()} />
         </Field>
-        <button type="button" disabled={!dataUrl || !title.trim()} onClick={() => onSave({ kind, title: title.trim(), dataUrl: dataUrl! })} style={{ padding: "13px", borderRadius: "12px", background: dataUrl && title.trim() ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: "#fff", fontSize: "14.5px", fontWeight: 800, cursor: dataUrl && title.trim() ? "pointer" : "default" }}>
+        <button type="button" disabled={!dataUrl || !title.trim()} onClick={() => onSave({ kind, title: title.trim() }, dataUrl!)} style={{ padding: "13px", borderRadius: "12px", background: dataUrl && title.trim() ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: "#fff", fontSize: "14.5px", fontWeight: 800, cursor: dataUrl && title.trim() ? "pointer" : "default" }}>
           שמירת המסמך
         </button>
       </div>
@@ -477,21 +505,36 @@ function AddDocumentForm({ onClose, onSave }: { onClose: () => void; onSave: (do
 
 // ============================== פרופיל ==============================
 
-const DEFAULT_PROFILE: ProfileInfo = { name: "", photoDataUrl: null, phone: "", email: "", countryCode: "IL", language: "he", baseCurrency: "ILS", emergencyContactName: "", emergencyContactPhone: "" };
+const DEFAULT_PROFILE: ProfileInfo = { name: "", phone: "", email: "", countryCode: "IL", language: "he", baseCurrency: "ILS", emergencyContactName: "", emergencyContactPhone: "" };
 
 export function ProfileSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
   const [profile, setProfile] = useState<ProfileInfo>(DEFAULT_PROFILE);
   const photoRef = useRef<HTMLInputElement>(null);
+  // undefined = "לא נגעו בתמונה" (מציגים את מה ששמור), null = "הוסרה
+  // במפורש", מחרוזת = תמונה חדשה שנבחרה — בכל שלושת המצבים שום דבר לא
+  // נכתב בפועל עד לחיצה על "שמירת הפרופיל", בדיוק כמו ההתנהגות הקודמת.
+  const [photoPreview, setPhotoPreview] = useState<string | null | undefined>(undefined);
+  const storedPhotoUrl = useStoredImage(PROFILE_PHOTO_ID);
+  const displayedPhoto = photoPreview !== undefined ? photoPreview : storedPhotoUrl;
 
   useEffect(() => {
     setProfile(loadJSON(SK.profile, DEFAULT_PROFILE));
   }, []);
 
   async function handlePhoto(file: File) {
-    const compressed = await compressImageFile(file, 400, 0.8);
-    setProfile((p) => ({ ...p, photoDataUrl: compressed }));
+    setPhotoPreview(await compressImageFile(file, 400, 0.8));
   }
-  function save() {
+  async function save() {
+    if (photoPreview !== undefined) {
+      try {
+        if (photoPreview) await putImage(PROFILE_PHOTO_ID, photoPreview);
+        else await deleteImage(PROFILE_PHOTO_ID);
+      } catch (err) {
+        console.error("ProfileSection.save: photo save failed:", err);
+        notifyStorageFailure();
+        return;
+      }
+    }
     saveJSON(SK.profile, profile);
     saveJSON(SK.baseCcy, profile.baseCurrency);
     showToast("הפרופיל נשמר");
@@ -504,12 +547,12 @@ export function ProfileSection({ onBack, showToast }: { onBack: () => void; show
       <div style={{ display: "flex", justifyContent: "center" }}>
         <div style={{ position: "relative" }}>
           <button type="button" onClick={() => photoRef.current?.click()} style={{ width: "76px", height: "76px", borderRadius: "50%", overflow: "hidden", border: `2px solid ${COLOR.purple}`, background: "#0e1930", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
-            {profile.photoDataUrl ? <img src={profile.photoDataUrl} alt="תמונת פרופיל" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <CameraIcon size={22} />}
+            {displayedPhoto ? <img src={displayedPhoto} alt="תמונת פרופיל" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <CameraIcon size={22} />}
           </button>
-          {profile.photoDataUrl ? (
+          {displayedPhoto ? (
             <button
               type="button"
-              onClick={() => confirm("להסיר את תמונת הפרופיל?") && setProfile((p) => ({ ...p, photoDataUrl: null }))}
+              onClick={() => confirm("להסיר את תמונת הפרופיל?") && setPhotoPreview(null)}
               aria-label="הסרת תמונת הפרופיל"
               style={{ position: "absolute", bottom: 0, insetInlineEnd: -4, width: "24px", height: "24px", borderRadius: "50%", background: COLOR.danger, border: "2px solid #0e1930", color: "#fff", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
             >
@@ -620,6 +663,9 @@ export function SettingsSection({ onBack, showToast }: { onBack: () => void; sho
     if (!confirm("למחוק את כל הנתונים באפליקציה (טיולים, ארנק, הוצאות, מסלול, הזמנות)? לא ניתן לבטל.")) return;
     resetAllTripScopedData();
     for (const key of [SK.documents, SK.profile, SK.settings, SK.customCategories]) localStorage.removeItem(key);
+    // מכסה קבלות + מסמכים + תמונת-פרופיל בבת-אחת — כל התמונות יושבות
+    // ב-IndexedDB אחד (ר' image-store.ts), לא רק תחת מפתחות-הטיולים.
+    clearAllImages().catch((err) => console.error("resetDemoData: clearAllImages failed:", err));
     showToast("כל הנתונים נמחקו — טוען מחדש...");
     setTimeout(() => window.location.reload(), 900);
   }
@@ -638,11 +684,11 @@ export function SettingsSection({ onBack, showToast }: { onBack: () => void; sho
           <div style={{ width: `${Math.min(100, (storageBytes / ESTIMATED_QUOTA_BYTES) * 100)}%`, height: "100%", background: storageBytes / ESTIMATED_QUOTA_BYTES > 0.8 ? COLOR.danger : COLOR.purple }} />
         </div>
         {storageBytes / ESTIMATED_QUOTA_BYTES > 0.7 ? (
-          <div style={{ fontSize: "11px", color: COLOR.danger, marginTop: "6px" }}>
-            מתקרב למכסת האחסון של הדפדפן — אם השמירה תתחיל להיכשל, מחקו תמונות קבלות/מסמכים ישנים שכבר לא צריך (דרך "עוד" ← מסמכים, או קבלות בהוצאות ישנות).
-          </div>
+          <div style={{ fontSize: "11px", color: COLOR.danger, marginTop: "6px" }}>מתקרב למכסת האחסון של הדפדפן — נסו לרענן ולנסות שוב אם שמירה נכשלת.</div>
         ) : (
-          <div style={{ fontSize: "10.5px", color: COLOR.textMuted, marginTop: "6px" }}>אומדן — כל הנתונים נשמרים רק בדפדפן הזה, כולל תמונות קבלות ומסמכים</div>
+          <div style={{ fontSize: "10.5px", color: COLOR.textMuted, marginTop: "6px" }}>
+            אומדן — כל הנתונים נשמרים רק בדפדפן הזה. תמונות (קבלות/מסמכים/תמונת-פרופיל) נשמרות בנפרד באחסון עם מכסה גדולה בהרבה, ולא נספרות כאן.
+          </div>
         )}
       </Card>
       <Card>

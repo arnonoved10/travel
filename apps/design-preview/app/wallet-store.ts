@@ -23,8 +23,10 @@ import {
   resolveLocalCurrency,
   defaultCurrencyPriority,
   tripScopedKey,
+  notifyStorageFailure,
 } from "./wallet-data";
 import { currentScopeTripId } from "./trips-data";
+import { putImage, deleteImage } from "./image-store";
 
 /**
  * Hook משותף לכל מסכי-הארנק החדשים (16-21) — חילוץ מדויק (לא שכתוב) של
@@ -46,7 +48,6 @@ export function useWalletStore() {
   const [additions, setAdditions] = useState<MoneyAddition[]>([]);
   const [conversions, setConversions] = useState<ConversionRecord[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
-  const [receipts, setReceipts] = useState<Record<string, string>>({});
   const [baseCurrency, setBaseCurrency] = useState("ILS");
   const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
   const [geoCountryCode, setGeoCountryCode] = useState<string | null>(null);
@@ -79,7 +80,6 @@ export function useWalletStore() {
     setAdditions(loadJSON(tripScopedKey(SK.additions, tripId), []));
     setConversions(loadJSON(tripScopedKey(SK.conversions, tripId), []));
     setDeposits(loadJSON(tripScopedKey(SK.deposits, tripId), []));
-    setReceipts(loadJSON(tripScopedKey(SK.receipts, tripId), {}));
     setBaseCurrency(loadJSON(tripScopedKey(SK.baseCcy, tripId), "ILS"));
     setManualCountryCode(loadJSON<string | null>(tripScopedKey(SK.manualCountry, tripId), null));
     setGeoCountryCode(loadJSON<string | null>(tripScopedKey(SK.geoCountry, tripId), null));
@@ -110,10 +110,6 @@ export function useWalletStore() {
     if (!hydrated) return;
     saveJSON(tripScopedKey(SK.deposits, tripId), deposits);
   }, [deposits, hydrated, tripId]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(tripScopedKey(SK.receipts, tripId), receipts);
-  }, [receipts, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
     saveJSON(tripScopedKey(SK.baseCcy, tripId), baseCurrency);
@@ -311,12 +307,22 @@ export function useWalletStore() {
     });
   }
   function saveExpense(patch: Omit<Expense, "id">, receiptDataUrl: string | null | undefined, existingId?: string) {
-    let receiptId = existingId ? expenses.find((e) => e.id === existingId)?.receiptId : undefined;
+    const previousReceiptId = existingId ? expenses.find((e) => e.id === existingId)?.receiptId : undefined;
+    let receiptId = previousReceiptId;
     if (receiptDataUrl) {
-      receiptId = existingId ? receiptId ?? nextId("rcpt") : nextId("rcpt");
-      setReceipts((prev) => ({ ...prev, [receiptId!]: receiptDataUrl }));
+      receiptId = previousReceiptId ?? nextId("rcpt");
+      // לא מחכים ל-await בכוונה — הפונקציה נקראת מיד לפני router.push, ועיכוב
+      // של כמה מ"ש בגלל IndexedDB גרוע יותר מכתיבה שמסתיימת רגע אחרי הניווט.
+      // כשל אמיתי כן מוצג למשתמש (לא נבלע), לא רק ל-console.
+      putImage(receiptId, receiptDataUrl).catch((err) => {
+        console.error(`saveExpense: putImage failed for receipt "${receiptId}":`, err);
+        notifyStorageFailure("שמירת תמונת הקבלה נכשלה — ייתכן שאין מספיק מקום פנוי באחסון. שאר פרטי ההוצאה נשמרו.");
+      });
     } else if (receiptDataUrl === null && existingId) {
       receiptId = undefined;
+      // המשתמש הסיר קבלה קיימת בעריכה — מוחקים גם את התמונה עצמה, לא רק
+      // את הקישור אליה (באג קודם: התמונה נשארה יתומה ב-storage לצמיתות).
+      if (previousReceiptId) deleteImage(previousReceiptId).catch((err) => console.error("saveExpense: deleteImage failed:", err));
     }
     if (existingId) {
       setExpenses((prev) => prev.map((e) => (e.id === existingId ? { ...e, ...patch, receiptId } : e)));
@@ -354,8 +360,18 @@ export function useWalletStore() {
       });
       if (pending.tx.paymentMethod !== "credit") adjustBalance(pending.tx.currency, -pending.tx.amount, pending.tx.amount);
       else setBalances((prev) => prev.map((b) => (b.code === pending.tx.currency ? { ...b, spent: b.spent + pending.tx.amount } : b)));
+      pendingDeleteExpense.current = null; // מסמן "הביטול קרה בפועל" עבור הבדיקה המושהית למטה
       setToast(null);
     });
+    // מחיקת תמונת-הקבלה עצמה (באג קודם: לא נמחקה לעולם) — מושהית עד רגע אחרי
+    // שהטוסט-"בטל" נעלם לבד (4200ms ב-showToast), כדי ש"בטל" ישחזר גם את
+    // התמונה במלואה, לא רק את רשומת-ההוצאה.
+    if (tx.receiptId) {
+      const receiptId = tx.receiptId;
+      setTimeout(() => {
+        if (pendingDeleteExpense.current?.tx.id === tx.id) deleteImage(receiptId).catch((err) => console.error("deleteExpense: deleteImage failed:", err));
+      }, 4300);
+    }
   }
 
   // ---------- פיקדונות (מלון/רכב שכור/וכו') ----------
@@ -464,7 +480,6 @@ export function useWalletStore() {
     additions,
     conversions,
     deposits,
-    receipts,
     baseCurrency,
     setBaseCurrency,
     manualCountryCode,
