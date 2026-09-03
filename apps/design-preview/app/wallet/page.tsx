@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LegacyCard as Card, LegacyIconSlot as IconSlot, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR } from "../route/legacy-shared";
+import {
+  LegacyCard as Card,
+  LegacyScreenHeader as ScreenHeader,
+  LegacyScreenShell as ScreenShell,
+  LegacyBottomNav as BottomNav,
+  LEGACY_COLOR as COLOR,
+  LegacyExpenseIcon,
+  LegacyAddMoneyIcon,
+  LegacyConvertIcon,
+  LegacyDepositIcon,
+} from "../route/legacy-shared";
 import { getDemoCurrencyRatesAction, type DemoCurrencyResult } from "../actions";
 import { FlagIcon } from "../country-currency-data";
 import { CountryPickerSheet, CurrencyPickerButton, AddCurrencySheet } from "../pickers";
@@ -540,11 +550,11 @@ export default function WalletPreviewScreen() {
 
           {/* פעולות מהירות */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "6px" }}>
-            <QuickAction label="הוצאה" onClick={() => router.push("/wallet/expense/new")} />
-            <QuickAction label="כסף" onClick={() => router.push("/wallet/add")} />
-            <QuickAction label="המרה" onClick={() => router.push("/wallet/convert")} />
+            <QuickAction label="הוצאה" icon={<LegacyExpenseIcon size={16} />} onClick={() => router.push("/wallet/expense/new")} />
+            <QuickAction label="כסף" icon={<LegacyAddMoneyIcon size={16} />} onClick={() => router.push("/wallet/add")} />
+            <QuickAction label="המרה" icon={<LegacyConvertIcon size={16} />} onClick={() => router.push("/wallet/convert")} />
             <QuickAction label="קבלה" icon={<CameraIcon size={16} />} onClick={() => router.push("/wallet/expense/new?autoCamera=1")} />
-            <QuickAction label="פיקדון" onClick={() => router.push("/wallet/deposits")} />
+            <QuickAction label="פיקדון" icon={<LegacyDepositIcon size={16} />} onClick={() => router.push("/wallet/deposits")} />
           </div>
 
           {/* סיכום יומי קומפקטי */}
@@ -662,7 +672,7 @@ export default function WalletPreviewScreen() {
                           <img src={receipts[t.receiptId]} alt="קבלה" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         </button>
                       ) : (
-                        <IconSlot size={18} />
+                        <LegacyExpenseIcon color={catColor} size={18} />
                       )}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -809,10 +819,10 @@ function miniActionBtn(color: string): React.CSSProperties {
   return { padding: "8px 4px", borderRadius: "10px", background: `${color}22`, border: `1px solid ${color}55`, color, fontSize: "10.5px", fontWeight: 700, cursor: "pointer" };
 }
 
-function QuickAction({ label, icon, onClick }: { label: string; icon?: React.ReactNode; onClick: () => void }) {
+function QuickAction({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 4px", borderRadius: "12px", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "10.5px", fontWeight: 700, cursor: "pointer" }}>
-      {icon ?? <IconSlot size={16} />}
+      {icon}
       {label}
     </button>
   );

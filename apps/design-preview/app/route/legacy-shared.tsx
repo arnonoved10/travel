@@ -52,18 +52,117 @@ export function LegacyCard({ children, style, onClick }: { children: React.React
   );
 }
 
-export function LegacyIconSlot({ size = 22 }: { size?: number }) {
+/**
+ * אייקוני-SVG מצוירים (לא placeholder מקווקו) — באותה שפה חזותית של
+ * design-system.tsx (stroke, viewBox 24x24, קצוות עגולים) אך מוגדרים כאן
+ * באופן עצמאי, לפי אותו עיקרון-בידוד של הקובץ הזה כולו: לא מייבאים
+ * מ-design-system.tsx כדי לא ליצור תלות בין שתי מערכות-העיצוב.
+ */
+function legacyIconProps(color: string, size: number) {
+  return { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+}
+export function LegacyHomeIcon({ color = "#fff", size = 21 }: { color?: string; size?: number }) {
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "30%",
-        background: "rgba(255,255,255,0.08)",
-        border: "1px dashed rgba(255,255,255,0.25)",
-        flexShrink: 0,
-      }}
-    />
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9" />
+    </svg>
+  );
+}
+export function LegacyRouteIcon({ color = "#fff", size = 21 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M5 19c0-3.5 2-5.5 4.5-5.5S13 15.5 13 12s2-5.5 4.5-5.5" />
+      <circle cx="5" cy="19" r="1.6" fill={color} stroke="none" />
+      <circle cx="19" cy="5.5" r="1.6" fill={color} stroke="none" />
+    </svg>
+  );
+}
+export function LegacyCalendarIcon({ color = "#fff", size = 21 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <rect x="3.5" y="5" width="17" height="16" rx="2" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+export function LegacyMapPinIcon({ color = "#fff", size = 21 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21z" />
+      <circle cx="12" cy="9.5" r="2.4" />
+    </svg>
+  );
+}
+export function LegacyWalletIcon({ color = "#fff", size = 21 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M4 7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v2h1a1 1 0 0 1 1 1v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+      <circle cx="15.2" cy="13.5" r="1.3" fill={color} stroke="none" />
+    </svg>
+  );
+}
+export function LegacyMoreIcon({ color = "#fff", size = 21 }: { color?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <circle cx="12" cy="6" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="12" cy="18" r="1.7" />
+    </svg>
+  );
+}
+export function LegacyPlusIcon({ color = "#fff", size = 15 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+export function LegacyReorderIcon({ color = "#fff", size = 15 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M8 6 5 9m0 0 3 3M5 9h11" />
+      <path d="M16 18l3-3m0 0-3-3m3 3H8" />
+    </svg>
+  );
+}
+export function LegacyNavigateIcon({ color = "#fff", size = 15 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M12 2 4 21l8-4 8 4z" />
+    </svg>
+  );
+}
+export function LegacyExpenseIcon({ color = "#fff", size = 18 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v4h4M9 12h6M9 16h6" />
+    </svg>
+  );
+}
+export function LegacyAddMoneyIcon({ color = "#fff", size = 16 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+export function LegacyConvertIcon({ color = "#fff", size = 16 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M4 8h13l-3-3m3 3-3 3" />
+      <path d="M20 16H7l3 3m-3-3 3-3" />
+    </svg>
+  );
+}
+export function LegacyDepositIcon({ color = "#fff", size = 16 }: { color?: string; size?: number }) {
+  return (
+    <svg {...legacyIconProps(color, size)}>
+      <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
   );
 }
 
@@ -103,12 +202,12 @@ export function LegacyScreenHeader({ title, subtitle, action }: { title: string;
 }
 
 const LEGACY_NAV_ITEMS = [
-  { href: "/", label: "בית", key: "home" },
-  { href: "/route", label: "מסלול", key: "route" },
-  { href: "/planner", label: "יומן", key: "planner" },
-  { href: "/map", label: "מפה", key: "map" },
-  { href: "/wallet", label: "ארנק", key: "wallet" },
-  { href: "/more", label: "עוד", key: "more" },
+  { href: "/", label: "בית", key: "home", icon: LegacyHomeIcon },
+  { href: "/route", label: "מסלול", key: "route", icon: LegacyRouteIcon },
+  { href: "/planner", label: "יומן", key: "planner", icon: LegacyCalendarIcon },
+  { href: "/map", label: "מפה", key: "map", icon: LegacyMapPinIcon },
+  { href: "/wallet", label: "ארנק", key: "wallet", icon: LegacyWalletIcon },
+  { href: "/more", label: "עוד", key: "more", icon: LegacyMoreIcon },
 ] as const;
 
 export function LegacyBottomNav({ active }: { active: "home" | "route" | "planner" | "map" | "wallet" | "more" }) {
@@ -135,6 +234,7 @@ export function LegacyBottomNav({ active }: { active: "home" | "route" | "planne
     >
       {LEGACY_NAV_ITEMS.map((item) => {
         const isActive = item.key === active;
+        const iconColor = isActive ? LEGACY_COLOR.purple : "#a7afc9";
         return (
           <Link
             key={item.key}
@@ -163,12 +263,12 @@ export function LegacyBottomNav({ active }: { active: "home" | "route" | "planne
                 borderRadius: "13px",
                 background: isActive ? "rgba(138,90,223,0.22)" : "transparent",
                 boxShadow: isActive ? "0 0 0 1px rgba(168,128,245,0.35), 0 0 12px rgba(138,90,223,0.5)" : "none",
-                opacity: isActive ? 1 : 0.72,
+                opacity: isActive ? 1 : 0.85,
               }}
             >
-              <LegacyIconSlot size={21} />
+              <item.icon color={iconColor} size={21} />
             </span>
-            <span style={{ fontSize: "10px", fontWeight: isActive ? 700 : 500, color: isActive ? LEGACY_COLOR.purple : "#a7afc9" }}>{item.label}</span>
+            <span style={{ fontSize: "10px", fontWeight: isActive ? 700 : 500, color: iconColor }}>{item.label}</span>
           </Link>
         );
       })}

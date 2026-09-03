@@ -3,7 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LegacyCard as Card, LegacyIconSlot as IconSlot, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyStatusChip as StatusChip, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR } from "./legacy-shared";
+import {
+  LegacyCard as Card,
+  LegacyScreenHeader as ScreenHeader,
+  LegacyScreenShell as ScreenShell,
+  LegacyStatusChip as StatusChip,
+  LegacyBottomNav as BottomNav,
+  LEGACY_COLOR as COLOR,
+  LegacyPlusIcon,
+  LegacyReorderIcon,
+  LegacyMapPinIcon,
+  LegacyNavigateIcon,
+} from "./legacy-shared";
 import { loadStops, addStop, updateStop, deleteStop, type TripStop, type StopStatus } from "../trip-content";
 import { activeTrip } from "../trips-data";
 import { StopEditSheet } from "./stop-edit-sheet";
@@ -23,7 +34,7 @@ const STATUS_TONE: Record<StopStatus, "success" | "purple" | "warning"> = {
   "ממתין לאישור": "warning",
 };
 
-function ActionButton({ label, onClick }: { label: string; onClick?: () => void }) {
+function ActionButton({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick?: () => void }) {
   return (
     <button
       type="button"
@@ -43,7 +54,7 @@ function ActionButton({ label, onClick }: { label: string; onClick?: () => void 
         whiteSpace: "nowrap",
       }}
     >
-      <IconSlot size={15} />
+      {icon}
       {label}
     </button>
   );
@@ -91,9 +102,9 @@ export default function RoutePreviewScreen() {
       <ScreenHeader title="מסלול הטיול" subtitle={`${stops.length} תחנות`} />
 
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        <ActionButton label="הוסף תחנה" onClick={() => setEditing({ mode: "add", stop: null })} />
-        <ActionButton label="שנה סדר תחנות" onClick={() => router.push("/route/reorder")} />
-        <ActionButton label="מעבר למפה" onClick={() => router.push("/map")} />
+        <ActionButton label="הוסף תחנה" icon={<LegacyPlusIcon size={15} />} onClick={() => setEditing({ mode: "add", stop: null })} />
+        <ActionButton label="שנה סדר תחנות" icon={<LegacyReorderIcon size={15} />} onClick={() => router.push("/route/reorder")} />
+        <ActionButton label="מעבר למפה" icon={<LegacyMapPinIcon size={15} />} onClick={() => router.push("/map")} />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -176,7 +187,7 @@ export default function RoutePreviewScreen() {
                   }}
                 >
                   ניווט
-                  <IconSlot size={12} />
+                  <LegacyNavigateIcon color={COLOR.purple} size={12} />
                 </button>
               </div>
             ) : null}
