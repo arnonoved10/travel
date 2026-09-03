@@ -248,12 +248,12 @@ function AddExpenseForm() {
             priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)}
           />
         </div>
-        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
+        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
       </div>
 
       <Field label="טיפ (אופציונלי)">
         <div style={{ display: "flex", gap: SPACE.sm }}>
-          <input type="number" value={tip} onChange={(e) => setTip(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
+          <input type="number" value={tip} onChange={(e) => setTip(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
           <div style={{ display: "flex", borderRadius: "12px", overflow: "hidden", border: `1px solid ${COLOR.border}`, flexShrink: 0 }}>
             <button
               type="button"

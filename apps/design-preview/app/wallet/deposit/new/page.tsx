@@ -133,7 +133,7 @@ function NewDepositForm() {
             priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)}
           />
         </div>
-        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
+        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} placeholder="0" style={{ ...inputStyle, flex: 1, minWidth: 0, textAlign: "left", fontSize: "20px", fontWeight: 700 }} />
       </div>
 
       {method === "credit" ? (

@@ -148,11 +148,11 @@ export default function BatchExpenseScreen() {
             <div style={{ width: "120px", flexShrink: 0 }}>
               <CurrencyPickerButton selectedCode={row.currency} onSelect={(code) => updateRow(row.key, { currency: code })} priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)} />
             </div>
-            <input type="number" value={row.amount} onChange={(e) => updateRow(row.key, { amount: e.target.value })} placeholder="סכום" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
+            <input type="number" value={row.amount} onChange={(e) => updateRow(row.key, { amount: e.target.value })} onFocus={(e) => e.target.select()} placeholder="סכום" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-            <input type="number" value={row.tip} onChange={(e) => updateRow(row.key, { tip: e.target.value })} placeholder="טיפ (לא חובה)" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
+            <input type="number" value={row.tip} onChange={(e) => updateRow(row.key, { tip: e.target.value })} onFocus={(e) => e.target.select()} placeholder="טיפ (לא חובה)" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
             <div style={{ display: "flex", borderRadius: "10px", overflow: "hidden", border: `1px solid ${COLOR.border}`, flexShrink: 0 }}>
               <button
                 type="button"

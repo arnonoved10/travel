@@ -100,6 +100,7 @@ export default function PersonalTrackerScreen() {
             <input
               value={newAmount[sec.key] ?? ""}
               onChange={(e) => setNewAmount((p) => ({ ...p, [sec.key]: e.target.value }))}
+              onFocus={(e) => e.target.select()}
               placeholder="€"
               type="number"
               style={{ flex: 1, padding: "8px 10px", borderRadius: "10px", background: COLOR.cardElevated, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary, fontSize: "12px" }}

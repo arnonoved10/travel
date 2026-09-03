@@ -36,6 +36,7 @@ export default function AddMoneyScreen() {
           inputMode="decimal"
           value={amount || ""}
           onChange={(e) => setAmount(Number(e.target.value) || 0)}
+          onFocus={(e) => e.target.select()}
           placeholder="0"
           style={{
             width: "100%",

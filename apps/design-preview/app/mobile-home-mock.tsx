@@ -1523,6 +1523,7 @@ export function MobileHomeMock() {
                   type="number"
                   value={customAmount}
                   onChange={(e) => setCustomAmount(e.target.value)}
+                  onFocus={(e) => e.target.select()}
                   style={{ flex: 1, minWidth: 0, padding: "9px 10px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "14px" }}
                 />
                 <select

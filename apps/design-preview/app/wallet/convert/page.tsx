@@ -25,7 +25,7 @@ function ConvertForm() {
 
   const [from, setFrom] = useState("USD");
   const [to, setTo] = useState("JPY");
-  const [fromAmount, setFromAmount] = useState(500);
+  const [fromAmount, setFromAmount] = useState(0);
   const [toAmount, setToAmount] = useState(0);
   const [date, setDate] = useState(today());
   const [time, setTime] = useState(nowTime());
@@ -86,7 +86,7 @@ function ConvertForm() {
         <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: SPACE.sm }}>מהם</div>
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
           <CurrencyPickerButton selectedCode={from} onSelect={setFrom} priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)} />
-          <input type="number" value={fromAmount} onChange={(e) => setFromAmount(Number(e.target.value))} style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
+          <input type="number" value={fromAmount || ""} onChange={(e) => setFromAmount(Number(e.target.value) || 0)} onFocus={(e) => e.target.select()} placeholder="0" style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
         </div>
       </Card>
 
@@ -108,7 +108,7 @@ function ConvertForm() {
         <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: SPACE.sm }}>אל</div>
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
           <CurrencyPickerButton selectedCode={to} onSelect={setTo} priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)} />
-          <input type="number" value={effectiveToAmount || ""} onChange={(e) => setToAmount(Number(e.target.value))} style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
+          <input type="number" value={effectiveToAmount || ""} onChange={(e) => setToAmount(Number(e.target.value))} onFocus={(e) => e.target.select()} style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
         </div>
       </Card>
 

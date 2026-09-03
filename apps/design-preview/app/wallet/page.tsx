@@ -835,7 +835,7 @@ function ExchangeRatesSection({ rates, localCurrency }: { rates: { status: "load
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <div style={{ display: "flex", gap: "6px", alignItems: "flex-end" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "14px" }} />
+              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} style={{ width: "100%", padding: "9px 10px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "14px" }} />
             </div>
             <div style={{ width: "108px", flexShrink: 0 }}>
               <CurrencyPickerButton selectedCode={from} onSelect={setFrom} testId="rates-calc-from" />
@@ -874,7 +874,7 @@ function AddMoneyForm({ currency, balances, onClose, onSave }: { currency: strin
           <CurrencyPickerButton selectedCode={ccy} onSelect={setCcy} options={balances.map((b) => b.code)} testId="add-money-ccy" />
         </Field>
         <Field label="סכום">
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle()} />
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} style={inputStyle()} />
         </Field>
         <Field label="מקור הכסף">
           <PillSelect options={["cash_from_home", "atm_withdrawal", "refund", "extra_income", "transfer", "other"] as const} value={source} onChange={setSource} labels={MONEY_SOURCE_LABEL} />
@@ -902,7 +902,7 @@ function ReduceMoneyForm({ currency, balance, onClose, onSave }: { currency: str
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <div style={{ fontSize: "12px", color: COLOR.textSecondary }}>יתרה זמינה: {formatMoney(balance, currency)}</div>
         <Field label="סכום להפחתה">
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle()} />
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} style={inputStyle()} />
         </Field>
         <Field label="סיבה (לא חובה)">
           <input value={note} onChange={(e) => setNote(e.target.value)} style={inputStyle()} />
@@ -988,12 +988,12 @@ function ConvertForm({
         <div style={{ display: "flex", gap: "8px" }}>
           <div style={{ flex: 1 }}>
             <Field label="סכום שנמסר">
-              <input data-testid="convert-from-amount" type="number" value={fromAmount} onChange={(e) => setFromAmount(e.target.value)} style={inputStyle()} />
+              <input data-testid="convert-from-amount" type="number" value={fromAmount} onChange={(e) => setFromAmount(e.target.value)} onFocus={(e) => e.target.select()} style={inputStyle()} />
             </Field>
           </div>
           <div style={{ flex: 1 }}>
             <Field label="סכום שהתקבל בפועל" hint="הזינו את הסכום שקיבלתם בפועל — לא שער האינטרנט">
-              <input data-testid="convert-to-amount" type="number" value={toAmount} onChange={(e) => setToAmount(e.target.value)} style={inputStyle()} />
+              <input data-testid="convert-to-amount" type="number" value={toAmount} onChange={(e) => setToAmount(e.target.value)} onFocus={(e) => e.target.select()} style={inputStyle()} />
             </Field>
           </div>
         </div>
@@ -1006,7 +1006,7 @@ function ConvertForm({
           </div>
         ) : null}
         <Field label="עמלה (לא חובה)">
-          <input type="number" value={fee} onChange={(e) => setFee(e.target.value)} style={inputStyle()} />
+          <input type="number" value={fee} onChange={(e) => setFee(e.target.value)} onFocus={(e) => e.target.select()} style={inputStyle()} />
         </Field>
         <Field label="מקום ההמרה (לא חובה)">
           <input value={location} onChange={(e) => setLocation(e.target.value)} style={inputStyle()} />
@@ -1106,7 +1106,7 @@ function AddCardForm({ initial, onClose, onSave }: { initial: CreditCardInfo | n
           </div>
           <div style={{ flex: 1 }}>
             <Field label="עמלת המרה % (אם ידוע)">
-              <input type="number" value={feePercent} onChange={(e) => setFeePercent(e.target.value)} style={inputStyle()} />
+              <input type="number" value={feePercent} onChange={(e) => setFeePercent(e.target.value)} onFocus={(e) => e.target.select()} style={inputStyle()} />
             </Field>
           </div>
         </div>
