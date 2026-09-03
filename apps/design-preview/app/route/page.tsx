@@ -18,6 +18,7 @@ import {
 import { loadStops, addStop, updateStop, deleteStop, type TripStop, type StopStatus } from "../trip-content";
 import { activeTrip, currentScopeTripId } from "../trips-data";
 import { StopEditSheet } from "./stop-edit-sheet";
+import { TripSwitcherPill } from "../trip-switcher";
 
 /**
  * מסך מסלול (design-preview בלבד) — עודכן: היה "נתוני-דוגמה קבועים, לא
@@ -104,7 +105,7 @@ export default function RoutePreviewScreen() {
 
   return (
     <ScreenShell>
-      <ScreenHeader title="מסלול הטיול" subtitle={`${stops.length} תחנות`} />
+      <ScreenHeader title="מסלול הטיול" subtitle={`${stops.length} תחנות`} action={<TripSwitcherPill />} />
 
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         <ActionButton label="הוסף תחנה" icon={<LegacyPlusIcon size={15} />} onClick={() => setEditing({ mode: "add", stop: null })} />

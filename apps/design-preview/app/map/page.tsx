@@ -8,6 +8,7 @@ import { loadStops, loadActivities, addStop, updateStop, deleteStop, type TripSt
 import { activeTrip, currentScopeTripId } from "../trips-data";
 import { geocodeQueryAction, reverseGeocodePlaceAction } from "../actions";
 import { StopEditSheet } from "../route/stop-edit-sheet";
+import { TripSwitcherPill } from "../trip-switcher";
 import type { MapPoint3D } from "./maplibre-map-inner";
 
 /**
@@ -207,6 +208,7 @@ export default function MapPreviewScreen() {
     <div style={{ width: "100%", height: "100dvh", maxHeight: "100dvh", background: COLOR.pageBg, color: COLOR.textPrimary, fontFamily: "var(--font-assistant), sans-serif", direction: "rtl", display: "flex", flexDirection: "column", overflow: "hidden", paddingBottom: `${NAV_HEIGHT}px` }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px 4px", flexShrink: 0 }}>
         <h1 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>המסלול על המפה</h1>
+        <TripSwitcherPill />
         <button
           type="button"
           onClick={() => setPitch((p) => (p > 20 ? 0 : 55))}

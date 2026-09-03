@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, Card, Badge, ChevronIcon, DocumentIcon, PrimaryButton, COLOR, SPACE } from "../design-system";
 import { bookingsByCategory, CATEGORY_LABEL, type Booking, type BookingCategory } from "../bookings-data";
 import { today } from "../wallet-data";
+import { TripSwitcherPill } from "../trip-switcher";
 
 const TABS: { key: "all" | "upcoming" | "history"; label: string }[] = [
   { key: "upcoming", label: "קרובות" },
@@ -39,7 +40,7 @@ export default function BookingsListScreen() {
 
   return (
     <ScreenShell>
-      <ScreenHeader title="ההזמנות שלי" />
+      <ScreenHeader title="ההזמנות שלי" action={<TripSwitcherPill background={COLOR.card} border={COLOR.border} color={COLOR.textPrimary} />} />
       <PrimaryButton onClick={() => router.push("/bookings/new")}>+ הוספת הזמנה</PrimaryButton>
       <PillTabs options={TABS} value={tab} onChange={setTab} />
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ScreenShell, ScreenHeader, Card, PrimaryButton, CheckIcon, COLOR, SPACE } from "../design-system";
 import { loadJSON, saveJSON, tripScopedKey } from "../wallet-data";
 import { currentScopeTripId } from "../trips-data";
+import { TripSwitcherPill } from "../trip-switcher";
 
 interface PackingItem {
   id: string;
@@ -66,7 +67,7 @@ export default function PackingListScreen() {
 
   return (
     <ScreenShell>
-      <ScreenHeader title="רשימת אריזה" />
+      <ScreenHeader title="רשימת אריזה" action={<TripSwitcherPill background={COLOR.card} border={COLOR.border} color={COLOR.textPrimary} />} />
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: SPACE.sm }}>

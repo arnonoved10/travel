@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ScreenShell, ScreenHeader, Card, Badge, PrimaryButton, COLOR, SPACE } from "../design-system";
 import { loadJSON, saveJSON, nextId, formatMoney, tripScopedKey } from "../wallet-data";
 import { currentScopeTripId } from "../trips-data";
+import { TripSwitcherPill } from "../trip-switcher";
 
 interface TrackerEntry {
   id: string;
@@ -65,7 +66,7 @@ export default function PersonalTrackerScreen() {
 
   return (
     <ScreenShell>
-      <ScreenHeader title="מעקב אישי בטיול" />
+      <ScreenHeader title="מעקב אישי בטיול" action={<TripSwitcherPill background={COLOR.card} border={COLOR.border} color={COLOR.textPrimary} />} />
       {SECTIONS.map((sec) => (
         <Card key={sec.key}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SPACE.sm }}>
