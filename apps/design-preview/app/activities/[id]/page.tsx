@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, DangerButton, PrimaryButton, PinIcon, CalendarIcon, ClockIcon, COLOR, SPACE } from "../../design-system";
 import { findActivity, deleteActivity, type TripActivity } from "../../trip-content";
-import { activeTrip } from "../../trips-data";
+import { activeTrip, currentScopeTripId } from "../../trips-data";
 
 const CATEGORY_LABEL: Record<TripActivity["category"], string> = { אתר: "אתר היסטורי", אוכל: "קולינרי", קניות: "שופינג", טיול: "סיור עירוני", עוד: "פעילות" };
 
@@ -13,10 +13,12 @@ export default function ActivityDetailsScreen() {
   const params = useParams<{ id: string }>();
   const [result, setResult] = useState<{ activity: TripActivity; date: string } | null | undefined>(undefined);
   const [tripId, setTripId] = useState<string | null>(null);
+  const [scopedTripId] = useState(() => currentScopeTripId());
 
   useEffect(() => {
-    setResult(findActivity(params.id));
+    setResult(findActivity(scopedTripId, params.id));
     setTripId(activeTrip()?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
   if (result === undefined) return null;
@@ -80,7 +82,7 @@ export default function ActivityDetailsScreen() {
         <DangerButton
           onClick={() => {
             if (confirm(`למחוק את הפעילות "${activity.title}"?`)) {
-              deleteActivity(activity.id);
+              deleteActivity(scopedTripId, activity.id);
               router.back();
             }
           }}

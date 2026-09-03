@@ -1,4 +1,4 @@
-import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, today, loadJSON, saveJSON, nextId } from "./wallet-data";
+import { TRIP_STOP_COUNTRIES, TRIP_LAST_DAY, today, loadJSON, saveJSON, nextId, SK, tripScopedKey } from "./wallet-data";
 
 /**
  * מאגר-הטיולים המשותף למסכי "דף הבית" / "הטיולים שלי" / "סקירת הטיול" /
@@ -67,10 +67,10 @@ export function tripProgress(trip: DemoTrip, referenceDate = today()): { dayInde
 
 // ============================== טיולים שנוצרו ע"י המשתמש ==============================
 
-const SK_CUSTOM_TRIPS = "design-preview-custom-trips-v1";
+export const SK_CUSTOM_TRIPS = "design-preview-custom-trips-v1";
 // עריכות על טיולים קיימים (כולל "יפן" הבנוי-מראש) — לא דורסות את הקבועים
 // המקוריים, רק שכבת-override שמוחלת בזמן-קריאה.
-const SK_TRIP_OVERRIDES = "design-preview-trip-overrides-v1";
+export const SK_TRIP_OVERRIDES = "design-preview-trip-overrides-v1";
 
 export function loadCustomTrips(): DemoTrip[] {
   return loadJSON<DemoTrip[]>(SK_CUSTOM_TRIPS, []);
@@ -91,13 +91,108 @@ export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status">): DemoTrip 
   if (status === "active") setActiveTrip(full.id, ref);
   return full;
 }
-const SK_HIDDEN_TRIPS = "design-preview-hidden-trips-v1";
+export const SK_HIDDEN_TRIPS = "design-preview-hidden-trips-v1";
+
+// ============================== היקף-אחסון לכל טיול בנפרד ==============================
+
+// מפתחות-הבסיס של כל דומיין תלוי-טיול (ארנק + מסלול + הזמנות + אריזה +
+// מעקב-אישי) — לפי בקשה מפורשת: כל טיול חדש מתחיל ריק בכל התכולות האלה,
+// לא רק בארנק. משמש גם למיגרציה החד-פעמית (למטה), גם לניקוי-יתום כשמוחקים
+// טיול, וגם ל"איפוס נתוני הדגמה" ב-more/page.tsx. מפתחות חשבון-גלובליים
+// (documents/profile/settings/customCategories) לא נכללים בכוונה — הם
+// נשארים גלובליים לצמיתות, לא תלויי-טיול. מפתחות trip-content.ts/
+// bookings-data.ts/packing/tracker מוגדרים כאן כמחרוזות מפורשות (לא
+// import) כדי לא ליצור מעגל-ייבוא — אותו עיקרון בדיוק כמו OTHER_MODULE_KEYS
+// הקיים ב-more/page.tsx.
+export const TRIP_SCOPED_BASE_KEYS: string[] = [
+  SK.balances,
+  SK.expenses,
+  SK.cards,
+  SK.additions,
+  SK.conversions,
+  SK.receipts,
+  SK.baseCcy,
+  SK.manualCountry,
+  SK.geoCountry,
+  SK.deposits,
+  SK.lastBackupAt,
+  "design-preview-trip-stops-v1",
+  "design-preview-trip-activities-v1",
+  "design-preview-bookings-v1",
+  "design-preview-packing-v1",
+  "design-preview-personal-tracker-v1",
+];
+
+/** מוחקת את כל הנתונים-התלויי-טיול (ארנק/מסלול/הזמנות/אריזה/מעקב) ששייכים
+ * לטיול הנתון — קרוא גם ממחיקת-טיול (כאן, למטה) וגם מ"איפוס נתוני הדגמה". */
+export function clearTripScopedData(tripId: string) {
+  if (typeof localStorage === "undefined") return;
+  for (const baseKey of TRIP_SCOPED_BASE_KEYS) localStorage.removeItem(tripScopedKey(baseKey, tripId));
+}
+
+export const NO_ACTIVE_TRIP_ID = "none";
+export const SK_TRIP_SCOPE_MIGRATED = "design-preview-trip-scope-migrated-v1";
+let migrationChecked = false; // ממוזכר לכל טעינת-עמוד — נמנע מקריאות-localStorage חוזרות בכל קריאה ל-currentScopeTripId
+
+/** מיגרציה חד-פעמית: משתמשים שכבר השתמשו באפליקציה לפני המעבר ל"דלי
+ * נפרד לכל טיול" — הנתונים שלהם (למשל כסף אמיתי בארנק) יושבים תחת
+ * המפתחות הישנים הלא-משויכים. מעתיקה אותם (לא מעבירה — ר' למטה) אל הטיול
+ * שפעיל כרגע, ברגע-הריצה הראשון-אי-פעם אחרי השדרוג. אם אין טיול פעיל באותו
+ * רגע, לא מעתיקה כלום (וגם לא מנסה שוב — הסמן נקבע בכל מקרה) כי אין לאן
+ * לשייך את הנתונים בבטחה. המפתחות הישנים *לא* נמחקים כאן בכוונה — אם למשהו
+ * במיגרציה יש באג, הנתונים המקוריים עדיין קיימים בשלמותם ואפשר לשחזר/
+ * להריץ שוב (על ידי מחיקת SK_TRIP_SCOPE_MIGRATED) בלי לאבד כלום. */
+function ensureTripScopeMigrated() {
+  if (migrationChecked) return;
+  migrationChecked = true;
+  if (typeof localStorage === "undefined") return;
+  if (loadJSON(SK_TRIP_SCOPE_MIGRATED, false)) return;
+  const target = activeTrip()?.id;
+  if (target) {
+    for (const baseKey of TRIP_SCOPED_BASE_KEYS) {
+      const legacyRaw = localStorage.getItem(baseKey);
+      if (legacyRaw == null) continue;
+      const scopedKey = tripScopedKey(baseKey, target);
+      if (localStorage.getItem(scopedKey) == null) localStorage.setItem(scopedKey, legacyRaw);
+    }
+  }
+  saveJSON(SK_TRIP_SCOPE_MIGRATED, true);
+}
+
+/** נקודת-הכניסה היחידה שדרכה כל דומיין תלוי-טיול שאינו כבר יודע את
+ * ה-tripId שלו מ-URL (ארנק/הזמנות/אריזה/מעקב, וגם מסלול/מפה שנפתחים בלי
+ * מזהה-טיול מפורש) קובע "לאיזה טיול לשייך" קריאה/כתיבה. תמיד מחזיר ערך
+ * קונקרטי (לעולם לא null) — אם אין טיול פעיל, מחזירה "דלי" קבוע-אחד
+ * (NO_ACTIVE_TRIP_ID) במקום ענף-מיוחד של "כתיבה לא-משויכת" — כך שאין שום
+ * מקרה-קצה שכל דומיין צריך לזכור בנפרד. מריצה גם את המיגרציה החד-פעמית
+ * (למעלה) לפני ההחזרה הראשונה-אי-פעם. */
+export function currentScopeTripId(): string {
+  ensureTripScopeMigrated();
+  return activeTrip()?.id ?? NO_ACTIVE_TRIP_ID;
+}
+
+/** מוחקת את כל נתוני-כל-הטיולים התלויי-טיול (ארנק/מסלול/הזמנות/אריזה/
+ * מעקב, לכל טיול שקיים אי-פעם — כולל דמו-מובנים מוסתרים) וגם את מרשם-
+ * הטיולים עצמו (רשימת-הטיולים/עקיפות/הסתרות/סמן-המיגרציה) — לשימוש "מחיקת
+ * כל הנתונים שלי" בהגדרות. לא נוגעת במפתחות חשבון-גלובליים (מסמכים/
+ * פרופיל/הגדרות/קטגוריות) — אלה באחריות הקורא. */
+export function resetAllTripScopedData() {
+  const allTripIds = [...DEMO_TRIPS.map((t) => t.id), ...loadCustomTrips().map((t) => t.id), NO_ACTIVE_TRIP_ID];
+  for (const tripId of allTripIds) clearTripScopedData(tripId);
+  // עותקים ישנים-לא-מיגרטים של אותם מפתחות (מלפני המעבר להיקף-לכל-טיול).
+  for (const baseKey of TRIP_SCOPED_BASE_KEYS) if (typeof localStorage !== "undefined") localStorage.removeItem(baseKey);
+  if (typeof localStorage === "undefined") return;
+  for (const key of [SK_CUSTOM_TRIPS, SK_TRIP_OVERRIDES, SK_HIDDEN_TRIPS, SK_TRIP_SCOPE_MIGRATED]) localStorage.removeItem(key);
+}
 
 /** מוחקת טיול — עובד גם על טיולים-מותאמים-אישית (מוסרים לגמרי) וגם על
  * טיולי-הדמו הקבועים (japan-2025 וכו', שמוסתרים במקום נמחקים פיזית,
  * כי הם קבועים בקוד). באג קודם: מחיקת טיול-דמו (כולל "יפן") לא עשתה
- * כלום בפועל — allTrips() המשיך להחזיר אותו. */
+ * כלום בפועל — allTrips() המשיך להחזיר אותו. מוחקת גם: מחיקת-טיול אמורה
+ * להיות מחיקה אמיתית, לא רק הסרה-מהרשימה עם כל הארנק/מסלול/הזמנות/אריזה/
+ * מעקב שלו נשארים יתומים ב-localStorage לצמיתות. */
 export function deleteCustomTrip(id: string) {
+  clearTripScopedData(id);
   saveJSON(SK_CUSTOM_TRIPS, loadCustomTrips().filter((t) => t.id !== id));
   saveJSON(SK_TRIP_OVERRIDES, { ...loadTripOverrides(), [id]: undefined });
   const isBuiltIn = DEMO_TRIPS.some((t) => t.id === id);

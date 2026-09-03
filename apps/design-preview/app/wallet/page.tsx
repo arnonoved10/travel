@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LegacyCard as Card,
@@ -13,7 +13,8 @@ import {
   LegacyConvertIcon,
   LegacyDepositIcon,
 } from "../route/legacy-shared";
-import { getDemoCurrencyRatesAction, type DemoCurrencyResult } from "../actions";
+import { type DemoCurrencyResult } from "../actions";
+import { useWalletStore } from "../wallet-store";
 import { FlagIcon } from "../country-currency-data";
 import { CountryPickerSheet, CurrencyPickerButton, AddCurrencySheet } from "../pickers";
 import { Field, Sheet, ActionRow, PillSelect, DotsIcon, CameraIcon, inputStyle, ToastView } from "../ui-kit";
@@ -33,14 +34,7 @@ import {
   type MoneyAddition,
   type ConversionRecord,
   type Deposit,
-  SK,
-  loadJSON,
-  saveJSON,
   today,
-  INITIAL_BALANCES,
-  INITIAL_EXPENSES,
-  nextId,
-  resolveLocalCurrency,
   defaultCurrencyPriority,
   categoryColor,
 } from "../wallet-data";
@@ -75,23 +69,20 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function WalletPreviewScreen() {
   const router = useRouter();
-  // ---------- state ----------
-  const [hydrated, setHydrated] = useState(false);
-  const [balances, setBalances] = useState<CurrencyBalance[]>(INITIAL_BALANCES);
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
-  const [cards, setCards] = useState<CreditCardInfo[]>([]);
-  const [additions, setAdditions] = useState<MoneyAddition[]>([]);
-  const [conversions, setConversions] = useState<ConversionRecord[]>([]);
-  const [deposits, setDeposits] = useState<Deposit[]>([]);
-  const [receipts, setReceipts] = useState<Record<string, string>>({});
-  const [baseCurrency, setBaseCurrency] = useState("ILS");
-  const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
-  const [geoCountryCode, setGeoCountryCode] = useState<string | null>(null);
+  // ---------- ארנק: מאוחד על useWalletStore (לא עוד עותק-עצמאי) ----------
+  // עד עכשיו המסך הזה שכפל באופן עצמאי את כל לוגיקת ה-hydrate/persist/
+  // חישובי-הארנק שכבר קיימת ב-wallet-store.ts (עותק שני, בנוסף לעותק
+  // שלישי ב-more/page.tsx) — שלושה מקומות שצריך לשמור מסונכרנים לנצח, כולל
+  // (החל מתוכנית ההיקף-לכל-טיול) את היגיון "לאיזה טיול לשייך". אוחד לעותק
+  // אחד: כל מה שהיה state/effect מקומי כאן עכשיו מגיע מה-hook המשותף.
+  const store = useWalletStore();
+  const { balances, expenses, cards, additions, conversions, deposits, receipts, baseCurrency, setBaseCurrency, manualCountryCode, setManualCountryCode, rates, toast, showToast, dismissToast, rateToILS, balanceOf, adjustBalance, totalConvertedToBase } = store;
+  const convert = store.convertAmount;
+  const localCurrency = store.localCurrency;
 
+  // ---------- state מקומי (UI בלבד — לא נתוני-ארנק) ----------
   const [tab, setTab] = useState<Tab>("overview");
   const [summaryExpanded, setSummaryExpanded] = useState(false);
-
-  const [rates, setRates] = useState<{ status: "loading" | "success" | "error"; data: DemoCurrencyResult | null }>({ status: "loading", data: null });
 
   const [dialog, setDialog] = useState<
     | { type: "addMoney" | "reduceMoney" | "history" | "currencyDetail"; currency: string }
@@ -107,96 +98,12 @@ export default function WalletPreviewScreen() {
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | "all">("all");
   const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
 
-  const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDeleteExpense = useRef<{ tx: Expense; index: number } | null>(null);
-  const pendingDeleteCard = useRef<{ card: CreditCardInfo; index: number } | null>(null);
-
-  function showToast(message: string, actionLabel?: string, onAction?: () => void) {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ message, actionLabel, onAction });
-    toastTimer.current = setTimeout(() => setToast(null), 4200);
-  }
   function openDialog(d: NonNullable<typeof dialog>) {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast(null);
+    dismissToast();
     setMenuForExpense(null);
     setMenuForCard(null);
     setDialog(d);
   }
-
-  // ---------- hydrate מ-localStorage ----------
-  useEffect(() => {
-    setBalances(loadJSON(SK.balances, INITIAL_BALANCES));
-    setExpenses(loadJSON(SK.expenses, INITIAL_EXPENSES));
-    setCards(loadJSON(SK.cards, []));
-    setAdditions(loadJSON(SK.additions, []));
-    setConversions(loadJSON(SK.conversions, []));
-    // פיקדונות: קריאה בלבד — היצירה/העריכה/ההחזרה מתבצעות דרך useWalletStore
-    // במסכי /wallet/deposit(s), כדי לא לשכפל שם את לוגיקת-העדכון של הארנק.
-    setDeposits(loadJSON(SK.deposits, []));
-    setReceipts(loadJSON(SK.receipts, {}));
-    setBaseCurrency(loadJSON(SK.baseCcy, "ILS"));
-    setManualCountryCode(loadJSON<string | null>(SK.manualCountry, null));
-    setGeoCountryCode(loadJSON<string | null>(SK.geoCountry, null));
-    setHydrated(true);
-  }, []);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.balances, balances);
-  }, [balances, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.expenses, expenses);
-  }, [expenses, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.cards, cards);
-  }, [cards, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.additions, additions);
-  }, [additions, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.conversions, conversions);
-  }, [conversions, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.receipts, receipts);
-  }, [receipts, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.baseCcy, baseCurrency);
-  }, [baseCurrency, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.manualCountry, manualCountryCode);
-  }, [manualCountryCode, hydrated]);
-
-  useEffect(() => {
-    getDemoCurrencyRatesAction()
-      .then((res) => setRates({ status: res ? "success" : "error", data: res }))
-      .catch(() => setRates({ status: "error", data: null }));
-  }, []);
-
-  // ---------- מטבע מקומי (אוטומטי לפי יעד-הטיול הפעיל, ניתן-לעקיפה ידנית) ----------
-  const localCurrency = useMemo(() => resolveLocalCurrency({ manualCountryCode, geoCountryCode, baseCurrency }), [manualCountryCode, geoCountryCode, baseCurrency]);
-
-  // מוסיף אוטומטית 4 מטבעות-בסיס קבועים לארנק אם עוד לא קיימים בו (בלי
-  // לגעת ביתרות/בהיסטוריה של מטבעות אחרים): המטבע המקומי של יעד הטיול,
-  // דולר, אירו ושקל — תמיד זמינים מראש, גם עם יתרת-אפס, כדי שלא יהיה
-  // צריך "להוסיף מטבע" ידנית לכל אחד מהם. עדיין ניתן להסיר כל אחד מהם
-  // בנפרד דרך מסך פרטי-המטבע, לפי בקשה מפורשת — זו רק ברירת-מחדל.
-  useEffect(() => {
-    if (!hydrated) return;
-    const baseline = defaultCurrencyPriority(localCurrency.currencyCode);
-    setBalances((prev) => {
-      const missing = baseline.filter((code) => !prev.some((b) => b.code === code));
-      if (missing.length === 0) return prev;
-      return [...prev, ...missing.map((code) => ({ code, balance: 0, spent: 0, lastUpdated: today() }))];
-    });
-  }, [localCurrency.currencyCode, hydrated]);
 
   // מיקום עוזר ה-AI במסך הארנק בלבד: הפינה השמאלית העליונה (אזור פנוי
   // בכותרת), כדי שלא יכסה את כרטיס "פעילות אחרונה" בתחתית התצוגה.
@@ -216,141 +123,40 @@ export default function WalletPreviewScreen() {
     };
   }, []);
 
-  // ---------- עזרי-מטבע ----------
-  function rateToILS(code: string): number | null {
-    if (code === "ILS") return 1;
-    return rates.data?.ratesToILS[code] ?? null;
-  }
-  function convert(amount: number, from: string, to: string): number | null {
-    const f = rateToILS(from);
-    const t = rateToILS(to);
-    if (f == null || t == null) return null;
-    return (amount * f) / t;
-  }
-  function balanceOf(code: string) {
-    return balances.find((b) => b.code === code) ?? { code, balance: 0, spent: 0, lastUpdated: today() };
-  }
-  function adjustBalance(code: string, delta: number, alsoSpent = 0) {
-    setBalances((prev) => {
-      const idx = prev.findIndex((b) => b.code === code);
-      if (idx === -1) return [...prev, { code, balance: delta, spent: alsoSpent, lastUpdated: today() }];
-      const arr = [...prev];
-      arr[idx] = { ...arr[idx]!, balance: arr[idx]!.balance + delta, spent: arr[idx]!.spent + alsoSpent, lastUpdated: today() };
-      return arr;
-    });
-  }
-
-  // ---------- פעולות: הוספת/הפחתת כסף ----------
+  // ---------- פעולות: מעטפות דקות מעל ה-hook (שומרות confirm()/סגירת-חלונית/תפריט מקומיים) ----------
   function handleAddMoney(currency: string, amount: number, source: MoneySource, date: string, note: string) {
-    adjustBalance(currency, amount);
-    setAdditions((prev) => [{ id: nextId("add"), currency, amount, source, date, note: note || undefined }, ...prev]);
+    store.addMoney(currency, amount, source, date, note);
     setDialog(null);
-    showToast(`נוספו ${formatMoney(amount, currency)} ליתרת ${currencyMeta(currency).name}`);
   }
   function handleReduceMoney(currency: string, amount: number, note: string) {
-    const bal = balanceOf(currency);
-    if (amount > bal.balance) {
-      showToast("הסכום גדול מהיתרה הזמינה — הפעולה בוטלה");
-      return;
-    }
-    adjustBalance(currency, -amount);
-    setAdditions((prev) => [{ id: nextId("red"), currency, amount: -amount, source: "other", date: today(), note: note || "הפחתה ידנית" }, ...prev]);
+    if (!store.reduceMoney(currency, amount, note)) return;
     setDialog(null);
-    showToast(`הופחתו ${formatMoney(amount, currency)} מיתרת ${currencyMeta(currency).name}`);
   }
-
-  // ---------- פעולות: המרת מטבע לפי סכום שהתקבל בפועל (לא שער האינטרנט) ----------
   function handleConvert(fromCcy: string, fromAmount: number, toCcy: string, toAmount: number, fee: number, location: string, dateTime: string) {
-    const bal = balanceOf(fromCcy);
-    if (fromAmount > bal.balance) {
-      showToast("היתרה במטבע המקור אינה מספיקה — ההמרה בוטלה");
-      return;
-    }
-    const marketRate = convert(1, fromCcy, toCcy);
-    adjustBalance(fromCcy, -fromAmount);
-    adjustBalance(toCcy, toAmount);
-    setConversions((prev) => [
-      { id: nextId("cnv"), fromCurrency: fromCcy, fromAmount, toCurrency: toCcy, toAmount, fee: fee || undefined, location: location || undefined, dateTime, effectiveRate: toAmount / fromAmount, marketRateAtTime: marketRate ?? undefined },
-      ...prev,
-    ]);
+    if (!store.convertCurrency(fromCcy, fromAmount, toCcy, toAmount, fee, location, dateTime)) return;
     setDialog(null);
-    showToast(`הומרו ${formatMoney(fromAmount, fromCcy)} ל-${formatMoney(toAmount, toCcy)}`);
   }
-
-  // ---------- פעולות: הוצאות ----------
   function handleDeleteExpense(id: string) {
-    const idx = expenses.findIndex((e) => e.id === id);
-    const tx = expenses[idx]!;
-    if (!confirm(`למחוק את ההוצאה "${tx.title}"?`)) return;
-    pendingDeleteExpense.current = { tx, index: idx };
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-    if (tx.paymentMethod !== "credit") adjustBalance(tx.currency, tx.amount, -tx.amount);
-    else setBalances((prev) => prev.map((b) => (b.code === tx.currency ? { ...b, spent: Math.max(0, b.spent - tx.amount) } : b)));
+    const tx = expenses.find((e) => e.id === id);
+    if (!tx || !confirm(`למחוק את ההוצאה "${tx.title}"?`)) return;
     setDialog(null);
     setMenuForExpense(null);
-    showToast(`"${tx.title}" נמחקה`, "בטל", () => {
-      const pending = pendingDeleteExpense.current;
-      if (!pending) return;
-      setExpenses((prev) => {
-        const arr = [...prev];
-        arr.splice(pending.index, 0, pending.tx);
-        return arr;
-      });
-      if (pending.tx.paymentMethod !== "credit") adjustBalance(pending.tx.currency, -pending.tx.amount, pending.tx.amount);
-      else setBalances((prev) => prev.map((b) => (b.code === pending.tx.currency ? { ...b, spent: b.spent + pending.tx.amount } : b)));
-      setToast(null);
-    });
+    store.deleteExpense(id);
   }
-
-  // ---------- פעולות: כרטיסי אשראי ----------
   function handleSaveCard(card: Omit<CreditCardInfo, "id">, existingId?: string) {
-    if (existingId) {
-      setCards((prev) => prev.map((c) => (c.id === existingId ? { ...c, ...card, isPrimary: card.isPrimary ? true : c.isPrimary } : card.isPrimary ? { ...c, isPrimary: false } : c)));
-    } else {
-      setCards((prev) => (card.isPrimary ? [...prev.map((c) => ({ ...c, isPrimary: false })), { id: nextId("card"), ...card }] : [...prev, { id: nextId("card"), ...card }]));
-    }
+    store.saveCard(card, existingId);
     setDialog(null);
-    showToast(existingId ? "הכרטיס עודכן" : "כרטיס האשראי נוסף");
   }
   function handleSetPrimaryCard(id: string) {
-    setCards((prev) => prev.map((c) => ({ ...c, isPrimary: c.id === id })));
+    store.setPrimaryCard(id);
     setMenuForCard(null);
-    showToast("הכרטיס הוגדר כראשי");
   }
   function handleDeleteCard(id: string) {
-    const idx = cards.findIndex((c) => c.id === id);
-    const card = cards[idx]!;
-    if (!confirm(`למחוק את הכרטיס "${card.nickname}"?`)) return;
-    pendingDeleteCard.current = { card, index: idx };
-    setCards((prev) => prev.filter((c) => c.id !== id));
+    const card = cards.find((c) => c.id === id);
+    if (!card || !confirm(`למחוק את הכרטיס "${card.nickname}"?`)) return;
     setMenuForCard(null);
-    showToast(`"${card.nickname}" נמחק`, "בטל", () => {
-      const pending = pendingDeleteCard.current;
-      if (!pending) return;
-      setCards((prev) => {
-        const arr = [...prev];
-        arr.splice(pending.index, 0, pending.card);
-        return arr;
-      });
-      setToast(null);
-    });
+    store.deleteCard(id);
   }
-
-  // ---------- סיכומים ----------
-  const totalConvertedToBase = useMemo(() => {
-    let sum = 0;
-    let allResolved = true;
-    for (const b of balances) {
-      const v = convert(b.balance, b.code, baseCurrency);
-      if (v == null) {
-        allResolved = false;
-        continue;
-      }
-      sum += v;
-    }
-    return allResolved ? sum : null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balances, baseCurrency, rates]);
 
   const cashExpenseTotal = expenses.filter((e) => e.paymentMethod !== "credit").reduce((s, e) => s + (convert(e.amount, e.currency, baseCurrency) ?? 0), 0);
   const creditExpenseTotal = expenses.filter((e) => e.paymentMethod === "credit").reduce((s, e) => s + (convert(e.amount, e.currency, baseCurrency) ?? 0), 0);
@@ -794,7 +600,7 @@ export default function WalletPreviewScreen() {
           existingCodes={balances.map((b) => b.code)}
           onClose={() => setDialog(null)}
           onAdd={(code) => {
-            setBalances((prev) => (prev.some((b) => b.code === code) ? prev : [...prev, { code, balance: 0, spent: 0, lastUpdated: today() }]));
+            if (!balances.some((b) => b.code === code)) adjustBalance(code, 0);
             setDialog(null);
             showToast(`נוסף מטבע ${currencyMeta(code).name}`);
           }}

@@ -13,23 +13,23 @@ import {
   formatMoney,
   primaryCountryForCurrency,
   SK,
-  ALL_DESIGN_PREVIEW_KEYS,
+  tripScopedKey,
   loadJSON,
   saveJSON,
   today,
   nextId,
   compressImageFile,
-  INITIAL_BALANCES,
   readWalletStateFromStorage,
   writeWalletStateToStorage,
   buildBackupBlob,
   downloadBlob,
   parseBackupJSON,
   buildExpenseReportCSV,
-  type CurrencyBalance,
   type DocumentEntry,
   type ProfileInfo,
 } from "../wallet-data";
+import { type WalletStore } from "../wallet-store";
+import { currentScopeTripId, resetAllTripScopedData } from "../trips-data";
 
 /**
  * מסך "עוד" (design-preview בלבד) — כל אפשרות מובילה לתת-מסך אמיתי
@@ -116,58 +116,15 @@ export default function MorePreviewScreen() {
 
 // ============================== ניהול מטבעות ==============================
 
-export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string, a?: string, cb?: () => void) => void }) {
-  const [hydrated, setHydrated] = useState(false);
-  const [balances, setBalances] = useState<CurrencyBalance[]>(INITIAL_BALANCES);
-  const [baseCurrency, setBaseCurrency] = useState("ILS");
-  const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
+// עודכן: לא עוד עותק-עצמאי שלישי של לוגיקת-הארנק (בנוסף ל-wallet-store.ts
+// ו-wallet/page.tsx לפני איחודו) — מקבל את ה-store המשותף (useWalletStore,
+// שנוצר פעם אחת ברמת דף-העטיפה currencies/page.tsx) כ-prop, כדי שגם הטוסט
+// וגם ההיקף-לכל-טיול יהיו תמיד זהים לשאר מסכי הארנק, לא מסונכרנים-ידנית.
+export function CurrenciesSection({ onBack, store }: { onBack: () => void; store: WalletStore }) {
+  const { balances, baseCurrency, setBaseCurrency, manualCountryCode, setManualCountryCode, setGeoCountryCode, showToast, adjustBalance, moveBalance, removeBalanceCurrency } = store;
   const [addOpen, setAddOpen] = useState(false);
   const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "error" | "done">("idle");
-  const pendingDelete = useRef<{ balance: CurrencyBalance; index: number } | null>(null);
 
-  useEffect(() => {
-    setBalances(loadJSON(SK.balances, INITIAL_BALANCES));
-    setBaseCurrency(loadJSON(SK.baseCcy, "ILS"));
-    setManualCountryCode(loadJSON<string | null>(SK.manualCountry, null));
-    setHydrated(true);
-  }, []);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.balances, balances);
-  }, [balances, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.baseCcy, baseCurrency);
-  }, [baseCurrency, hydrated]);
-  useEffect(() => {
-    if (!hydrated) return;
-    saveJSON(SK.manualCountry, manualCountryCode);
-  }, [manualCountryCode, hydrated]);
-
-  function move(index: number, dir: -1 | 1) {
-    setBalances((prev) => {
-      const arr = [...prev];
-      const j = index + dir;
-      if (j < 0 || j >= arr.length) return arr;
-      [arr[index], arr[j]] = [arr[j]!, arr[index]!];
-      return arr;
-    });
-  }
-  function remove(index: number) {
-    const balance = balances[index]!;
-    if (!confirm(`להסיר את ${balance.code} מהארנק?`)) return;
-    pendingDelete.current = { balance, index };
-    setBalances((prev) => prev.filter((_, i) => i !== index));
-    showToast(`מטבע ${balance.code} הוסר`, "בטל", () => {
-      const pending = pendingDelete.current;
-      if (!pending) return;
-      setBalances((prev) => {
-        const arr = [...prev];
-        arr.splice(pending.index, 0, pending.balance);
-        return arr;
-      });
-    });
-  }
   function setLocal(code: string) {
     const country = primaryCountryForCurrency(code);
     if (!country) {
@@ -188,7 +145,7 @@ export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; s
       async (pos) => {
         const result = await reverseGeocodeCountryAction(pos.coords.latitude, pos.coords.longitude);
         if (result) {
-          saveJSON(SK.geoCountry, result.countryCode);
+          setGeoCountryCode(result.countryCode);
           setGeoStatus("done");
           showToast(`זוהה מיקום: ${result.countryName}`);
         } else {
@@ -246,17 +203,24 @@ export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; s
                 <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>יתרה: {formatMoney(b.balance, b.code)}</div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                <button type="button" disabled={i === 0} aria-label="הזזה למעלה" onClick={() => move(i, -1)} style={{ width: "24px", height: "20px", borderRadius: "5px", background: "rgba(255,255,255,0.06)", border: "none", color: i === 0 ? COLOR.textMuted : "#fff", cursor: i === 0 ? "default" : "pointer", fontSize: "11px" }}>
+                <button type="button" disabled={i === 0} aria-label="הזזה למעלה" onClick={() => moveBalance(i, -1)} style={{ width: "24px", height: "20px", borderRadius: "5px", background: "rgba(255,255,255,0.06)", border: "none", color: i === 0 ? COLOR.textMuted : "#fff", cursor: i === 0 ? "default" : "pointer", fontSize: "11px" }}>
                   ▲
                 </button>
-                <button type="button" disabled={i === balances.length - 1} aria-label="הזזה למטה" onClick={() => move(i, 1)} style={{ width: "24px", height: "20px", borderRadius: "5px", background: "rgba(255,255,255,0.06)", border: "none", color: i === balances.length - 1 ? COLOR.textMuted : "#fff", cursor: i === balances.length - 1 ? "default" : "pointer", fontSize: "11px" }}>
+                <button type="button" disabled={i === balances.length - 1} aria-label="הזזה למטה" onClick={() => moveBalance(i, 1)} style={{ width: "24px", height: "20px", borderRadius: "5px", background: "rgba(255,255,255,0.06)", border: "none", color: i === balances.length - 1 ? COLOR.textMuted : "#fff", cursor: i === balances.length - 1 ? "default" : "pointer", fontSize: "11px" }}>
                   ▼
                 </button>
               </div>
               <button type="button" onClick={() => setLocal(b.code)} style={{ padding: "6px 8px", borderRadius: "8px", background: "rgba(138,90,223,0.14)", border: `1px solid ${COLOR.purple}40`, color: "#c9b3ff", fontSize: "10px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                 הפוך למקומי
               </button>
-              <button type="button" onClick={() => remove(i)} aria-label={`מחיקת ${b.code}`} style={{ width: "28px", height: "28px", borderRadius: "8px", background: "rgba(239,111,97,0.12)", border: `1px solid ${COLOR.danger}40`, color: COLOR.danger, cursor: "pointer", fontSize: "13px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`להסיר את ${b.code} מהארנק?`)) removeBalanceCurrency(b.code);
+                }}
+                aria-label={`מחיקת ${b.code}`}
+                style={{ width: "28px", height: "28px", borderRadius: "8px", background: "rgba(239,111,97,0.12)", border: `1px solid ${COLOR.danger}40`, color: COLOR.danger, cursor: "pointer", fontSize: "13px" }}
+              >
                 ✕
               </button>
             </Card>
@@ -269,7 +233,7 @@ export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; s
           existingCodes={balances.map((b) => b.code)}
           onClose={() => setAddOpen(false)}
           onAdd={(code) => {
-            setBalances((prev) => (prev.some((b) => b.code === code) ? prev : [...prev, { code, balance: 0, spent: 0, lastUpdated: today() }]));
+            if (!balances.some((b) => b.code === code)) adjustBalance(code, 0);
             setAddOpen(false);
             showToast(`נוסף מטבע ${currencyMeta(code).name}`);
           }}
@@ -281,19 +245,23 @@ export function CurrenciesSection({ onBack, showToast }: { onBack: () => void; s
 
 // ============================== גיבוי ושחזור ==============================
 
-export function BackupSection({ onBack, showToast }: { onBack: () => void; showToast: (m: string) => void }) {
+// קורא/כותב ישירות דרך wallet-data.ts (לא useWalletStore) בכוונה — גיבוי
+// הוא תמונת-מצב חד-פעמית, לא state חי, ואין טעם להרכיב hook מלא בשבילו.
+// מקבל tripId מפורש מדף-העטיפה (backup/page.tsx, שכבר קורא currentScopeTripId
+// פעם אחת) — ר' הסבר ב-wallet-data.ts על מניעת מעגל-ייבוא.
+export function BackupSection({ onBack, showToast, tripId }: { onBack: () => void; showToast: (m: string) => void; tripId: string }) {
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setLastBackupAt(loadJSON<string | null>(SK.lastBackupAt, null));
-  }, []);
+    setLastBackupAt(loadJSON<string | null>(tripScopedKey(SK.lastBackupAt, tripId), null));
+  }, [tripId]);
 
   function handleBackup() {
-    const state = readWalletStateFromStorage();
+    const state = readWalletStateFromStorage(tripId);
     downloadBlob(buildBackupBlob(state), `wallet-backup-${today()}.json`);
     const now = new Date().toISOString();
-    saveJSON(SK.lastBackupAt, now);
+    saveJSON(tripScopedKey(SK.lastBackupAt, tripId), now);
     setLastBackupAt(now);
     showToast("גיבוי נתוני הארנק נשמר בהצלחה");
   }
@@ -305,13 +273,13 @@ export function BackupSection({ onBack, showToast }: { onBack: () => void; showT
         showToast("קובץ הגיבוי אינו תקין — השחזור בוטל");
         return;
       }
-      writeWalletStateToStorage(parsed);
+      writeWalletStateToStorage(parsed, tripId);
       showToast("נתוני הארנק שוחזרו מהגיבוי בהצלחה");
     };
     reader.readAsText(file);
   }
   function handleReport() {
-    const state = readWalletStateFromStorage();
+    const state = readWalletStateFromStorage(tripId);
     const csv = buildExpenseReportCSV(state.expenses, state.cards);
     downloadBlob(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }), `expense-report-${today()}.csv`);
     showToast("דוח ההוצאות יוצא בהצלחה");
@@ -623,24 +591,15 @@ export function SettingsSection({ onBack, showToast }: { onBack: () => void; sho
     setNotifStatus(result);
     showToast(result === "granted" ? "ההרשאה להתראות אושרה" : "ההרשאה להתראות לא ניתנה");
   }
-  // מפתחות-localStorage שמוגדרים כקבועים מקומיים בקבצים אחרים (טיולים/
-  // מסלול/הזמנות/אריזה/מעקב-אישי) ולכן לא נכללים ב-ALL_DESIGN_PREVIEW_KEYS
-  // (שמכסה רק את מפתחות SK של wallet-data.ts) — בלעדיהם "איפוס" היה משאיר
-  // מסלול/טיולים ישנים בחוץ, למרות שהארנק כן התאפס. ר' דיווח: "הכנסת מסלול
-  // שלא בחרתי".
-  const OTHER_MODULE_KEYS = [
-    "design-preview-custom-trips-v1",
-    "design-preview-trip-overrides-v1",
-    "design-preview-hidden-trips-v1",
-    "design-preview-trip-stops-v1",
-    "design-preview-trip-activities-v1",
-    "design-preview-bookings-v1",
-    "design-preview-packing-v1",
-    "design-preview-personal-tracker-v1",
-  ];
+  // מוחק את כל הנתונים התלויי-טיול (ארנק/מסלול/הזמנות/אריזה/מעקב) של כל
+  // טיול שקיים אי-פעם, כולל מרשם-הטיולים עצמו — לא רק את הטיול הפעיל, כי
+  // "מחיקת כל הנתונים שלי" אמורה להיות איפוס אמיתי-מלא, לא רק של מה שגלוי
+  // כרגע. מפתחות-חשבון-גלובליים (מסמכים/פרופיל/הגדרות/קטגוריות) לא תלויי-
+  // טיול — נמחקים כאן בנפרד.
   function resetDemoData() {
     if (!confirm("למחוק את כל הנתונים באפליקציה (טיולים, ארנק, הוצאות, מסלול, הזמנות)? לא ניתן לבטל.")) return;
-    for (const key of [...ALL_DESIGN_PREVIEW_KEYS, ...OTHER_MODULE_KEYS]) localStorage.removeItem(key);
+    resetAllTripScopedData();
+    for (const key of [SK.documents, SK.profile, SK.settings, SK.customCategories]) localStorage.removeItem(key);
     showToast("כל הנתונים נמחקו — טוען מחדש...");
     setTimeout(() => window.location.reload(), 900);
   }

@@ -19,7 +19,7 @@ export default function TripOverviewScreen() {
 
   useEffect(() => {
     setTrip(findAnyTrip(params.id));
-    setCityCount(new Set(loadStops().map((s) => s.city)).size);
+    setCityCount(new Set(loadStops(params.id).map((s) => s.city)).size);
   }, [params.id]);
 
   if (trip === undefined) return null;

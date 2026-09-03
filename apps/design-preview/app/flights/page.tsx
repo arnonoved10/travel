@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ScreenShell, PageTitle, PillTabs, Card, PrimaryButton, SecondaryButton, Money, COLOR, SPACE } from "../design-system";
 import { saveActivity } from "../trip-content";
 import { nextId } from "../wallet-data";
+import { currentScopeTripId } from "../trips-data";
 
 const TABS = [
   { key: "upcoming" as const, label: "הבאים" },
@@ -19,7 +20,7 @@ export default function FlightsScreen() {
   const [addedToTrip, setAddedToTrip] = useState(false);
 
   function handleAddToTrip() {
-    saveActivity("2025-06-15", { id: nextId("act"), time: "14:25", durationLabel: "17:20 שעות", title: "טיסת אל על LY80 · TLV → NRT", category: "עוד", location: "נמל התעופה בן גוריון, טרמינל 3", notes: "נוסעים: 2" });
+    saveActivity(currentScopeTripId(), "2025-06-15", { id: nextId("act"), time: "14:25", durationLabel: "17:20 שעות", title: "טיסת אל על LY80 · TLV → NRT", category: "עוד", location: "נמל התעופה בן גוריון, טרמינל 3", notes: "נוסעים: 2" });
     setAddedToTrip(true);
     setTimeout(() => router.push("/planner"), 600);
   }

@@ -192,6 +192,15 @@ export const SK = {
 // + פרופיל + הגדרות) — לשימוש "איפוס נתוני הדגמה" במסך ההגדרות.
 export const ALL_DESIGN_PREVIEW_KEYS: string[] = Object.values(SK);
 
+/** משייכת מפתח-אחסון בסיסי לטיול ספציפי — כך שכל טיול מקבל "דלי" נפרד
+ * לגמרי (ארנק/מסלול/הזמנות/אריזה/מעקב), לפי בקשה מפורשת: כל טיול חדש
+ * מתחיל ריק, בלי לרשת נתונים מטיול אחר. "::" לא מופיע באף מפתח קיים
+ * ("design-preview-*-v1/v2") ולא באף מזהה-טיול (nextId("trip") מבוסס
+ * crypto.randomUUID), כך שאין סיכון-התנגשות. */
+export function tripScopedKey(baseKey: string, tripId: string): string {
+  return `${baseKey}::trip-${tripId}`;
+}
+
 export function loadJSON<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -355,26 +364,29 @@ export function buildExpenseReportCSV(expenses: Expense[], cards: CreditCardInfo
 }
 
 /** קורא ישירות מ-localStorage בלי React state — בשימוש ממסך "עוד" (שאינו
- * מחזיק state חי של הארנק) להצגת "תאריך גיבוי אחרון" ולבניית גיבוי/דוח. */
-export function readWalletStateFromStorage(): WalletState {
+ * מחזיק state חי של הארנק) להצגת "תאריך גיבוי אחרון" ולבניית גיבוי/דוח.
+ * מקבל tripId מפורש (לא קורא currentScopeTripId בעצמו) כדי לא ליצור מעגל-
+ * ייבוא בין wallet-data.ts ל-trips-data.ts — הקורא (BackupSection) מחשב
+ * את הטיול-הנוכחי ומעביר אותו. */
+export function readWalletStateFromStorage(tripId: string): WalletState {
   return {
-    balances: loadJSON(SK.balances, INITIAL_BALANCES),
-    expenses: loadJSON(SK.expenses, INITIAL_EXPENSES),
-    cards: loadJSON(SK.cards, INITIAL_CARDS),
-    additions: loadJSON(SK.additions, []),
-    conversions: loadJSON(SK.conversions, []),
-    receipts: loadJSON(SK.receipts, {}),
-    baseCurrency: loadJSON(SK.baseCcy, "ILS"),
+    balances: loadJSON(tripScopedKey(SK.balances, tripId), INITIAL_BALANCES),
+    expenses: loadJSON(tripScopedKey(SK.expenses, tripId), INITIAL_EXPENSES),
+    cards: loadJSON(tripScopedKey(SK.cards, tripId), INITIAL_CARDS),
+    additions: loadJSON(tripScopedKey(SK.additions, tripId), []),
+    conversions: loadJSON(tripScopedKey(SK.conversions, tripId), []),
+    receipts: loadJSON(tripScopedKey(SK.receipts, tripId), {}),
+    baseCurrency: loadJSON(tripScopedKey(SK.baseCcy, tripId), "ILS"),
   };
 }
-export function writeWalletStateToStorage(state: WalletState) {
-  saveJSON(SK.balances, state.balances);
-  saveJSON(SK.expenses, state.expenses);
-  saveJSON(SK.cards, state.cards);
-  saveJSON(SK.additions, state.additions);
-  saveJSON(SK.conversions, state.conversions);
-  saveJSON(SK.receipts, state.receipts);
-  saveJSON(SK.baseCcy, state.baseCurrency);
+export function writeWalletStateToStorage(state: WalletState, tripId: string) {
+  saveJSON(tripScopedKey(SK.balances, tripId), state.balances);
+  saveJSON(tripScopedKey(SK.expenses, tripId), state.expenses);
+  saveJSON(tripScopedKey(SK.cards, tripId), state.cards);
+  saveJSON(tripScopedKey(SK.additions, tripId), state.additions);
+  saveJSON(tripScopedKey(SK.conversions, tripId), state.conversions);
+  saveJSON(tripScopedKey(SK.receipts, tripId), state.receipts);
+  saveJSON(tripScopedKey(SK.baseCcy, tripId), state.baseCurrency);
 }
 
 // ============================== מטבע מקומי — זיהוי אוטומטי ==============================

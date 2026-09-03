@@ -22,7 +22,9 @@ import {
   nextId,
   resolveLocalCurrency,
   defaultCurrencyPriority,
+  tripScopedKey,
 } from "./wallet-data";
+import { currentScopeTripId } from "./trips-data";
 
 /**
  * Hook משותף לכל מסכי-הארנק החדשים (16-21) — חילוץ מדויק (לא שכתוב) של
@@ -32,6 +34,11 @@ import {
  * מחדש פעולה שכבר קיימת — חבר אותה לעיצוב החדש".
  */
 export function useWalletStore() {
+  // נקבע פעם אחת בעליית-הרכיב, לא נקרא-מחדש בכל אפקט בנפרד — כדי שאם
+  // הטיול-הפעיל מתחלף באמצע ה-mount (למשל מטאב אחר) לא "יזלוג" מצב-הידרציה
+  // של טיול אחד עם כתיבת-שמירה של טיול אחר. ר' ההסבר המלא בתוכנית-ההיקף-
+  // לכל-טיול (trips-data.ts, currentScopeTripId).
+  const [tripId] = useState(() => currentScopeTripId());
   const [hydrated, setHydrated] = useState(false);
   const [balances, setBalances] = useState<CurrencyBalance[]>(INITIAL_BALANCES);
   const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
@@ -58,56 +65,71 @@ export function useWalletStore() {
     setToast({ message, actionLabel, onAction });
     toastTimer.current = setTimeout(() => setToast(null), 4200);
   }
+  /** מסתירה טוסט מיידית (למשל כשפותחים חלונית חדשה) — בלי לחכות לפסק-הזמן
+   * הרגיל, כדי שטוסט-"בטל" ישן לא יישאר גלוי מאחורי חלונית חדשה. */
+  function dismissToast() {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(null);
+  }
 
   useEffect(() => {
-    setBalances(loadJSON(SK.balances, INITIAL_BALANCES));
-    setExpenses(loadJSON(SK.expenses, INITIAL_EXPENSES));
-    setCards(loadJSON(SK.cards, INITIAL_CARDS));
-    setAdditions(loadJSON(SK.additions, []));
-    setConversions(loadJSON(SK.conversions, []));
-    setDeposits(loadJSON(SK.deposits, []));
-    setReceipts(loadJSON(SK.receipts, {}));
-    setBaseCurrency(loadJSON(SK.baseCcy, "ILS"));
-    setManualCountryCode(loadJSON<string | null>(SK.manualCountry, null));
-    setGeoCountryCode(loadJSON<string | null>(SK.geoCountry, null));
+    setBalances(loadJSON(tripScopedKey(SK.balances, tripId), INITIAL_BALANCES));
+    setExpenses(loadJSON(tripScopedKey(SK.expenses, tripId), INITIAL_EXPENSES));
+    setCards(loadJSON(tripScopedKey(SK.cards, tripId), INITIAL_CARDS));
+    setAdditions(loadJSON(tripScopedKey(SK.additions, tripId), []));
+    setConversions(loadJSON(tripScopedKey(SK.conversions, tripId), []));
+    setDeposits(loadJSON(tripScopedKey(SK.deposits, tripId), []));
+    setReceipts(loadJSON(tripScopedKey(SK.receipts, tripId), {}));
+    setBaseCurrency(loadJSON(tripScopedKey(SK.baseCcy, tripId), "ILS"));
+    setManualCountryCode(loadJSON<string | null>(tripScopedKey(SK.manualCountry, tripId), null));
+    setGeoCountryCode(loadJSON<string | null>(tripScopedKey(SK.geoCountry, tripId), null));
     setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.balances, balances);
-  }, [balances, hydrated]);
+    saveJSON(tripScopedKey(SK.balances, tripId), balances);
+  }, [balances, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.expenses, expenses);
-  }, [expenses, hydrated]);
+    saveJSON(tripScopedKey(SK.expenses, tripId), expenses);
+  }, [expenses, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.cards, cards);
-  }, [cards, hydrated]);
+    saveJSON(tripScopedKey(SK.cards, tripId), cards);
+  }, [cards, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.additions, additions);
-  }, [additions, hydrated]);
+    saveJSON(tripScopedKey(SK.additions, tripId), additions);
+  }, [additions, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.conversions, conversions);
-  }, [conversions, hydrated]);
+    saveJSON(tripScopedKey(SK.conversions, tripId), conversions);
+  }, [conversions, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.deposits, deposits);
-  }, [deposits, hydrated]);
+    saveJSON(tripScopedKey(SK.deposits, tripId), deposits);
+  }, [deposits, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.receipts, receipts);
-  }, [receipts, hydrated]);
+    saveJSON(tripScopedKey(SK.receipts, tripId), receipts);
+  }, [receipts, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.baseCcy, baseCurrency);
-  }, [baseCurrency, hydrated]);
+    saveJSON(tripScopedKey(SK.baseCcy, tripId), baseCurrency);
+  }, [baseCurrency, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
-    saveJSON(SK.manualCountry, manualCountryCode);
-  }, [manualCountryCode, hydrated]);
+    saveJSON(tripScopedKey(SK.manualCountry, tripId), manualCountryCode);
+  }, [manualCountryCode, hydrated, tripId]);
+  // חסר קודם: geoCountryCode היה נקרא בהידרציה אבל לא נשמר בשום persist
+  // effect — רק CurrenciesSection.detectByLocation כתב אותו ישירות ל-
+  // localStorage, עוקף את ה-state של ה-hook. נוסף כחלק מאיחוד-שלושת-
+  // ההעתקים העצמאיים (ר' תוכנית ההיקף-לכל-טיול).
+  useEffect(() => {
+    if (!hydrated) return;
+    saveJSON(tripScopedKey(SK.geoCountry, tripId), geoCountryCode);
+  }, [geoCountryCode, hydrated, tripId]);
 
   useEffect(() => {
     getDemoCurrencyRatesAction()
@@ -169,6 +191,19 @@ export function useWalletStore() {
         return arr;
       });
       setToast(null);
+    });
+  }
+
+  /** מזיזה מטבע במיקום אחד קדימה/אחורה ברשימת-היתרות — הפעולה היחידה
+   * שהייתה קיימת רק ב-CurrenciesSection (more/page.tsx) ולא כאן, לפני
+   * איחוד-שלושת-ההעתקים העצמאיים (ר' תוכנית ההיקף-לכל-טיול). */
+  function moveBalance(index: number, dir: -1 | 1) {
+    setBalances((prev) => {
+      const j = index + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[index], arr[j]] = [arr[j]!, arr[index]!];
+      return arr;
     });
   }
 
@@ -408,11 +443,14 @@ export function useWalletStore() {
     });
   }
 
+  // null (לא 0/סכום-חלקי) אם שער-החליפין של אחד המטבעות עוד לא נטען —
+  // אחרת מציגים סכום-שגוי-בשקט בזמן הטעינה במקום "טוען שער..." כנה.
   const totalConvertedToBase = useMemo(() => {
     let sum = 0;
     for (const b of balances) {
       const v = convertAmount(b.balance, b.code, baseCurrency);
-      if (v != null) sum += v;
+      if (v == null) return null;
+      sum += v;
     }
     return sum;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -437,11 +475,13 @@ export function useWalletStore() {
     localCurrency,
     toast,
     showToast,
+    dismissToast,
     rateToILS,
     convertAmount,
     balanceOf,
     adjustBalance,
     removeBalanceCurrency,
+    moveBalance,
     addMoney,
     deleteAddition,
     reduceMoney,

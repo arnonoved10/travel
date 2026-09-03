@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Field, PrimaryButton, IconPill, inputStyle, textareaStyle, COLOR, SPACE, PinIcon, SuitcaseIcon, DocumentIcon } from "../../../../design-system";
 import { saveActivity, findActivity, loadStops, type TripActivity } from "../../../../trip-content";
 import { nextId, today } from "../../../../wallet-data";
@@ -17,6 +17,7 @@ const CATEGORIES: { key: TripActivity["category"]; label: string }[] = [
 
 function AddActivityForm() {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const editId = search.get("id");
   const date = search.get("day") || today();
@@ -35,7 +36,7 @@ function AddActivityForm() {
   // פעילות כפולה חדשה במקום לעדכן את הקיימת. נמצא ונתפס בבדיקה.
   useEffect(() => {
     if (!editId) return;
-    const found = findActivity(editId);
+    const found = findActivity(params.id, editId);
     if (!found) return;
     setTitle(found.activity.title);
     setCategory(found.activity.category);
@@ -44,7 +45,7 @@ function AddActivityForm() {
     setLocation(found.activity.location);
     setNotes(found.activity.notes);
     setExistingLatLon({ lat: found.activity.lat, lon: found.activity.lon });
-  }, [editId]);
+  }, [editId, params.id]);
 
   async function handleSave() {
     if (!title.trim() || saving) return setError(title.trim() ? null : "יש להזין שם פעילות");
@@ -56,12 +57,12 @@ function AddActivityForm() {
     let lat = existingLatLon.lat;
     let lon = existingLatLon.lon;
     if (location.trim() && (lat == null || lon == null)) {
-      const stop = loadStops().find((s) => date >= s.startDate && date <= s.endDate);
+      const stop = loadStops(params.id).find((s) => date >= s.startDate && date <= s.endDate);
       const geo = await geocodeQueryAction(stop ? `${location.trim()}, ${stop.city}` : location.trim(), stop?.countryCode);
       lat = geo?.lat;
       lon = geo?.lon;
     }
-    saveActivity(date, { id: editId ?? nextId("act"), time, durationLabel: duration, title: title.trim(), category, location, notes, lat, lon });
+    saveActivity(params.id, date, { id: editId ?? nextId("act"), time, durationLabel: duration, title: title.trim(), category, location, notes, lat, lon });
     router.back();
   }
 

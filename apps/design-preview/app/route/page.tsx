@@ -16,7 +16,7 @@ import {
   LegacyNavigateIcon,
 } from "./legacy-shared";
 import { loadStops, addStop, updateStop, deleteStop, type TripStop, type StopStatus } from "../trip-content";
-import { activeTrip } from "../trips-data";
+import { activeTrip, currentScopeTripId } from "../trips-data";
 import { StopEditSheet } from "./stop-edit-sheet";
 
 /**
@@ -72,27 +72,32 @@ export default function RoutePreviewScreen() {
   const [stops, setStops] = useState<TripStop[]>([]);
   const [editing, setEditing] = useState<{ mode: "add" | "edit"; stop: TripStop | null } | null>(null);
   const [tripId, setTripId] = useState<string | null>(null);
+  // נפרד מ-tripId (שיכול להיות null — משמש רק לבניית קישור ל"תוכנית
+  // הטיול"): ה-scope שממנו נטענות/נשמרות התחנות עצמן, שתמיד מחזיר ערך
+  // קונקרטי (ר' currentScopeTripId ב-trips-data.ts).
+  const [scopedTripId] = useState(() => currentScopeTripId());
 
   useEffect(() => {
-    setStops(loadStops());
+    setStops(loadStops(scopedTripId));
     setTripId(activeTrip()?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleSave(patch: Omit<TripStop, "id">) {
     if (editing?.mode === "edit" && editing.stop) {
-      updateStop(editing.stop.id, patch);
+      updateStop(scopedTripId, editing.stop.id, patch);
     } else {
-      addStop(patch);
+      addStop(scopedTripId, patch);
     }
-    setStops(loadStops());
+    setStops(loadStops(scopedTripId));
     setEditing(null);
   }
 
   function handleDelete() {
     if (editing?.mode === "edit" && editing.stop) {
       if (!confirm(`למחוק את התחנה "${editing.stop.city}"?`)) return;
-      deleteStop(editing.stop.id);
-      setStops(loadStops());
+      deleteStop(scopedTripId, editing.stop.id);
+      setStops(loadStops(scopedTripId));
     }
     setEditing(null);
   }

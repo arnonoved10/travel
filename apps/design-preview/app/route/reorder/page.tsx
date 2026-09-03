@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, PrimaryButton, SecondaryButton, COLOR, SPACE } from "../../design-system";
 import { FlagIcon } from "../../country-currency-data";
 import { loadStops, saveStops, DEFAULT_STOPS, type TripStop } from "../../trip-content";
+import { currentScopeTripId } from "../../trips-data";
 
 /**
  * מסך "שינוי סדר היעדים" (9) — גרירה אמיתית באמצעות HTML5 Drag&Drop (לא
@@ -15,9 +16,11 @@ export default function ReorderStopsScreen() {
   const router = useRouter();
   const [stops, setStops] = useState<TripStop[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [tripId] = useState(() => currentScopeTripId());
 
   useEffect(() => {
-    setStops(loadStops());
+    setStops(loadStops(tripId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function move(from: number, to: number) {
@@ -30,7 +33,7 @@ export default function ReorderStopsScreen() {
   }
 
   function handleSave() {
-    saveStops(stops);
+    saveStops(tripId, stops);
     router.push("/route");
   }
 

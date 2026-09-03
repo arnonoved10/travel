@@ -235,8 +235,9 @@ function DailyPlanContent() {
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
 
   useEffect(() => {
-    setActivities(activitiesForDate(date));
-    setCity(cityForDate(date));
+    setActivities(activitiesForDate(params.id, date));
+    setCity(cityForDate(params.id, date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
   // מזג-אוויר אמיתי (Open-Meteo) של המיקום האמיתי של התחנה ליום הזה (לפי
@@ -244,10 +245,11 @@ function DailyPlanContent() {
   // אין קואורדינטות (לא אותרו/נכשל האיתור), נופל חזרה לברירת-המחדל של
   // הפעולה כדי עדיין להציג משהו, אבל זה לא המיקום האמיתי.
   useEffect(() => {
-    const stop = loadStops().find((s) => date >= s.startDate && date <= s.endDate);
+    const stop = loadStops(params.id).find((s) => date >= s.startDate && date <= s.endDate);
     const coords = stop?.lat != null && stop?.lon != null ? { lat: stop.lat, lng: stop.lon } : undefined;
     setWeather({ status: "loading", data: null });
     fetchWithRetries(() => fetchWeather(coords)).then((res) => setWeather({ status: res ? "success" : "error", data: res }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
   const monthLabel = new Date(date).toLocaleDateString("he-IL", { month: "long", year: "numeric" });

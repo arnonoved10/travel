@@ -1,29 +1,26 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
 import { ScreenShell } from "../design-system";
 import { CurrenciesSection } from "../more/page";
+import { useWalletStore } from "../wallet-store";
 import { ToastBar } from "../toast-bar";
 
 /**
  * מסך "ניהול מדינות ומטבעות" (34) — עטיפה דקה סביב CurrenciesSection
  * הקיים (חילוץ, לא שכתוב): כל הלוגיקה (זיהוי-GPS, מדינה-מקומית, סדר-
- * מטבעות, הוספה/מחיקה) זהה למקור ב-more/page.tsx.
+ * מטבעות, הוספה/מחיקה) זהה למקור ב-more/page.tsx. קורא ל-useWalletStore
+ * פעם אחת כאן ומעביר את ה-store כולו פנימה — כדי שהטוסט (כולל "בטל" על
+ * מחיקת מטבע) יוצג דרך אותו state ממש שהמוטציות עצמן כותבות אליו, ולא
+ * שני מופעים נפרדים של ה-hook עם שני state של טוסט לא-מסונכרנים.
  */
 export default function CurrenciesScreen() {
   const router = useRouter();
-  const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function showToast(message: string, actionLabel?: string, onAction?: () => void) {
-    if (timer.current) clearTimeout(timer.current);
-    setToast({ message, actionLabel, onAction });
-    timer.current = setTimeout(() => setToast(null), 4200);
-  }
+  const store = useWalletStore();
   return (
     <ScreenShell>
-      <CurrenciesSection onBack={() => router.back()} showToast={showToast} />
-      <ToastBar toast={toast} />
+      <CurrenciesSection onBack={() => router.back()} store={store} />
+      <ToastBar toast={store.toast} />
     </ScreenShell>
   );
 }

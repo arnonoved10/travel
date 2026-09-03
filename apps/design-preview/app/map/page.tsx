@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { LEGACY_COLOR as COLOR, LegacyBottomNav as BottomNav, LEGACY_NAV_HEIGHT as NAV_HEIGHT } from "../route/legacy-shared";
 import { loadStops, loadActivities, addStop, updateStop, deleteStop, type TripStop, type TripActivity } from "../trip-content";
-import { activeTrip } from "../trips-data";
+import { activeTrip, currentScopeTripId } from "../trips-data";
 import { geocodeQueryAction, reverseGeocodePlaceAction } from "../actions";
 import { StopEditSheet } from "../route/stop-edit-sheet";
 import type { MapPoint3D } from "./maplibre-map-inner";
@@ -75,10 +75,13 @@ export default function MapPreviewScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
   const [pickingLoading, setPickingLoading] = useState(false);
+  // נפרד מ-tripId (nullable — לתצוגת "אין טיול פעיל" ולבניית קישור): ה-scope
+  // שממנו נטענות/נשמרות התחנות/הפעילויות עצמן, שתמיד מחזיר ערך קונקרטי.
+  const [scopedTripId] = useState(() => currentScopeTripId());
 
   function reload() {
-    setStops(loadStops());
-    setActivities(loadActivities());
+    setStops(loadStops(scopedTripId));
+    setActivities(loadActivities(scopedTripId));
   }
 
   useEffect(() => {
@@ -94,6 +97,7 @@ export default function MapPreviewScreen() {
         { timeout: 6000 },
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // איתור-רקע חד-פעמי לתחנות בלי קואורדינטות (נוצרו לפני שהתכונה קיימה,
@@ -102,13 +106,13 @@ export default function MapPreviewScreen() {
   useEffect(() => {
     let cancelled = false;
     async function backfill() {
-      const missing = loadStops().filter((s) => s.lat == null || s.lon == null);
+      const missing = loadStops(scopedTripId).filter((s) => s.lat == null || s.lon == null);
       if (missing.length === 0) return;
       setBackfilling(true);
       for (const s of missing) {
         if (cancelled) return;
         const geo = await geocodeQueryAction(s.city, s.countryCode);
-        if (geo && !cancelled) updateStop(s.id, { lat: geo.lat, lon: geo.lon });
+        if (geo && !cancelled) updateStop(scopedTripId, s.id, { lat: geo.lat, lon: geo.lon });
         await new Promise((r) => setTimeout(r, 1100));
       }
       if (!cancelled) {
@@ -183,8 +187,8 @@ export default function MapPreviewScreen() {
   }
 
   function handleSaveStop(patch: Omit<TripStop, "id">) {
-    if (editingStop?.mode === "edit" && editingStop.stop) updateStop(editingStop.stop.id, patch);
-    else addStop(patch);
+    if (editingStop?.mode === "edit" && editingStop.stop) updateStop(scopedTripId, editingStop.stop.id, patch);
+    else addStop(scopedTripId, patch);
     reload();
     setEditingStop(null);
     setPickedLocation(null);
@@ -192,7 +196,7 @@ export default function MapPreviewScreen() {
   function handleDeleteStop() {
     if (editingStop?.mode !== "edit" || !editingStop.stop) return;
     if (!confirm(`למחוק את התחנה "${editingStop.stop.city}"?`)) return;
-    deleteStop(editingStop.stop.id);
+    deleteStop(scopedTripId, editingStop.stop.id);
     reload();
     setEditingStop(null);
   }

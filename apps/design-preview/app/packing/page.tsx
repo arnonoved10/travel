@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ScreenShell, ScreenHeader, Card, PrimaryButton, CheckIcon, COLOR, SPACE } from "../design-system";
-import { loadJSON, saveJSON } from "../wallet-data";
+import { loadJSON, saveJSON, tripScopedKey } from "../wallet-data";
+import { currentScopeTripId } from "../trips-data";
 
 interface PackingItem {
   id: string;
@@ -32,14 +33,16 @@ function mk(labels: string[], done = false): PackingItem[] {
 export default function PackingListScreen() {
   const [categories, setCategories] = useState<PackingCategory[]>(DEFAULT_CATEGORIES);
   const [newItem, setNewItem] = useState("");
+  const [tripId] = useState(() => currentScopeTripId());
 
   useEffect(() => {
-    setCategories(loadJSON(SK_PACKING, DEFAULT_CATEGORIES));
+    setCategories(loadJSON(tripScopedKey(SK_PACKING, tripId), DEFAULT_CATEGORIES));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function persist(next: PackingCategory[]) {
     setCategories(next);
-    saveJSON(SK_PACKING, next);
+    saveJSON(tripScopedKey(SK_PACKING, tripId), next);
   }
 
   function toggle(catKey: string, itemId: string) {

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, Card, Badge, PrimaryButton, HeartIcon, PinIcon, COLOR, SPACE } from "../design-system";
 import { saveActivity, type TripActivity } from "../trip-content";
 import { today, nextId } from "../wallet-data";
+import { currentScopeTripId } from "../trips-data";
 
 const FILTERS = [
   { key: "all" as const, label: "הכל" },
@@ -48,8 +49,9 @@ export default function NearbyScreen() {
   function handleSaveToPlan() {
     const selected = PLACES.filter((p) => liked.has(p.id));
     if (selected.length === 0) return;
+    const tripId = currentScopeTripId();
     for (const p of selected) {
-      saveActivity(today(), { id: nextId("act"), time: "12:00", durationLabel: "שעה", title: p.name, category: CATEGORY_LABEL[p.category], location: p.name, notes: "נוסף ממסך המלצות בסביבה" });
+      saveActivity(tripId, today(), { id: nextId("act"), time: "12:00", durationLabel: "שעה", title: p.name, category: CATEGORY_LABEL[p.category], location: p.name, notes: "נוסף ממסך המלצות בסביבה" });
     }
     router.push("/planner");
   }

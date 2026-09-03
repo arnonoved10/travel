@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ScreenShell, ScreenHeader, Card, Badge, PrimaryButton, COLOR, SPACE } from "../design-system";
-import { loadJSON, saveJSON, nextId, formatMoney } from "../wallet-data";
+import { loadJSON, saveJSON, nextId, formatMoney, tripScopedKey } from "../wallet-data";
+import { currentScopeTripId } from "../trips-data";
 
 interface TrackerEntry {
   id: string;
@@ -19,14 +20,9 @@ interface TrackerState {
 
 const SK_TRACKER = "design-preview-personal-tracker-v1";
 
-const DEFAULT_STATE: TrackerState = {
-  massages: [
-    { id: nextId("trk"), date: "2025-05-28 15:30", label: "Thai Massage", amount: 45, currency: "EUR" },
-    { id: nextId("trk"), date: "2025-05-31 11:00", label: "Aroma Massage", amount: 70, currency: "EUR" },
-  ],
-  tips: [{ id: nextId("trk"), date: "2025-05-28", label: "Bellboy", amount: 5, currency: "EUR" }],
-  fruits: [{ id: nextId("trk"), date: "2025-05-28", label: "מנגו", amount: 3, currency: "EUR" }],
-};
+// לפי בקשה מפורשת: אין יותר רשומות-דמו שמופיעות מעצמן. מעקב חדש (או
+// טיול חדש) מתחיל ריק לגמרי — המשתמש מוסיף בעצמו את מה שבאמת קרה לו.
+const DEFAULT_STATE: TrackerState = { massages: [], tips: [], fruits: [] };
 
 const SECTIONS: { key: keyof TrackerState; label: string; addLabel: string }[] = [
   { key: "massages", label: "מסאז'ים", addLabel: "הוסף מסאז' חדש" },
@@ -40,14 +36,16 @@ export default function PersonalTrackerScreen() {
   const [state, setState] = useState<TrackerState>(DEFAULT_STATE);
   const [newLabel, setNewLabel] = useState<Record<string, string>>({});
   const [newAmount, setNewAmount] = useState<Record<string, string>>({});
+  const [tripId] = useState(() => currentScopeTripId());
 
   useEffect(() => {
-    setState(loadJSON(SK_TRACKER, DEFAULT_STATE));
+    setState(loadJSON(tripScopedKey(SK_TRACKER, tripId), DEFAULT_STATE));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function persist(next: TrackerState) {
     setState(next);
-    saveJSON(SK_TRACKER, next);
+    saveJSON(tripScopedKey(SK_TRACKER, tripId), next);
   }
 
   function addEntry(key: keyof TrackerState) {

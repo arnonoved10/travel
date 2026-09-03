@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, PrimaryButton, HeartIcon, ShareIcon, NavigateIcon, ClockIcon, COLOR, SPACE } from "../../../design-system";
 import { FlagIcon } from "../../../country-currency-data";
 import { loadStops, type TripStop } from "../../../trip-content";
+import { currentScopeTripId } from "../../../trips-data";
 
 const DESCRIPTIONS: Record<string, string> = {
   קיוטו: "קיוטו היא בירת תרבות-יפן: מקדשים עתיקים, בתי-תה מסורתיים וגני-זן מרהיבים, מכל תקופת-ההיסטוריה היפנית.",
@@ -20,7 +21,7 @@ export default function PlaceDetailsScreen() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setStop(loadStops().find((s) => s.id === params.id) ?? null);
+    setStop(loadStops(currentScopeTripId()).find((s) => s.id === params.id) ?? null);
   }, [params.id]);
 
   async function handleShare(city: string) {

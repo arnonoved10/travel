@@ -1,9 +1,12 @@
-import { loadJSON, saveJSON, nextId } from "./wallet-data";
+import { loadJSON, saveJSON, nextId, tripScopedKey } from "./wallet-data";
+import { currentScopeTripId } from "./trips-data";
 
 /**
  * הזמנות (מלונות/טיסות/תחבורה/רכבים/אטרקציות) למסכי "ההזמנות שלי" ו"פרטי
  * הזמנה" — נשמר ב-localStorage בלבד, מוזן ידנית ע"י המשתמש (אין באפליקציה
- * הזו שום שירות-הזמנות חי לחבר אליו). מתחיל ריק, בלי נתוני-דמו.
+ * הזו שום שירות-הזמנות חי לחבר אליו). מתחיל ריק, בלי נתוני-דמו. תלוי-טיול
+ * (ר' currentScopeTripId ב-trips-data.ts) — כל טיול מתחיל עם רשימת-הזמנות
+ * נפרדת ומלאה משלו.
  */
 export type BookingCategory = "hotel" | "flight" | "transport" | "car" | "attraction";
 
@@ -32,14 +35,17 @@ export const CATEGORY_LABEL: Record<BookingCategory, string> = {
 const SK_BOOKINGS = "design-preview-bookings-v1";
 
 export function loadBookings(): Booking[] {
-  return loadJSON<Booking[]>(SK_BOOKINGS, []);
+  return loadJSON<Booking[]>(tripScopedKey(SK_BOOKINGS, currentScopeTripId()), []);
+}
+function saveBookings(bookings: Booking[]) {
+  saveJSON(tripScopedKey(SK_BOOKINGS, currentScopeTripId()), bookings);
 }
 export function findBooking(id: string): Booking | null {
   return loadBookings().find((b) => b.id === id) ?? null;
 }
 export function createBooking(patch: Omit<Booking, "id">): Booking {
   const booking: Booking = { id: nextId("bk"), ...patch };
-  saveJSON(SK_BOOKINGS, [booking, ...loadBookings()]);
+  saveBookings([booking, ...loadBookings()]);
   return booking;
 }
 /** מעדכן הזמנה קיימת (למשל ביטול) — לפני כן לא הייתה שום דרך לבטל הזמנה
@@ -51,13 +57,13 @@ export function updateBooking(id: string, patch: Partial<Omit<Booking, "id">>): 
   const updated = { ...bookings[idx]!, ...patch };
   const arr = [...bookings];
   arr[idx] = updated;
-  saveJSON(SK_BOOKINGS, arr);
+  saveBookings(arr);
   return updated;
 }
 /** מוחקת הזמנה לצמיתות — שונה מ"ביטול" (updateBooking עם status: "cancelled")
  * שרק מסמן את ההזמנה כמבוטלת אך משאיר אותה ברשימה. */
 export function deleteBooking(id: string) {
-  saveJSON(SK_BOOKINGS, loadBookings().filter((b) => b.id !== id));
+  saveBookings(loadBookings().filter((b) => b.id !== id));
 }
 export function bookingsByCategory(): Record<BookingCategory, Booking[]> {
   const all = loadBookings();

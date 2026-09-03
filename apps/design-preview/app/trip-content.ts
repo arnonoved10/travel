@@ -1,12 +1,19 @@
 "use client";
 
-import { loadJSON, saveJSON, nextId } from "./wallet-data";
+import { loadJSON, saveJSON, nextId, tripScopedKey } from "./wallet-data";
 
 /**
  * תוכן-הטיול (תחנות-מסלול + פעילויות-יומיות) של הטיול האמיתי של המשתמש —
  * מקור-האמת המשותף למסכי מסלול/שינוי-סדר/תוכנית-יומית/מפה/פעילות. נשמר
  * ב-localStorage כדי ששינוי-סדר/הוספת-פעילות/מחיקה יהיו פעולות אמיתיות
  * שנשמרות (לא רק state זמני שנעלם ברענון), באותו עיקרון כמו wallet-data.ts.
+ *
+ * כל הפונקציות מקבלות tripId מפורש (לא מחשבות אותו בעצמן דרך
+ * currentScopeTripId) — בניגוד לארנק/הזמנות/אריזה/מעקב. הסיבה: מסך זה
+ * נגיש גם מ-URL-ים גלובליים בלי מזהה-טיול (/route, /map) וגם מ-/trips/[id]/plan
+ * שיכול להצביע על טיול שאינו הטיול-הפעיל (למשל טיול עתידי/היסטורי) — קורא
+ * מפורש חייב להחליט בעצמו איזה tripId רלוונטי, אחרת צפייה בתוכנית של טיול
+ * לא-פעיל הייתה בטעות מציגה/עורכת את המסלול של הטיול הפעיל.
  */
 
 export interface TripActivity {
@@ -47,68 +54,68 @@ export const DEFAULT_STOPS: TripStop[] = [];
 
 const DEFAULT_ACTIVITIES: Record<string, TripActivity[]> = {};
 
-export function loadStops(): TripStop[] {
-  return loadJSON(SK_STOPS, DEFAULT_STOPS);
+export function loadStops(tripId: string): TripStop[] {
+  return loadJSON(tripScopedKey(SK_STOPS, tripId), DEFAULT_STOPS);
 }
-export function saveStops(stops: TripStop[]) {
-  saveJSON(SK_STOPS, stops);
+export function saveStops(tripId: string, stops: TripStop[]) {
+  saveJSON(tripScopedKey(SK_STOPS, tripId), stops);
 }
 /** מוסיפה תחנה חדשה למסלול (ממוינת לפי תאריך-התחלה) — לפני כן לא הייתה
  * שום דרך אמיתית להוסיף תחנה; כפתור "הוסף תחנה" במסך המסלול לא עשה כלום. */
-export function addStop(stop: Omit<TripStop, "id">): TripStop {
+export function addStop(tripId: string, stop: Omit<TripStop, "id">): TripStop {
   const full: TripStop = { ...stop, id: nextId("stop") };
-  const stops = [...loadStops(), full].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  saveStops(stops);
+  const stops = [...loadStops(tripId), full].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  saveStops(tripId, stops);
   return full;
 }
-export function updateStop(stopId: string, patch: Partial<Omit<TripStop, "id">>): TripStop | null {
-  const stops = loadStops();
+export function updateStop(tripId: string, stopId: string, patch: Partial<Omit<TripStop, "id">>): TripStop | null {
+  const stops = loadStops(tripId);
   const idx = stops.findIndex((s) => s.id === stopId);
   if (idx === -1) return null;
   const updated = { ...stops[idx]!, ...patch };
   const arr = [...stops];
   arr[idx] = updated;
   arr.sort((a, b) => a.startDate.localeCompare(b.startDate));
-  saveStops(arr);
+  saveStops(tripId, arr);
   return updated;
 }
-export function deleteStop(stopId: string) {
-  saveStops(loadStops().filter((s) => s.id !== stopId));
+export function deleteStop(tripId: string, stopId: string) {
+  saveStops(tripId, loadStops(tripId).filter((s) => s.id !== stopId));
 }
-export function loadActivities(): Record<string, TripActivity[]> {
-  return loadJSON(SK_ACTIVITIES, DEFAULT_ACTIVITIES);
+export function loadActivities(tripId: string): Record<string, TripActivity[]> {
+  return loadJSON(tripScopedKey(SK_ACTIVITIES, tripId), DEFAULT_ACTIVITIES);
 }
-export function saveActivities(map: Record<string, TripActivity[]>) {
-  saveJSON(SK_ACTIVITIES, map);
+export function saveActivities(tripId: string, map: Record<string, TripActivity[]>) {
+  saveJSON(tripScopedKey(SK_ACTIVITIES, tripId), map);
 }
-export function activitiesForDate(date: string): TripActivity[] {
-  return loadActivities()[date] ?? [];
+export function activitiesForDate(tripId: string, date: string): TripActivity[] {
+  return loadActivities(tripId)[date] ?? [];
 }
-export function findActivity(id: string): { activity: TripActivity; date: string } | null {
-  const map = loadActivities();
+export function findActivity(tripId: string, id: string): { activity: TripActivity; date: string } | null {
+  const map = loadActivities(tripId);
   for (const date of Object.keys(map)) {
     const found = map[date]!.find((a) => a.id === id);
     if (found) return { activity: found, date };
   }
   return null;
 }
-export function saveActivity(date: string, activity: TripActivity) {
-  const map = loadActivities();
+export function saveActivity(tripId: string, date: string, activity: TripActivity) {
+  const map = loadActivities(tripId);
   const list = map[date] ?? [];
   const idx = list.findIndex((a) => a.id === activity.id);
   if (idx === -1) map[date] = [...list, activity].sort((a, b) => a.time.localeCompare(b.time));
   else map[date] = list.map((a) => (a.id === activity.id ? activity : a));
-  saveActivities(map);
+  saveActivities(tripId, map);
 }
-export function deleteActivity(id: string) {
-  const map = loadActivities();
+export function deleteActivity(tripId: string, id: string) {
+  const map = loadActivities(tripId);
   for (const date of Object.keys(map)) {
     map[date] = map[date]!.filter((a) => a.id !== id);
   }
-  saveActivities(map);
+  saveActivities(tripId, map);
 }
-export function cityForDate(date: string): string {
-  const stops = loadStops();
+export function cityForDate(tripId: string, date: string): string {
+  const stops = loadStops(tripId);
   const stop = stops.find((s) => date >= s.startDate && date <= s.endDate);
   return stop?.city ?? "";
 }
