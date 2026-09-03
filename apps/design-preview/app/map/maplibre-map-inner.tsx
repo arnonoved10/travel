@@ -70,7 +70,7 @@ export function DesignPreviewMapLibre({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const first = points[0];
-    const start = first ? { lat: first.lat, lon: first.lon, zoom: 10 } : initialCenter ?? { lat: 32.08, lon: 34.78, zoom: 3 };
+    const start = first ? { lat: first.lat, lon: first.lon, zoom: 10 } : initialCenter ?? { lat: 32.08, lon: 34.78, zoom: 8 };
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: "https://tiles.openfreemap.org/styles/liberty",
