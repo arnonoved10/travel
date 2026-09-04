@@ -7,7 +7,7 @@ import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, today, loadJSON, SK, primaryCountryForCurrency, type DocumentEntry } from "./wallet-data";
+import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, type DocumentEntry } from "./wallet-data";
 import { CurrencyPickerButton } from "./pickers";
 import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
@@ -649,6 +649,15 @@ type CurrencyCode = (typeof ALL_CURRENCIES)[number];
 // primaryCountryForCurrency (הארץ הראשונה ברשימת המדינות עם המטבע הזה).
 const RATE_FLAG_COUNTRY: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: "US", eur: "DE", ils: "IL", gbp: "GB" };
 
+// אילו 2 מטבעות מוצגים בכל אחד מ-2 ריבועי-השערים בדף הבית — נבחר ונערך
+// ע"י המשתמש (לפי בקשה מפורשת), נשמר כהעדפת-תצוגה גלובלית (לא תלוית-טיול,
+// בדיוק כמו העדפות-תצוגה אחרות בדף הבית).
+const SK_HOME_RATE_SQUARES = "design-preview-home-rate-squares-v1";
+const DEFAULT_RATE_SQUARES: [string, string][] = [
+  ["USD", "EUR"],
+  ["GBP", "ILS"],
+];
+
 // תמונה אמיתית (לא אייקון מצויר) של שברולט טראוורס שחורה, לפי בקשה מפורשת
 // "שיראה כמו אמיתי" — אותו עיקרון בדיוק שכבר קיים בקובץ הזה לגבי תמונת-
 // הפרופיל: לא ממציאים תחליף-מצויר כשמבקשים תמונה אמיתית. המקור: Wikimedia
@@ -1258,6 +1267,28 @@ export function MobileHomeMock() {
   const [customTo, setCustomTo] = useState<CurrencyCode>("thb");
   const [customAmount, setCustomAmount] = useState("100");
 
+  // 2 ריבועי-שערים, 2 מטבעות בכל ריבוע, ניתנים לבחירה/עריכה ע"י המשתמש —
+  // נטען פעם אחת בעליית-הרכיב (לא ב-render, כדי לא לגרום ל-hydration
+  // mismatch מול localStorage), נשמר בכל שינוי.
+  const [rateSquares, setRateSquares] = useState<[string, string][]>(DEFAULT_RATE_SQUARES);
+  const [rateSquaresLoaded, setRateSquaresLoaded] = useState(false);
+  const [editingSquare, setEditingSquare] = useState<number | null>(null);
+  useEffect(() => {
+    setRateSquares(loadJSON(SK_HOME_RATE_SQUARES, DEFAULT_RATE_SQUARES));
+    setRateSquaresLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!rateSquaresLoaded) return;
+    saveJSON(SK_HOME_RATE_SQUARES, rateSquares);
+  }, [rateSquares, rateSquaresLoaded]);
+  function setSquareCurrency(squareIndex: number, slot: 0 | 1, code: string) {
+    setRateSquares((prev) => {
+      const next = prev.map((pair) => [...pair] as [string, string]);
+      next[squareIndex]![slot] = code;
+      return next;
+    });
+  }
+
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function showToast(message: string) {
@@ -1369,14 +1400,20 @@ export function MobileHomeMock() {
     const usd = amount * CURRENCY_TO_USD[from];
     return usd / CURRENCY_TO_USD[to];
   }
-  function rateToThb(code: "usd" | "eur" | "ils" | "gbp"): number {
+  // גרסה כללית — מקבלת כל קוד-מטבע (לא רק ה-4 המקוריים), כדי לתמוך בבחירה
+  // חופשית של המשתמש בריבועי-השערים. מחזירה null (לא NaN/0 שקטים) כשאין
+  // בכלל נתון עבור המטבע הזה, לא בשער החי ולא בטבלת-הגיבוי המקומית.
+  function rateForCode(code: string): number | null {
+    const upper = code.toUpperCase();
     if (currency.status === "success" && currency.data) {
       const rates = currency.data.ratesToILS;
       const thb = rates.THB;
-      const x = rates[code.toUpperCase()];
+      const x = rates[upper];
       if (thb && x) return x / thb;
     }
-    return CURRENCY_RATES_TO_THB[code];
+    const lower = code.toLowerCase();
+    const fallback = (CURRENCY_RATES_TO_THB as Record<string, number>)[lower];
+    return fallback ?? null;
   }
 
   return (
@@ -1755,10 +1792,11 @@ export function MobileHomeMock() {
           </Card>
         </Link>
 
-        {/* כרטיס שערי-מטבעות — היה מלבן אחד עם טאבים שמחליפים תצוגה (רק שער
-            אחד גלוי בכל רגע). לפי בקשה מפורשת: עכשיו 4 ריבועים עם 4 שערים
-            גלויים בו-זמנית, כל אחד עם דגל, ומחשבון חופשי עם בחירת-מטבע
-            מבוססת-דגלים (CurrencyPickerButton המשותף) במקום <select> טקסטואלי. */}
+        {/* כרטיס שערי-מטבעות — לפי בקשה מפורשת: 2 ריבועים (במקום 4), כל אחד
+            עם 2 מטבעות הניתנים לבחירה/עריכה ע"י המשתמש (עיפרון בפינה פותח
+            2 בוררי-מטבע עם דגלים). המחשבון החופשי עלה להיות צמוד מיד אחרי
+            הריבועים; 2 המשבצות שהתפנו ירדו למטה, אחרי המחשבון, כמקום-פנוי
+            שממתין להחלטה (אותו עיקרון כמו המלבן שהתפנה מהשעונים). */}
         <Card>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
             <span style={{ fontWeight: 800, fontSize: "14px" }}>שערי מטבעות</span>
@@ -1772,15 +1810,50 @@ export function MobileHomeMock() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "14px" }}>
-            {(["usd", "eur", "gbp", "ils"] as const).map((code) => (
-              <div key={code} style={{ padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
-                  <FlagIcon countryCode={RATE_FLAG_COUNTRY[code]} size={14} />
-                  <span style={{ fontSize: "10.5px", fontWeight: 700, color: COLOR.textMuted }}>{code.toUpperCase()} / ฿</span>
-                </div>
-                <div style={{ fontSize: "13px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
-                  {currency.status === "loading" ? "…" : `1 = ฿${rateToThb(code).toFixed(2)}`}
-                </div>
+            {rateSquares.map((pair, squareIndex) => (
+              <div key={squareIndex} style={{ position: "relative", padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                <button
+                  type="button"
+                  aria-label="עריכת המטבעות בריבוע"
+                  onClick={() => setEditingSquare(editingSquare === squareIndex ? null : squareIndex)}
+                  style={{ position: "absolute", top: "5px", left: "5px", background: "none", border: "none", cursor: "pointer", display: "flex", padding: "3px" }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={COLOR.textMuted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
+                {editingSquare === squareIndex ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingTop: "16px" }}>
+                    <CurrencyPickerButton selectedCode={pair[0]} onSelect={(code) => setSquareCurrency(squareIndex, 0, code)} />
+                    <CurrencyPickerButton selectedCode={pair[1]} onSelect={(code) => setSquareCurrency(squareIndex, 1, code)} />
+                    <button
+                      type="button"
+                      onClick={() => setEditingSquare(null)}
+                      style={{ padding: "6px", borderRadius: "8px", background: COLOR.turquoise, border: "none", color: "#04241c", fontSize: "10.5px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      ✓ סיום עריכה
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "7px", paddingTop: "12px" }}>
+                    {pair.map((code) => {
+                      const rate = rateForCode(code);
+                      const flagCode = primaryCountryForCurrency(code)?.code;
+                      return (
+                        <div key={code}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "2px" }}>
+                            {flagCode ? <FlagIcon countryCode={flagCode} size={13} /> : null}
+                            <span style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textMuted }}>{code} / ฿</span>
+                          </div>
+                          <div style={{ fontSize: "12.5px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
+                            {currency.status === "loading" ? "…" : rate != null ? `1 = ฿${rate.toFixed(2)}` : "אין נתון"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1817,6 +1890,17 @@ export function MobileHomeMock() {
             </div>
             <div style={{ fontSize: "18px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
               {(Number(customAmount) || 0).toLocaleString()} {customFrom.toUpperCase()} = {convert(Number(customAmount) || 0, customFrom, customTo).toLocaleString(undefined, { maximumFractionDigits: 2 })} {customTo.toUpperCase()}
+            </div>
+          </div>
+
+          {/* 2 המשבצות שהתפנו כשכל ריבוע-שער עבר מ-1 מטבע ל-2 — לפי בקשה
+              מפורשת יורדות לכאן, מתחת למחשבון, כמקום-פנוי שממתין להחלטה. */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginTop: "14px" }}>
+            <div style={{ padding: "9px 10px", borderRadius: "12px", border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "44px" }}>
+              <span style={{ fontSize: "10.5px", color: COLOR.textMuted, textAlign: "center" }}>מקום פנוי</span>
+            </div>
+            <div style={{ padding: "9px 10px", borderRadius: "12px", border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "44px" }}>
+              <span style={{ fontSize: "10.5px", color: COLOR.textMuted, textAlign: "center" }}>מקום פנוי</span>
             </div>
           </div>
 
