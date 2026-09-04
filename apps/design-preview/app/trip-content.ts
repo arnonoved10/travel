@@ -26,6 +26,11 @@ export interface TripActivity {
   notes: string;
   lat?: number;
   lon?: number;
+  /** סדר-ביקור בפועל ליום (0,1,2...) — נפרד מ-time (שנשאר תווית-שעה חופשית
+   * שהמשתמש הזין, לא "אמת" לסדר). מוגדר רק אחרי מיטוב-סדר או גרירה ידנית;
+   * activityForDate/sortActivities נופלים חזרה למיון-לפי-time כשאין order
+   * בכלל, כדי לא לשבור התנהגות קיימת של הזמנות ישנות. */
+  order?: number;
 }
 
 export type StopStatus = "בוצע" | "מאושר" | "ממתין לאישור";
@@ -88,8 +93,92 @@ export function loadActivities(tripId: string): Record<string, TripActivity[]> {
 export function saveActivities(tripId: string, map: Record<string, TripActivity[]>) {
   saveJSON(tripScopedKey(SK_ACTIVITIES, tripId), map);
 }
+/** מיון-ברירת-מחדל: אם יש order מוגדר (אחרי מיטוב-סדר/גרירה ידנית) הוא
+ * קובע; אחרת נופלים למיון-לפי-שעה הקיים, כדי לא לשנות התנהגות של ימים
+ * שעדיין לא עברו מיטוב-סדר בכלל. */
+export function sortActivities(list: TripActivity[]): TripActivity[] {
+  return [...list].sort((a, b) => {
+    if (a.order != null && b.order != null) return a.order - b.order;
+    if (a.order != null) return -1;
+    if (b.order != null) return 1;
+    return a.time.localeCompare(b.time);
+  });
+}
 export function activitiesForDate(tripId: string, date: string): TripActivity[] {
-  return loadActivities(tripId)[date] ?? [];
+  return sortActivities(loadActivities(tripId)[date] ?? []);
+}
+/** קובעת סדר-ביקור מפורש לכל הפעילויות של יום מסוים, לפי רשימת-ID
+ * בסדר הרצוי — משמשת גם למיטוב-סדר אוטומטי (Haversine) וגם לגרירה/
+ * הזזה ידנית, שתי הדרכים כותבות דרך אותה פונקציה כדי שלא יהיו שני
+ * מנגנוני-שמירה נפרדים. מזהי-ID שלא ברשימה (לא אמורים לקרות, אך ליתר-
+ * ביטחון) מקבלים את הסדר הבא בתור, לא נעלמים.
+ */
+export function reorderActivitiesForDate(tripId: string, date: string, orderedIds: string[]): TripActivity[] {
+  const map = loadActivities(tripId);
+  const list = map[date] ?? [];
+  const orderIndex = new Map(orderedIds.map((id, i) => [id, i]));
+  let nextFallback = orderedIds.length;
+  const updated = list.map((a) => ({ ...a, order: orderIndex.get(a.id) ?? nextFallback++ }));
+  map[date] = updated;
+  saveActivities(tripId, map);
+  return sortActivities(updated);
+}
+
+// מרחק-קווי (Haversine, ק"מ) בין שתי נקודות — לא זמן-נסיעה אמיתי בכביש
+// (זה ידרוש שירות-ניתוב חיצוני עם מפתח-API, החלטה מפורשת לדחות לעתיד).
+function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** מציעה סדר-ביקור טוב ליום — "השכן הקרוב הבא" (nearest-neighbor) בין
+ * הפעילויות עם מיקום אמיתי, כדי להימנע מסיבובים מיותרים. נקודת-ההתחלה
+ * היא הפעילות הראשונה בסדר הנוכחי; נקודת-הסיום (endId, אם צוינה) נשמרת
+ * תמיד אחרונה — ברירת-המחדל היא הפעילות האחרונה בסדר הנוכחי, בדיוק כמו
+ * שהיה קודם, אלא אם המשתמש יבחר endId אחר. פעילויות בלי מיקום ידוע
+ * (lat/lon) לא משתתפות בחישוב-המרחקים ומתווספות בסוף, בסדר-הזמן הקיים
+ * שלהן — לא ממציאים להן מיקום. תוצאה: מערך ה-ID בסדר המומלץ, לא נשמר
+ * בעצמו — הקורא מעביר אותו ל-reorderActivitiesForDate כדי לשמור בפועל. */
+export function optimizeActivityOrder(activities: TripActivity[], endId?: string): string[] {
+  const geocoded = activities.filter((a): a is TripActivity & { lat: number; lon: number } => a.lat != null && a.lon != null);
+  const nonGeocoded = activities.filter((a) => a.lat == null || a.lon == null);
+  if (geocoded.length <= 2) return [...geocoded, ...nonGeocoded].map((a) => a.id);
+
+  const remaining = [...geocoded];
+  const start = remaining.shift()!;
+  const ordered = [start];
+
+  const resolvedEndId = endId ?? geocoded[geocoded.length - 1]!.id;
+  let endActivity: (typeof geocoded)[number] | undefined;
+  if (resolvedEndId !== start.id) {
+    const idx = remaining.findIndex((a) => a.id === resolvedEndId);
+    if (idx !== -1) {
+      endActivity = remaining[idx];
+      remaining.splice(idx, 1);
+    }
+  }
+
+  while (remaining.length > 0) {
+    const last = ordered[ordered.length - 1]!;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    remaining.forEach((a, i) => {
+      const d = haversineKm(last, a);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    });
+    ordered.push(remaining[bestIdx]!);
+    remaining.splice(bestIdx, 1);
+  }
+  if (endActivity) ordered.push(endActivity);
+
+  return [...ordered.map((a) => a.id), ...nonGeocoded.map((a) => a.id)];
 }
 export function findActivity(tripId: string, id: string): { activity: TripActivity; date: string } | null {
   const map = loadActivities(tripId);

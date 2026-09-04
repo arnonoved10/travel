@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { LEGACY_COLOR as COLOR, LegacyBottomNav as BottomNav, LEGACY_NAV_HEIGHT as NAV_HEIGHT } from "../route/legacy-shared";
-import { loadStops, loadActivities, addStop, updateStop, deleteStop, type TripStop, type TripActivity } from "../trip-content";
+import { loadStops, loadActivities, addStop, updateStop, deleteStop, sortActivities, reorderActivitiesForDate, optimizeActivityOrder, type TripStop, type TripActivity } from "../trip-content";
 import { activeTrip, currentScopeTripId } from "../trips-data";
 import { geocodeQueryAction, reverseGeocodePlaceAction } from "../actions";
 import { StopEditSheet } from "../route/stop-edit-sheet";
@@ -162,7 +162,10 @@ export default function MapPreviewScreen() {
   }));
 
   const dayStop = mode !== "trip" ? sortedStops.find((s) => mode >= s.startDate && mode <= s.endDate) ?? null : null;
-  const dayActivities = mode !== "trip" ? (activities[mode] ?? []).filter((a) => a.lat != null && a.lon != null).sort((a, b) => a.time.localeCompare(b.time)) : [];
+  // sortActivities מכבד order (אחרי מיטוב-סדר/גרירה ידנית) ונופל חזרה
+  // למיון-לפי-שעה כשאין order בכלל — אותו מקור-אמת שמשמש גם את הרשימה למטה.
+  const dayActivitiesAll = mode !== "trip" ? sortActivities(activities[mode] ?? []) : [];
+  const dayActivities = dayActivitiesAll.filter((a) => a.lat != null && a.lon != null);
   const dayPoints: MapPoint3D[] = [
     ...(dayStop && dayStop.lat != null && dayStop.lon != null
       ? [{ id: `stop-${dayStop.id}`, lat: dayStop.lat, lon: dayStop.lon, label: dayStop.city, sublabel: "בסיס", color: STOP_COLORS[sortedStops.indexOf(dayStop) % STOP_COLORS.length]!, isSelected: selectedId === `stop-${dayStop.id}`, order: 1 }]
@@ -200,6 +203,27 @@ export default function MapPreviewScreen() {
     deleteStop(scopedTripId, editingStop.stop.id);
     reload();
     setEditingStop(null);
+  }
+
+  // מיטוב-סדר: heuristic מרחק-קווי (Haversine, "שכן קרוב הבא") בין
+  // הפעילויות המאותרות של אותו יום בלבד — לא ניתוב-כבישים אמיתי (דורש
+  // שירות חיצוני עם מפתח-API). פעילויות בלי מיקום נשארות בסוף, ללא שינוי.
+  function handleOptimizeOrder() {
+    if (mode === "trip") return;
+    const orderedIds = optimizeActivityOrder(dayActivitiesAll);
+    reorderActivitiesForDate(scopedTripId, mode, orderedIds);
+    reload();
+  }
+
+  function handleMoveActivity(id: string, direction: -1 | 1) {
+    if (mode === "trip") return;
+    const ids = dayActivitiesAll.map((a) => a.id);
+    const idx = ids.indexOf(id);
+    const swapWith = idx + direction;
+    if (idx === -1 || swapWith < 0 || swapWith >= ids.length) return;
+    [ids[idx], ids[swapWith]] = [ids[swapWith]!, ids[idx]!];
+    reorderActivitiesForDate(scopedTripId, mode, ids);
+    reload();
   }
 
   if (!checked) return null;
@@ -340,24 +364,58 @@ export default function MapPreviewScreen() {
             ) : (
               <div style={{ fontSize: "12px", color: COLOR.textSecondary }}>אין תחנה מוגדרת ליום הזה</div>
             )}
-            {(activities[mode] ?? []).length === 0 ? (
+            {dayActivitiesAll.length === 0 ? (
               <div style={{ fontSize: "12px", color: COLOR.textMuted, padding: "6px 2px" }}>אין עדיין פעילויות ליום הזה</div>
             ) : (
-              [...(activities[mode] ?? [])]
-                .sort((a, b) => a.time.localeCompare(b.time))
-                .map((a) => (
+              <>
+                {dayActivities.length >= 2 ? (
+                  <button
+                    type="button"
+                    onClick={handleOptimizeOrder}
+                    style={{ alignSelf: "flex-start", padding: "7px 12px", borderRadius: "10px", background: "rgba(67,214,170,0.14)", border: `1px solid ${ACTIVITY_COLOR}55`, color: ACTIVITY_COLOR, fontSize: "11.5px", fontWeight: 800, cursor: "pointer" }}
+                  >
+                    ⇄ מיטוב סדר לפי מרחק
+                  </button>
+                ) : null}
+                {dayActivitiesAll.map((a, i) => (
                   <div
                     key={a.id}
                     onClick={() => setSelectedId(a.id)}
                     style={{ display: "flex", alignItems: "center", gap: "10px", padding: "9px 12px", borderRadius: "12px", background: "#12213f", border: `1px solid ${selectedId === a.id ? COLOR.purple : COLOR.cardBorder}`, cursor: a.lat != null ? "pointer" : "default" }}
                   >
+                    {a.lat != null ? (
+                      <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: `${ACTIVITY_COLOR}33`, border: `1px solid ${ACTIVITY_COLOR}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 800, color: ACTIVITY_COLOR, flexShrink: 0 }}>
+                        {dayActivities.findIndex((d) => d.id === a.id) + 1}
+                      </span>
+                    ) : null}
                     <span style={{ fontSize: "11px", fontWeight: 700, color: COLOR.purple, minWidth: "34px" }}>{a.time}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#fff" }}>{a.title}</div>
                       {a.location ? <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>{a.location}{a.lat == null ? " · אין מיקום ידוע" : ""}</div> : null}
                     </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveActivity(a.id, -1)}
+                        disabled={i === 0}
+                        aria-label="הזזה מעלה בסדר"
+                        style={{ width: "22px", height: "18px", borderRadius: "6px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: i === 0 ? COLOR.textMuted : "#fff", fontSize: "10px", cursor: i === 0 ? "default" : "pointer", padding: 0 }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveActivity(a.id, 1)}
+                        disabled={i === dayActivitiesAll.length - 1}
+                        aria-label="הזזה מטה בסדר"
+                        style={{ width: "22px", height: "18px", borderRadius: "6px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: i === dayActivitiesAll.length - 1 ? COLOR.textMuted : "#fff", fontSize: "10px", cursor: i === dayActivitiesAll.length - 1 ? "default" : "pointer", padding: 0 }}
+                      >
+                        ↓
+                      </button>
+                    </div>
                   </div>
-                ))
+                ))}
+              </>
             )}
             {tripId ? (
               <button
