@@ -40,7 +40,7 @@ export default function CurrencyDetailsScreen() {
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
         <IconPill label="הוספה" icon={<PlusIcon color={COLOR.textPrimary} size={18} />} onClick={() => router.push("/wallet/add")} />
-        <IconPill label="המרה" icon={<SuitcaseIcon />} onClick={() => router.push("/wallet/convert")} />
+        <IconPill label="המרה" icon={<SuitcaseIcon />} onClick={() => router.push(`/wallet/convert?from=${code}`)} />
         <IconPill label="הוצאה" icon={<DocumentIcon />} onClick={() => router.push("/wallet/expense/new")} />
         <IconPill label="היסטוריה" icon={<DocumentIcon />} onClick={() => router.push("/wallet/history")} />
       </div>

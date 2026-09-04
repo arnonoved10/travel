@@ -23,7 +23,12 @@ function ConvertForm() {
   const editing = store.hydrated ? store.conversions.find((c) => c.id === editId) ?? null : null;
   const isEditMode = !!editId;
 
-  const [from, setFrom] = useState("USD");
+  // "from" מתמלא-מראש ממטבע-המקור שבו המשתמש כבר היה (למשל לחיצה על
+  // "המרה" ממסך פרטי-מטבע ספציפי) — לפי בקשה מפורשת שלא יהיה צורך לבחור
+  // אותו שוב מאפס בכל פעם. "to" מתמלא כברירת-מחדל במטבע המקומי של הטיול
+  // הפעיל (בדרך כלל לאן שבאמת ממירים אליו), אך נשאר לגמרי ניתן-לעריכה.
+  const fromParam = searchParams.get("from");
+  const [from, setFrom] = useState(fromParam ? fromParam.toUpperCase() : "USD");
   const [to, setTo] = useState("JPY");
   const [fromAmount, setFromAmount] = useState(0);
   const [toAmount, setToAmount] = useState(0);
@@ -31,6 +36,11 @@ function ConvertForm() {
   const [time, setTime] = useState(nowTime());
   const [error, setError] = useState<string | null>(null);
   const prefilled = useRef(false);
+  const toTouched = useRef(false);
+  function selectTo(code: string) {
+    toTouched.current = true;
+    setTo(code);
+  }
 
   useEffect(() => {
     if (editing && !prefilled.current) {
@@ -44,6 +54,13 @@ function ConvertForm() {
       setTime((t ?? nowTime()).slice(0, 5));
     }
   }, [editing]);
+
+  useEffect(() => {
+    if (store.hydrated && !isEditMode && !toTouched.current && store.localCurrency.currencyCode !== from) {
+      setTo(store.localCurrency.currencyCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.hydrated, store.localCurrency.currencyCode, isEditMode, from]);
 
   const marketRate = store.hydrated ? store.convertAmount(1, from, to) : null;
   const rateStillLoading = store.rates.status === "loading";
@@ -95,7 +112,7 @@ function ConvertForm() {
           type="button"
           onClick={() => {
             setFrom(to);
-            setTo(from);
+            selectTo(from);
           }}
           aria-label="החלפה"
           style={{ width: "40px", height: "40px", borderRadius: "50%", background: COLOR.primary, border: "none", color: "#fff", cursor: "pointer" }}
@@ -107,7 +124,7 @@ function ConvertForm() {
       <Card>
         <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: SPACE.sm }}>אל</div>
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-          <CurrencyPickerButton selectedCode={to} onSelect={setTo} priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)} />
+          <CurrencyPickerButton selectedCode={to} onSelect={selectTo} priorityCodes={defaultCurrencyPriority(store.localCurrency.currencyCode)} />
           <input type="number" value={effectiveToAmount || ""} onChange={(e) => setToAmount(Number(e.target.value))} onFocus={(e) => e.target.select()} style={{ ...inputStyle, width: "110px", textAlign: "left" }} />
         </div>
       </Card>
