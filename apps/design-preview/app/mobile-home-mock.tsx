@@ -9,7 +9,7 @@ import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
 import { formatMoney, today, loadJSON, SK, type DocumentEntry } from "./wallet-data";
 import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
-import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity } from "./trip-content";
+import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
 import { loadBookings } from "./bookings-data";
 import { FlagIcon } from "./country-currency-data";
 
@@ -1137,6 +1137,45 @@ export function MobileHomeMock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
 
+  // "המסלול שלי" — היה מלבן גדול לתצוגת יום-בטיול בלבד. מחולק עכשיו ל-4
+  // משבצות: יום-בטיול (כמו קודם) + 3 תוספות אמיתיות (עיר נוכחית / הפעילות
+  // הבאה היום / המעבר הבא במסלול), כל אחת מנתונים אמיתיים של הטיול הפעיל.
+  const [routeStatus, setRouteStatus] = useState<{ currentCity: string; todayActivity: TripActivity | null; nextTransitionLabel: string } | null>(null);
+  useEffect(() => {
+    if (!activeTripInfo) {
+      setRouteStatus(null);
+      return;
+    }
+    const trip = activeTripInfo;
+    const todayStr = today();
+    const currentCity = cityForDate(trip.id, todayStr) || trip.name;
+
+    const todaysActivities = activitiesForDate(trip.id, todayStr);
+    const nowHHMM = new Date().toTimeString().slice(0, 5);
+    const upcoming = todaysActivities.filter((a) => a.time >= nowHHMM);
+    const todayActivity = upcoming[0] ?? todaysActivities[todaysActivities.length - 1] ?? null;
+
+    const sortedStops = [...loadStops(trip.id)].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const currentIdx = sortedStops.findIndex((s) => todayStr >= s.startDate && todayStr <= s.endDate);
+    let nextTransitionLabel: string;
+    if (sortedStops.length === 0) {
+      nextTransitionLabel = "עוד לא הוגדרו תחנות במסלול";
+    } else if (currentIdx === -1) {
+      nextTransitionLabel = "בדקו את לוח-הזמנים של המסלול";
+    } else {
+      const next = sortedStops[currentIdx + 1];
+      if (!next) {
+        nextTransitionLabel = "זהו היעד האחרון בטיול";
+      } else {
+        const daysUntil = Math.round((new Date(next.startDate).getTime() - new Date(todayStr).getTime()) / 86400000);
+        nextTransitionLabel = daysUntil <= 0 ? `עוברים ל-${next.city} היום` : daysUntil === 1 ? `עוברים ל-${next.city} מחר` : `עוברים ל-${next.city} בעוד ${daysUntil} ימים`;
+      }
+    }
+
+    setRouteStatus({ currentCity, todayActivity, nextTransitionLabel });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
   async function handleSignOut() {
     const errorMessage = await signOutCurrentUser();
@@ -1581,7 +1620,9 @@ export function MobileHomeMock() {
           </Link>
         ) : null}
 
-        {/* כרטיס טיול מרכזי + התקדמות — טבעת/בר בטורקיז, "נותרו X ימים" בסגול (בדיוק לפי המוקאפ). לחיץ אמיתית -> מסך המסלול. */}
+        {/* "המסלול שלי" — היה מלבן גדול לתצוגת יום-בטיול בלבד. מחולק עכשיו
+            ל-4 משבצות (לפי בקשה מפורשת): יום-בטיול, עיר נוכחית, הפעילות
+            הבאה היום, והמעבר הבא במסלול — כל אחת מנתונים אמיתיים. */}
         {tripChecked && !activeTripInfo ? (
           <Link href="/trips/new" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
             <Card style={{ cursor: "pointer", textAlign: "center" }}>
@@ -1590,29 +1631,45 @@ export function MobileHomeMock() {
             </Card>
           </Link>
         ) : (
-          <Link href="/route" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-            <Card style={{ cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                <span style={{ fontWeight: 800, fontSize: "14px" }}>המסלול שלי</span>
-                <ChevronIcon size={13} color={COLOR.textSecondary} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <Ring percent={tripProgress?.percent ?? 0} size={40} color={COLOR.turquoise} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "15px", fontWeight: 800, marginBottom: "6px" }}>
-                    <span style={{ color: COLOR.turquoise }}>יום {tripProgress?.dayIndex ?? "—"}</span>
-                    <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "12px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
-                  </div>
-                  <div style={{ height: "7px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                    <div style={{ width: `${tripProgress?.percent ?? 0}%`, height: "100%", background: COLOR.turquoise, borderRadius: "999px" }} />
-                  </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
+            <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <Ring percent={tripProgress?.percent ?? 0} size={26} color={COLOR.turquoise} />
+                  <span style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted }}>המסלול שלי</span>
+                </div>
+                <div style={{ fontSize: "14px", fontWeight: 800, color: COLOR.turquoise }}>
+                  יום {tripProgress?.dayIndex ?? "—"} <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "11px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
+                </div>
+                <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "2px" }}>
+                  נותרו <span style={{ color: COLOR.purple, fontWeight: 700 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
                 </div>
               </div>
-              <div style={{ textAlign: "end", marginTop: "8px", fontSize: "12px", color: COLOR.textSecondary }}>
-                נותרו <span style={{ color: COLOR.purple, fontWeight: 800 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
+            </Link>
+            <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>כרגע ב</div>
+                <div style={{ fontSize: "14px", fontWeight: 800, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{routeStatus?.currentCity ?? "—"}</div>
               </div>
-            </Card>
-          </Link>
+            </Link>
+            <Link
+              href={routeStatus?.todayActivity ? `/activities/${routeStatus.todayActivity.id}` : activeTripInfo ? `/trips/${activeTripInfo.id}/plan?day=${today()}` : "/route"}
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
+              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>הפעילות הבאה היום</div>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {routeStatus?.todayActivity ? `${routeStatus.todayActivity.time} · ${routeStatus.todayActivity.title}` : "אין פעילויות היום"}
+                </div>
+              </div>
+            </Link>
+            <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>המעבר הבא</div>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{routeStatus?.nextTransitionLabel ?? "—"}</div>
+              </div>
+            </Link>
+          </div>
         )}
 
         {/* ארנק — מסגרת אחת מחולקת למשבצת לכל מטבע שיש בו יתרה (כולל
