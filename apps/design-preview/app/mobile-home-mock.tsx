@@ -558,38 +558,73 @@ function Ring({ percent, size = 56, color = COLOR.turquoise }: { percent: number
   );
 }
 
-/** שורת-פירוט גוללת מתחת לטבעת הראשית: כל יתרת-מטבע נוספת (חוץ מהמטבע-
- * המקומי שכבר מוצג למעלה), ולצידה כל כרטיס-אשראי — "היה/נותר" אם הוגדרה
- * לו מסגרת, אחרת רק "הוצאתי" (אין ביחס-למה למדוד בלי מסגרת). לפי בקשה
- * מפורשת: "הייתי מחלק אותו לכל סוגי המטבעות הקיימים שלי כולל כ.א". */
-function WalletBreakdownRow({ walletStore }: { walletStore: ReturnType<typeof useWalletStore> }) {
-  if (!walletStore.hydrated) return null;
+interface WalletGridCell {
+  key: string;
+  label: string;
+  amountText: string;
+  subLabel?: string;
+  emphasize?: boolean;
+}
+
+/** כל המטבעות שבארנק (כולל יתרות-אפס — 4 מטבעות-הבסיס תמיד קיימים
+ * ב-walletStore.balances, ר' defaultCurrencyPriority) + כל כרטיס-אשראי,
+ * כל אחד "משבצת" משלו באותה מסגרת אחת — לפי בקשה מפורשת: "תחלק אותה לכל
+ * סוגי המטבעות... לפחות 4 או 5, כי צריך תמיד שיהיה מטבע מקומי, שקל, דולר,
+ * אירו, וכ.א". לא עוד טבעת-ענק אחת + שורה-גוללת נסתרת. */
+function buildWalletGridCells(walletStore: ReturnType<typeof useWalletStore>): WalletGridCell[] {
   const localCode = walletStore.localCurrency.currencyCode;
-  const otherBalances = walletStore.balances.filter((b) => b.code !== localCode && (b.balance !== 0 || b.spent !== 0));
-  const cards = walletStore.cards;
-  if (otherBalances.length === 0 && cards.length === 0) return null;
+  const cells: WalletGridCell[] = walletStore.balances.map((b) => ({
+    key: `bal-${b.code}`,
+    label: b.code,
+    amountText: formatMoney(b.balance, b.code),
+    subLabel: b.code === localCode ? "מקומי" : undefined,
+    emphasize: b.code === localCode,
+  }));
+  for (const c of walletStore.cards) {
+    const spent = walletStore.expenses.filter((e) => e.cardId === c.id).reduce((sum, e) => sum + (walletStore.convertAmount(e.amount, e.currency, c.currency) ?? 0), 0);
+    const remaining = c.creditLimit != null ? Math.max(0, c.creditLimit - spent) : null;
+    cells.push({
+      key: `card-${c.id}`,
+      label: c.nickname,
+      amountText: formatMoney(remaining ?? spent, c.currency),
+      subLabel: remaining != null ? "נותר במסגרת" : "הוצאתי בכרטיס",
+    });
+  }
+  return cells;
+}
 
-  const chipStyle: React.CSSProperties = { flexShrink: 0, minWidth: "78px", padding: "8px 10px", borderRadius: "10px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` };
-
+function WalletCurrencyGrid({ walletStore }: { walletStore: ReturnType<typeof useWalletStore> }) {
+  if (!walletStore.hydrated) return <div style={{ fontSize: "12px", color: COLOR.textMuted }}>טוען...</div>;
+  const cells = buildWalletGridCells(walletStore);
   return (
-    <div style={{ display: "flex", gap: "8px", overflowX: "auto", marginTop: "12px", paddingTop: "12px", borderTop: `1px solid ${COLOR.cardBorder}` }}>
-      {otherBalances.map((b) => (
-        <div key={b.code} style={chipStyle}>
-          <div style={{ fontSize: "10px", color: COLOR.textMuted, marginBottom: "2px" }}>{b.code}</div>
-          <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{formatMoney(b.balance, b.code)}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
+      {cells.map((cell) => (
+        <div
+          key={cell.key}
+          style={{
+            padding: "10px",
+            borderRadius: "12px",
+            background: cell.emphasize ? "rgba(67,214,170,0.12)" : "rgba(255,255,255,0.04)",
+            border: `1px solid ${cell.emphasize ? `${COLOR.turquoise}55` : COLOR.cardBorder}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: "10.5px",
+              fontWeight: cell.emphasize ? 700 : 600,
+              color: cell.emphasize ? COLOR.turquoise : COLOR.textMuted,
+              marginBottom: "3px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {cell.label}
+            {cell.subLabel ? ` · ${cell.subLabel}` : ""}
+          </div>
+          <div style={{ fontSize: "15px", fontWeight: 800, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{cell.amountText}</div>
         </div>
       ))}
-      {cards.map((c) => {
-        const spent = walletStore.expenses.filter((e) => e.cardId === c.id).reduce((sum, e) => sum + (walletStore.convertAmount(e.amount, e.currency, c.currency) ?? 0), 0);
-        const remaining = c.creditLimit != null ? Math.max(0, c.creditLimit - spent) : null;
-        return (
-          <div key={c.id} style={chipStyle}>
-            <div style={{ fontSize: "10px", color: COLOR.textMuted, marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nickname}</div>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{formatMoney(remaining ?? spent, c.currency)}</div>
-            <div style={{ fontSize: "9px", color: COLOR.textMuted }}>{remaining != null ? "נותר" : "הוצאתי"}</div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -1573,33 +1608,16 @@ export function MobileHomeMock() {
           </Link>
         )}
 
-        {/* ארנק — טבעת-82% בצד ימין, יתרה+סכום-התחלתי בצד שמאל (בדיוק כמו
-            בתמונת הייחוס — סדר-DOM הפוך מהכרטיסים האחרים, ר' הערה למעלה).
+        {/* ארנק — מסגרת אחת מחולקת למשבצת לכל מטבע שיש בו יתרה (כולל
+            יתרות-אפס — 4 מטבעות-הבסיס תמיד קיימים) וכל כרטיס-אשראי, לפי
+            בקשה מפורשת: "תחלק אותה לכל סוגי המטבעות... לפחות 4 או 5".
             מסך-ארנק אמיתי קיים כעת ב-/design-preview/wallet — לחיצה מנווטת
-            אליו במקום להציג הודעת-ממתין (תוקן בעקבות דיווח: "הארנק לא עובד"). */}
+            אליו. */}
         <Link href="/wallet" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
           <Card style={{ cursor: "pointer" }}>
-          <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "10px" }}>הארנק שלי</div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            {(() => {
-              const local = walletStore.hydrated ? walletStore.balanceOf(walletStore.localCurrency.currencyCode) : null;
-              const initialAmount = local ? local.balance + local.spent : 0;
-              const percent = local && initialAmount > 0 ? Math.min(100, Math.round((local.balance / initialAmount) * 100)) : 0;
-              return (
-                <>
-                  <Ring percent={percent} size={54} color={COLOR.turquoise} />
-                  <div style={{ textAlign: "end" }}>
-                    <div style={{ fontSize: "11px", color: COLOR.textMuted, marginBottom: "3px" }}>
-                      יתרה זמינה <span style={{ color: COLOR.turquoise, fontWeight: 700 }}>{local ? formatMoney(initialAmount, local.code) : "—"}</span>
-                    </div>
-                    <div style={{ fontSize: "25px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>{local ? formatMoney(local.balance, local.code) : "—"}</div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-          <WalletBreakdownRow walletStore={walletStore} />
-        </Card>
+            <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "10px" }}>הארנק שלי</div>
+            <WalletCurrencyGrid walletStore={walletStore} />
+          </Card>
         </Link>
 
         {/* כרטיס שערי-מטבעות — 3 זוגות קבועים מותאמים ליעד (תאילנד) + מחשבון
