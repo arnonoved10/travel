@@ -51,6 +51,11 @@ export default function CardDetailsScreen() {
           {card.isPrimary ? <Badge tone="success">מועדף</Badge> : null}
         </div>
         {card.feePercent ? <div style={{ fontSize: "11.5px", color: COLOR.textSecondary }}>עמלת המרה: {card.feePercent}%</div> : null}
+        {card.creditLimit ? (
+          <div style={{ fontSize: "11.5px", color: COLOR.textSecondary }}>
+            מסגרת אשראי: <Money text={formatMoney(card.creditLimit, card.currency)} />
+          </div>
+        ) : null}
       </Card>
 
       <div>

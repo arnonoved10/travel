@@ -49,6 +49,10 @@ export interface CreditCardInfo {
   feePercent?: number;
   color: string;
   isPrimary?: boolean;
+  /** מסגרת-אשראי — אופציונלי לגמרי, כדי שאפשר יהיה להציג "היה/נותר" לכרטיס
+   * בדיוק כמו למטבע. בלי זה מציגים רק "סה״כ הוצאתי בכרטיס" (אין ביחס-למה
+   * למדוד אחוזים). */
+  creditLimit?: number;
 }
 export interface Expense {
   id: string;

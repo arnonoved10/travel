@@ -7,8 +7,10 @@ import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, today } from "./wallet-data";
-import { activeTrip, tripProgress as computeTripProgressFor } from "./trips-data";
+import { formatMoney, today, loadJSON, SK, type DocumentEntry } from "./wallet-data";
+import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
+import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity } from "./trip-content";
+import { loadBookings } from "./bookings-data";
 import { FlagIcon } from "./country-currency-data";
 
 // עוטפת קריאה ל-API חיצוני בכמה ניסיונות עם השהיה עולה — ראו הערה בשימוש
@@ -78,6 +80,20 @@ const COLOR = {
   danger: "#ef6f61",
   warning: "#f5a544",
   success: "#43d6aa",
+  // כרטיס "כמעט מוכנים לטיול" — יושב על גרדיאנט-סגול משלו (לא COLOR.cardBg
+  // הרגיל), ולכן הצבעים הבאים לא חוזרים בשום מקום אחר בעמוד. שמות מפורשים
+  // כדי שלא יישארו hex-ים "קשיחים" מפוזרים בתוך ה-JSX.
+  readinessGradientStart: "#2c2569",
+  readinessGradientMid: "#23295c",
+  readinessGradientEnd: "#1c2750",
+  readinessBorder: "rgba(168,128,245,0.45)",
+  readinessGlow: "rgba(138,90,223,0.28)",
+  readinessTextPrimary: "#ffffff",
+  readinessTextSecondary: "#cdc6f2",
+  readinessAccent: "#a480f5",
+  readinessTileBg: "rgba(255,255,255,0.09)",
+  readinessTileBorder: "rgba(255,255,255,0.14)",
+  readinessCtaShadow: "rgba(102,66,185,0.5)",
 };
 
 // דגלים אמיתיים כ-SVG וקטורי (לא אמוג'י) — בכוונה: אמוג'י-דגלים לא מרונדרים
@@ -480,15 +496,15 @@ function ActionTile({
         textAlign: "start",
         padding: "10px",
         borderRadius: "16px",
-        background: "rgba(255,255,255,0.09)",
-        border: "1px solid rgba(255,255,255,0.14)",
+        background: COLOR.readinessTileBg,
+        border: `1px solid ${COLOR.readinessTileBorder}`,
         cursor: "pointer",
       }}
     >
       {icon}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: "13px", color: "#ffffff", marginBottom: "2px" }}>{title}</div>
-        <div style={{ fontSize: "11px", color: "#cdc6f2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
+        <div style={{ fontWeight: 800, fontSize: "13px", color: COLOR.readinessTextPrimary, marginBottom: "2px" }}>{title}</div>
+        <div style={{ fontSize: "11px", color: COLOR.readinessTextSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
       </div>
       <span
         style={{
@@ -496,14 +512,14 @@ function ActionTile({
           alignItems: "center",
           gap: "4px",
           flexShrink: 0,
-          background: `linear-gradient(135deg, #a480f5, ${COLOR.purpleDeep})`,
+          background: `linear-gradient(135deg, ${COLOR.readinessAccent}, ${COLOR.purpleDeep})`,
           borderRadius: "999px",
           padding: "6px 10px",
           fontSize: "11px",
           fontWeight: 700,
-          color: "#ffffff",
+          color: COLOR.readinessTextPrimary,
           whiteSpace: "nowrap",
-          boxShadow: "0 3px 10px rgba(102,66,185,0.5)",
+          boxShadow: `0 3px 10px ${COLOR.readinessCtaShadow}`,
         }}
       >
         {cta}
@@ -538,6 +554,42 @@ function Ring({ percent, size = 56, color = COLOR.turquoise }: { percent: number
       <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.24, fontWeight: 800, color: COLOR.textPrimary }}>
         {percent}%
       </span>
+    </div>
+  );
+}
+
+/** שורת-פירוט גוללת מתחת לטבעת הראשית: כל יתרת-מטבע נוספת (חוץ מהמטבע-
+ * המקומי שכבר מוצג למעלה), ולצידה כל כרטיס-אשראי — "היה/נותר" אם הוגדרה
+ * לו מסגרת, אחרת רק "הוצאתי" (אין ביחס-למה למדוד בלי מסגרת). לפי בקשה
+ * מפורשת: "הייתי מחלק אותו לכל סוגי המטבעות הקיימים שלי כולל כ.א". */
+function WalletBreakdownRow({ walletStore }: { walletStore: ReturnType<typeof useWalletStore> }) {
+  if (!walletStore.hydrated) return null;
+  const localCode = walletStore.localCurrency.currencyCode;
+  const otherBalances = walletStore.balances.filter((b) => b.code !== localCode && (b.balance !== 0 || b.spent !== 0));
+  const cards = walletStore.cards;
+  if (otherBalances.length === 0 && cards.length === 0) return null;
+
+  const chipStyle: React.CSSProperties = { flexShrink: 0, minWidth: "78px", padding: "8px 10px", borderRadius: "10px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` };
+
+  return (
+    <div style={{ display: "flex", gap: "8px", overflowX: "auto", marginTop: "12px", paddingTop: "12px", borderTop: `1px solid ${COLOR.cardBorder}` }}>
+      {otherBalances.map((b) => (
+        <div key={b.code} style={chipStyle}>
+          <div style={{ fontSize: "10px", color: COLOR.textMuted, marginBottom: "2px" }}>{b.code}</div>
+          <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{formatMoney(b.balance, b.code)}</div>
+        </div>
+      ))}
+      {cards.map((c) => {
+        const spent = walletStore.expenses.filter((e) => e.cardId === c.id).reduce((sum, e) => sum + (walletStore.convertAmount(e.amount, e.currency, c.currency) ?? 0), 0);
+        const remaining = c.creditLimit != null ? Math.max(0, c.creditLimit - spent) : null;
+        return (
+          <div key={c.id} style={chipStyle}>
+            <div style={{ fontSize: "10px", color: COLOR.textMuted, marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nickname}</div>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{formatMoney(remaining ?? spent, c.currency)}</div>
+            <div style={{ fontSize: "9px", color: COLOR.textMuted }}>{remaining != null ? "נותר" : "הוצאתי"}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -945,6 +997,15 @@ function RideStatusCard({ event, demoClock, showToast }: { event: HomeTimerEvent
   );
 }
 
+interface ReadinessItem {
+  key: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  cta: string;
+  onClick: () => void;
+}
+
 export function MobileHomeMock() {
   const router = useRouter();
   const currentUser = useCurrentUser();
@@ -953,19 +1014,93 @@ export function MobileHomeMock() {
   // קוראים מ-localStorage — אותו דפוס-בטיחות-הידרציה כמו useWalletStore.
   // מחושב מהטיול הפעיל האמיתי (כולל עריכות שנשמרו), לא מקבועים.
   const [tripProgress, setTripProgress] = useState<{ dayIndex: number; totalDays: number; daysRemaining: number; percent: number } | null>(null);
-  const [activeTripInfo, setActiveTripInfo] = useState<{ name: string; countryCode: string } | null>(null);
+  const [activeTripInfo, setActiveTripInfo] = useState<DemoTrip | null>(null);
   const [tripChecked, setTripChecked] = useState(false);
   useEffect(() => {
     const trip = activeTrip();
     if (trip) {
       setTripProgress(computeTripProgressFor(trip));
-      setActiveTripInfo({ name: trip.name, countryCode: trip.countryCode });
+      setActiveTripInfo(trip);
     } else {
       setTripProgress(null);
       setActiveTripInfo(null);
     }
     setTripChecked(true);
   }, []);
+
+  // "כמעט מוכנים לטיול" — לפני התיקון הזה כל הכרטיס היה מזויף לגמרי (מספרים
+  // קבועים בקוד, לא מחוברים לשום נתון אמיתי, ושני מתוך ארבעת האריחים לא
+  // הובילו לשום מקום אמיתי). עכשיו מחושב מנתונים אמיתיים של הטיול הפעיל,
+  // ומציג רק את מה שבאמת חסר (אריח שהושלם בפועל פשוט לא מופיע יותר).
+  const [readinessItems, setReadinessItems] = useState<ReadinessItem[]>([]);
+  useEffect(() => {
+    if (!activeTripInfo) {
+      setReadinessItems([]);
+      return;
+    }
+    const trip = activeTripInfo;
+    const items: ReadinessItem[] = [];
+
+    const hotelBookings = loadBookings().filter((b) => b.category === "hotel" && b.status !== "cancelled");
+    let hotelNightsCovered = 0;
+    for (const b of hotelBookings) {
+      if (!b.checkOut) continue;
+      const nights = Math.round((new Date(b.checkOut).getTime() - new Date(b.checkIn).getTime()) / 86400000);
+      if (nights > 0) hotelNightsCovered += nights;
+    }
+    const missingHotelNights = Math.max(0, trip.nights - hotelNightsCovered);
+    if (missingHotelNights > 0) {
+      items.push({
+        key: "hotel",
+        icon: <HotelBedIcon size={42} badge={missingHotelNights} />,
+        title: missingHotelNights === 1 ? "נותר לילה אחד ללא מלון" : `נותרו ${missingHotelNights} לילות ללא מלון`,
+        subtitle: "השלימו את מקומות הלינה החסרים",
+        cta: "להוספת הזמנה",
+        onClick: () => router.push("/bookings/new"),
+      });
+    }
+
+    const emptyDays = countDatesWithoutActivity(trip.id, trip.startDate, trip.endDate);
+    if (emptyDays > 0) {
+      const firstEmptyDay = firstDateWithoutActivity(trip.id, trip.startDate, trip.endDate);
+      items.push({
+        key: "plan",
+        icon: <CalendarPlanIcon size={42} badge={emptyDays} />,
+        title: emptyDays === 1 ? "נותר יום אחד ללא תוכנית" : `נותרו ${emptyDays} ימים ללא תוכנית`,
+        subtitle: "הוסיפו פעילויות לימים הפנויים",
+        cta: "לתכנון היום",
+        onClick: () => router.push(`/trips/${trip.id}/plan${firstEmptyDay ? `?day=${firstEmptyDay}` : ""}`),
+      });
+    }
+
+    const stops = loadStops(trip.id);
+    const missingTransport = stops.slice(0, -1).filter((s) => !s.transportToNext.trim()).length;
+    if (stops.length > 1 && missingTransport > 0) {
+      items.push({
+        key: "transport",
+        icon: <TransferAlertIcon size={42} badge={missingTransport} />,
+        title: missingTransport === 1 ? "מעבר אחד בין יעדים ללא תחבורה" : `${missingTransport} מעברים בין יעדים ללא תחבורה`,
+        subtitle: "הוסיפו איך אתם עוברים בין התחנות",
+        cta: "לעריכת המסלול",
+        onClick: () => router.push("/route"),
+      });
+    }
+
+    const documents = loadJSON<DocumentEntry[]>(SK.documents, []);
+    if (!documents.some((d) => d.kind === "insurance")) {
+      items.push({
+        key: "insurance",
+        icon: <InsuranceAlertIcon size={42} badge={1} />,
+        title: "חסר מסמך ביטוח",
+        subtitle: "העלו את פוליסת הביטוח לפני הטיסה",
+        cta: "להעלאת מסמך",
+        onClick: () => router.push("/documents"),
+      });
+    }
+
+    setReadinessItems(items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
 
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
   async function handleSignOut() {
@@ -1463,6 +1598,7 @@ export function MobileHomeMock() {
               );
             })()}
           </div>
+          <WalletBreakdownRow walletStore={walletStore} />
         </Card>
         </Link>
 
@@ -1576,51 +1712,29 @@ export function MobileHomeMock() {
           </div>
         </Card>
 
-        {/* "כמעט מוכנים לטיול" — שני אריחי-פעולה איכותיים (לא רשימה טכנית).
-            אותו מידע-אמיתי בדיוק כמו קודם (2 לילות בלי מלון, 1 יום בלי
-            תוכנית) — רק העיצוב השתנה, לפי בקשת המשתמש המפורשת "אל תסירי את
-            ההתראות ואל תשני את המידע". רקע-כרטיס בגרדיאנט-סגול עדין (לא
-            אדום/כתום כמו קודם); האייקונים עצמם נשארים צבעוניים per-type. */}
-        <Card
-          style={{
-            background: "linear-gradient(150deg, #2c2569 0%, #23295c 55%, #1c2750 100%)",
-            border: "1px solid rgba(168,128,245,0.45)",
-            boxShadow: "0 0 0 1px rgba(168,128,245,0.12), 0 0 26px rgba(138,90,223,0.28), 0 14px 30px rgba(0,0,0,0.4)",
-          }}
-        >
-          <div style={{ fontWeight: 800, fontSize: "16px", color: "#ffffff", marginBottom: "3px" }}>כמעט מוכנים לטיול ✨</div>
-          <div style={{ fontSize: "12px", color: "#d8d2f7", marginBottom: "10px" }}>נותרו ארבע השלמות חשובות</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <ActionTile
-              icon={<HotelBedIcon size={42} badge={2} />}
-              title="נותרו 2 לילות ללא מלון"
-              subtitle="השלימו את מקומות הלינה החסרים"
-              cta="לבחירת מלון"
-              onClick={() => showToast("פותח את מסך המלונות (בהדגמה)")}
-            />
-            <ActionTile
-              icon={<CalendarPlanIcon size={42} badge={1} />}
-              title="נותר יום אחד ללא תוכנית"
-              subtitle="הוסיפו פעילויות ליום הפנוי"
-              cta="לתכנון היום"
-              onClick={() => router.push("/planner")}
-            />
-            <ActionTile
-              icon={<TransferAlertIcon size={42} badge={1} />}
-              title="חסרה הסעה משדה התעופה"
-              subtitle="הוסיפו הסעה כדי לא להגיע לבד"
-              cta="להוספת הסעה"
-              onClick={() => router.push("/transport")}
-            />
-            <ActionTile
-              icon={<InsuranceAlertIcon size={42} badge={1} />}
-              title="חסר מסמך ביטוח"
-              subtitle="העלו את פוליסת הביטוח לפני הטיסה"
-              cta="להעלאת מסמך"
-              onClick={() => router.push("/documents")}
-            />
-          </div>
-        </Card>
+        {/* "כמעט מוכנים לטיול" — מחושב מנתונים אמיתיים (הזמנות/פעילויות/
+            מסלול/מסמכים), מציג רק מה שבאמת חסר; אם הכול הושלם הכרטיס כולו
+            לא מוצג. רקע-כרטיס בגרדיאנט-סגול עדין; האייקונים נשארים צבעוניים
+            per-type. */}
+        {readinessItems.length > 0 ? (
+          <Card
+            style={{
+              background: `linear-gradient(150deg, ${COLOR.readinessGradientStart} 0%, ${COLOR.readinessGradientMid} 55%, ${COLOR.readinessGradientEnd} 100%)`,
+              border: `1px solid ${COLOR.readinessBorder}`,
+              boxShadow: `0 0 0 1px rgba(168,128,245,0.12), 0 0 26px ${COLOR.readinessGlow}, 0 14px 30px rgba(0,0,0,0.4)`,
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: "16px", color: COLOR.readinessTextPrimary, marginBottom: "3px" }}>כמעט מוכנים לטיול ✨</div>
+            <div style={{ fontSize: "12px", color: COLOR.readinessTextSecondary, marginBottom: "10px" }}>
+              {readinessItems.length === 1 ? "נותרה השלמה חשובה אחת" : `נותרו ${readinessItems.length} השלמות חשובות`}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {readinessItems.map((item) => (
+                <ActionTile key={item.key} icon={item.icon} title={item.title} subtitle={item.subtitle} cta={item.cta} onClick={item.onClick} />
+              ))}
+            </div>
+          </Card>
+        ) : null}
 
         {/* אירוע קרוב + טיימר חכם — מתעדכן בזמן אמת (שעון-דמו מואץ, ר' דוח
             הבדיקה). טיסה/מעבורת מקבלות כרטיס-ייעודי איכותי; שאר הסוגים

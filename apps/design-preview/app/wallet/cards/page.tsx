@@ -25,6 +25,7 @@ function CreditCardsScreenInner() {
   const [nickname, setNickname] = useState("");
   const [issuer, setIssuer] = useState("Visa");
   const [last4, setLast4] = useState("");
+  const [creditLimit, setCreditLimit] = useState("");
   const openedFromQuery = searchParams.get("edit");
 
   useEffect(() => {
@@ -42,6 +43,7 @@ function CreditCardsScreenInner() {
     setNickname("");
     setIssuer("Visa");
     setLast4("");
+    setCreditLimit("");
     setFormOpen(true);
   }
 
@@ -50,16 +52,21 @@ function CreditCardsScreenInner() {
     setNickname(c.nickname);
     setIssuer(c.issuer);
     setLast4(c.last4);
+    setCreditLimit(c.creditLimit != null ? String(c.creditLimit) : "");
     setFormOpen(true);
   }
 
   function handleSubmit() {
     if (!nickname.trim() || last4.length !== 4) return;
+    const creditLimitNum = creditLimit ? Number(creditLimit) : undefined;
     if (editingId) {
       const existing = store.cards.find((c) => c.id === editingId);
-      store.saveCard({ nickname: nickname.trim(), issuer, last4, currency: existing?.currency ?? "ILS", color: existing?.color ?? CARD_COLORS[0]!, isPrimary: existing?.isPrimary ?? false }, editingId);
+      store.saveCard(
+        { nickname: nickname.trim(), issuer, last4, currency: existing?.currency ?? "ILS", color: existing?.color ?? CARD_COLORS[0]!, isPrimary: existing?.isPrimary ?? false, creditLimit: creditLimitNum },
+        editingId
+      );
     } else {
-      store.saveCard({ nickname: nickname.trim(), issuer, last4, currency: "ILS", color: CARD_COLORS[store.cards.length % CARD_COLORS.length]!, isPrimary: store.cards.length === 0 });
+      store.saveCard({ nickname: nickname.trim(), issuer, last4, currency: "ILS", color: CARD_COLORS[store.cards.length % CARD_COLORS.length]!, isPrimary: store.cards.length === 0, creditLimit: creditLimitNum });
     }
     setFormOpen(false);
     setEditingId(null);
@@ -80,6 +87,15 @@ function CreditCardsScreenInner() {
           <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="כינוי הכרטיס" style={{ padding: "10px", borderRadius: "10px", background: COLOR.cardElevated, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary }} />
           <input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="חברה מנפיקה" style={{ padding: "10px", borderRadius: "10px", background: COLOR.cardElevated, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary }} />
           <input value={last4} onChange={(e) => setLast4(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4 ספרות אחרונות" style={{ padding: "10px", borderRadius: "10px", background: COLOR.cardElevated, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary }} />
+          <input
+            type="number"
+            min={0}
+            value={creditLimit}
+            onChange={(e) => setCreditLimit(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            placeholder="מסגרת אשראי (לא חובה)"
+            style={{ padding: "10px", borderRadius: "10px", background: COLOR.cardElevated, border: `1px solid ${COLOR.border}`, color: COLOR.textPrimary }}
+          />
           <PrimaryButton onClick={handleSubmit}>{editingId ? "שמירת שינויים" : "שמור כרטיס"}</PrimaryButton>
         </Card>
       ) : null}
