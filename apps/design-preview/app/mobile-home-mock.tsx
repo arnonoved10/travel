@@ -9,7 +9,7 @@ import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
 import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, addCustomCategory, categoryColor, type DocumentEntry } from "./wallet-data";
 import { CurrencyPickerButton } from "./pickers";
-import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
+import { activeTrip, allTrips, tripProgress as computeTripProgressFor, disambiguatedTripName, tripColor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
 import { loadBookings, updateBooking, type VehicleType } from "./bookings-data";
 import { FlagIcon } from "./country-currency-data";
@@ -1148,6 +1148,8 @@ export function MobileHomeMock() {
   const [tripProgress, setTripProgress] = useState<{ dayIndex: number; totalDays: number; daysRemaining: number; percent: number } | null>(null);
   const [activeTripInfo, setActiveTripInfo] = useState<DemoTrip | null>(null);
   const [tripChecked, setTripChecked] = useState(false);
+  // כל הטיולים — לצורך הבחנה בין טיולים בעלי שם זהה בצ'יפ למטה (disambiguatedTripName/tripColor).
+  const [allTripsList, setAllTripsList] = useState<DemoTrip[]>([]);
   useEffect(() => {
     const trip = activeTrip();
     if (trip) {
@@ -1157,6 +1159,7 @@ export function MobileHomeMock() {
       setTripProgress(null);
       setActiveTripInfo(null);
     }
+    setAllTripsList(allTrips());
     setTripChecked(true);
   }, []);
 
@@ -1926,8 +1929,13 @@ export function MobileHomeMock() {
             צ'יפ נפרד מחוץ ל-Link של כרטיס-ההתקדמות (לא ניתן לקנן קישורים). */}
         {activeTripInfo ? (
           <Link href="/trips" style={{ display: "flex", alignItems: "center", gap: "6px", textDecoration: "none", fontSize: "11.5px", fontWeight: 700, color: COLOR.textSecondary, padding: "0 2px" }}>
-            <FlagIcon countryCode={activeTripInfo.countryCode} size={14} />
-            <span>{activeTripInfo.name}</span>
+            <div style={{ position: "relative", flexShrink: 0, display: "flex" }}>
+              <FlagIcon countryCode={activeTripInfo.countryCode} size={14} />
+              {allTripsList.filter((t) => t.name === activeTripInfo.name).length > 1 ? (
+                <span aria-hidden style={{ position: "absolute", bottom: -2, insetInlineEnd: -2, width: "7px", height: "7px", borderRadius: "50%", background: tripColor(activeTripInfo.id), border: "1.5px solid #0a0f20" }} />
+              ) : null}
+            </div>
+            <span>{disambiguatedTripName(activeTripInfo, allTripsList)}</span>
             <span style={{ color: COLOR.purple }}>· החלפת טיול</span>
           </Link>
         ) : null}

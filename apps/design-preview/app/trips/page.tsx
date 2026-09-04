@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ScreenShell, BottomNav, PageTitle, Card, Badge, PillTabs, COLOR, SPACE } from "../design-system";
 import { FlagIcon } from "../country-currency-data";
-import { allTrips, setActiveTrip, type DemoTrip, type TripStatus } from "../trips-data";
+import { allTrips, setActiveTrip, disambiguatedTripName, tripColor, type DemoTrip, type TripStatus } from "../trips-data";
 
 const TABS: { key: TripStatus; label: string }[] = [
   { key: "active", label: "בהווה" },
@@ -53,9 +53,14 @@ export default function TripsListScreen() {
           shown.map((trip) => (
             <Card key={trip.id} style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
               <div onClick={() => router.push(`/trips/${trip.id}`)} style={{ display: "flex", alignItems: "center", gap: SPACE.md, flex: 1, minWidth: 0, cursor: "pointer" }}>
-                <FlagIcon countryCode={trip.countryCode} size={30} />
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <FlagIcon countryCode={trip.countryCode} size={30} />
+                  {trips.filter((t) => t.name === trip.name).length > 1 ? (
+                    <span aria-hidden style={{ position: "absolute", bottom: -2, insetInlineEnd: -2, width: "9px", height: "9px", borderRadius: "50%", background: tripColor(trip.id), border: "1.5px solid #0a1024" }} />
+                  ) : null}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "14.5px", fontWeight: 700, color: COLOR.textPrimary }}>{trip.name}</div>
+                  <div style={{ fontSize: "14.5px", fontWeight: 700, color: COLOR.textPrimary }}>{disambiguatedTripName(trip, trips)}</div>
                   <div style={{ fontSize: "11.5px", color: COLOR.textSecondary, marginTop: "2px" }}>
                     {fmt(trip.startDate)} - {fmt(trip.endDate)} · {trip.nights} לילות
                   </div>

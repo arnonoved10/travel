@@ -352,6 +352,33 @@ export function allTrips(referenceDate = today()): DemoTrip[] {
     .map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t))
     .map((t) => ({ ...t, status: effectiveStatus(t, referenceDate) }));
 }
+
+// ============================== הבחנה בין טיולים בעלי שם זהה ==============================
+
+// לפי בקשה מפורשת: "צריך שיהיה הבדל ביניהם... תן להם גם מספרים וגם צבע" —
+// כששני טיולים חולקים שם (למשל שני טיולים ל"תאילנד"), מוסיפים מספר-סידורי
+// לתצוגה בלבד (לא נוגעים ב-trip.name המאוחסן) לפי סדר-יציב: allTrips()
+// כבר שומר על [דמו קבועים לפי-סדר, ואז טיולי-משתמש לפי-סדר-יצירה] — בלי
+// צורך בשדה-תאריך-יצירה נפרד. גם תגית-צבע קבועה-לכל-טיול, נגזרת
+// דטרמיניסטית מה-id (אותה טכניקה כמו categoryColor לקטגוריות מותאמות-
+// אישית) — כדי שאותו טיול יישאר באותו צבע בכל מקום שהוא מוצג.
+const TRIP_COLOR_PALETTE = ["#43d6aa", "#4f8fe0", "#8a5adf", "#f5a544", "#ef6f61", "#e0699a", "#2dd4bf", "#facc15"];
+function hashStringToIndex(s: string, mod: number): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % mod;
+}
+export function tripColor(tripId: string): string {
+  return TRIP_COLOR_PALETTE[hashStringToIndex(tripId, TRIP_COLOR_PALETTE.length)]!;
+}
+/** שם-תצוגה מבחין: "תאילנד" נשאר כמו שהוא אם הוא ייחודי; הופך ל"תאילנד 1"/
+ * "תאילנד 2" כשיש עוד טיול באותו שם ברשימה שהועברה (בד"כ allTrips()). */
+export function disambiguatedTripName(trip: DemoTrip, allTripsList: DemoTrip[]): string {
+  const sameName = allTripsList.filter((t) => t.name === trip.name);
+  if (sameName.length <= 1) return trip.name;
+  const index = sameName.findIndex((t) => t.id === trip.id);
+  return `${trip.name} ${index + 1}`;
+}
 export function findTrip(id: string): DemoTrip | null {
   return DEMO_TRIPS.find((t) => t.id === id) ?? null;
 }

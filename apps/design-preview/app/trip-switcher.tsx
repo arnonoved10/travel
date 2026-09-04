@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sheet } from "./ui-kit";
 import { FlagIcon } from "./country-currency-data";
-import { allTrips, activeTrip, setActiveTrip, type DemoTrip } from "./trips-data";
+import { allTrips, activeTrip, setActiveTrip, disambiguatedTripName, tripColor, type DemoTrip } from "./trips-data";
 
 /**
  * "צ'יפ" קטן שמציג את הטיול הפעיל הנוכחי ופותח חלונית להחלפה מהירה בין כל
@@ -85,7 +85,7 @@ export function TripSwitcherPill({
         {current ? (
           <>
             <FlagIcon countryCode={current.countryCode} size={15} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.name}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{disambiguatedTripName(current, trips)}</span>
           </>
         ) : (
           <span>בחירת טיול</span>
@@ -126,8 +126,13 @@ export function TripSwitcherPill({
                               textAlign: "start",
                             }}
                           >
-                            <FlagIcon countryCode={t.countryCode} size={20} />
-                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                            <div style={{ position: "relative", flexShrink: 0 }}>
+                              <FlagIcon countryCode={t.countryCode} size={20} />
+                              {trips.filter((x) => x.name === t.name).length > 1 ? (
+                                <span aria-hidden style={{ position: "absolute", bottom: -2, insetInlineEnd: -2, width: "8px", height: "8px", borderRadius: "50%", background: tripColor(t.id), border: "1.5px solid #0e1930" }} />
+                              ) : null}
+                            </div>
+                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{disambiguatedTripName(t, trips)}</span>
                             {isCurrent ? <span style={{ fontSize: "11px", color: "#43d6aa", flexShrink: 0 }}>✓ נוכחי</span> : null}
                           </button>
                         );
