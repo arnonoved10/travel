@@ -1526,30 +1526,37 @@ export function MobileHomeMock() {
           </button>
         </div>
 
-        {/* שני שעוני-עולם — תאילנד בצד שמאל, ישראל בצד ימין (בדיוק כמו בתמונת
-            הייחוס). סדר-ה-DOM כאן הפוך בכוונה: השורה בכיוון-טבעי (RTL, בלי
-            direction:ltr) שם ילד-ראשון מימין — אז ישראל קודם ← ימין, תאילנד
-            שני ← שמאל. */}
+        {/* שני שעוני-העולם עברו לאותו מלבן אחד (לפי בקשה מפורשת: "תשים את
+            שניהם באותו מלבן") — המלבן השני שהתפנה נשאר ריק בינתיים, ממתין
+            להחלטה מה יהיה בו. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "9px" }}>
-          <Card style={{ padding: "11px", background: COLOR.blueCardBg }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "7px" }}>
-              <IsraelFlag />
-              <span style={{ fontSize: "11px", color: COLOR.textSecondary }}>ישראל</span>
+          <Card style={{ padding: "11px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                  <IsraelFlag />
+                  <span style={{ fontSize: "10px", color: COLOR.textSecondary }}>ישראל</span>
+                </div>
+                <div style={{ fontSize: "17px", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{formatClockTime(now, "Asia/Jerusalem")}</div>
+                <div style={{ fontSize: "9px", color: COLOR.textMuted, marginTop: "1px" }}>{formatClockDate(now, "Asia/Jerusalem")}</div>
+              </div>
+              <div style={{ width: "1px", alignSelf: "stretch", background: COLOR.cardBorder }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                  <ThailandFlag />
+                  <span style={{ fontSize: "10px", color: COLOR.textSecondary }}>תאילנד</span>
+                </div>
+                <div style={{ fontSize: "17px", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{formatClockTime(now, "Asia/Bangkok")}</div>
+                <div style={{ fontSize: "9px", color: COLOR.textMuted, marginTop: "1px" }}>{formatClockDate(now, "Asia/Bangkok")}</div>
+              </div>
             </div>
-            <div style={{ fontSize: "20px", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{formatClockTime(now, "Asia/Jerusalem")}</div>
-            <div style={{ fontSize: "10px", color: COLOR.textMuted, marginTop: "1px" }}>{formatClockDate(now, "Asia/Jerusalem")}</div>
-          </Card>
-          <Card style={{ padding: "11px", background: COLOR.tealCardBg }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "7px" }}>
-              <ThailandFlag />
-              <span style={{ fontSize: "11px", color: COLOR.textSecondary }}>תאילנד</span>
+            <div style={{ textAlign: "center", fontSize: "10px", color: COLOR.textSecondary, marginTop: "8px" }}>
+              {timeDiffLabel("Asia/Jerusalem", "Asia/Bangkok")}
             </div>
-            <div style={{ fontSize: "20px", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{formatClockTime(now, "Asia/Bangkok")}</div>
-            <div style={{ fontSize: "10px", color: COLOR.textMuted, marginTop: "1px" }}>{formatClockDate(now, "Asia/Bangkok")}</div>
           </Card>
-        </div>
-        <div style={{ textAlign: "center", fontSize: "11px", color: COLOR.textSecondary, marginTop: "-3px" }}>
-          {timeDiffLabel("Asia/Jerusalem", "Asia/Bangkok")}
+          <Card style={{ padding: "11px", border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+            <span style={{ fontSize: "11px", color: COLOR.textMuted }}>מקום פנוי — נחליט יחד מה יהיה כאן</span>
+          </Card>
         </div>
 
         {/* שם הטיול הפעיל + מעבר-מהיר למסך "הטיולים שלי" להחלפת טיול —
