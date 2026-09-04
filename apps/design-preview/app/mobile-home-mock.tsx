@@ -619,19 +619,80 @@ function buildWalletGridCells(walletStore: ReturnType<typeof useWalletStore>): W
 /** לפי בקשה מפורשת: 4 מטבעות הארנק עברו מהכרטיס "הארנק שלי" (שנשאר ריק
  * לגמרי עכשיו) אל תוך המלבן הריק שהיה ליד "שערי מטבעות" — כרשימה אחת-
  * מתחת-לשנייה (לא רשת), במקביל למלבן השערים. */
+/** לחיצה על משבצת-מטבע פותחת חלונית קטנה להוספת-סכום ישירות מדף הבית —
+ * לפי בקשה מפורשת: "שאני אוכל ללחוץ על מטבע ולהוסיף כמה יש לי בארנק...
+ * זה צריך להיות בכל דף הבית". משתמשת ב-addMoney הקיים (אותה פונקציה
+ * בדיוק כמו /wallet/add), לא לוגיקת-הפקדה כפולה. */
 function WalletCurrencyStack({ walletStore }: { walletStore: ReturnType<typeof useWalletStore> }) {
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
   if (!walletStore.hydrated) return <div style={{ fontSize: "11px", color: COLOR.textMuted }}>טוען...</div>;
   const cells = buildWalletGridCells(walletStore);
+
+  function handleAdd() {
+    const n = Number(amount);
+    if (!addingFor || !(n > 0)) return;
+    walletStore.addMoney(addingFor, n, "cash_from_home", today(), "");
+    setAddingFor(null);
+    setAmount("");
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      {cells.map((cell, i) => (
-        <div key={cell.key} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 0", borderTop: i > 0 ? `1px solid ${COLOR.cardBorder}` : "none" }}>
-          {cell.flagCountryCode ? <FlagIcon countryCode={cell.flagCountryCode} size={13} /> : null}
-          <span style={{ fontSize: "9.5px", fontWeight: cell.emphasize ? 700 : 600, color: cell.emphasize ? COLOR.turquoise : COLOR.textMuted, flexShrink: 0 }}>{cell.label}</span>
-          <span style={{ flex: 1, minWidth: 0, textAlign: "end", fontSize: "11.5px", fontWeight: 800, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{cell.amountText}</span>
-        </div>
-      ))}
-    </div>
+    <>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {cells.map((cell, i) => (
+          <button
+            key={cell.key}
+            type="button"
+            onClick={() => {
+              setAddingFor(cell.label);
+              setAmount("");
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "6px 0",
+              background: "none",
+              border: "none",
+              borderTop: i > 0 ? `1px solid ${COLOR.cardBorder}` : "none",
+              width: "100%",
+              cursor: "pointer",
+              textAlign: "start",
+              fontFamily: "inherit",
+            }}
+          >
+            {cell.flagCountryCode ? <FlagIcon countryCode={cell.flagCountryCode} size={13} /> : null}
+            <span style={{ fontSize: "9.5px", fontWeight: cell.emphasize ? 700 : 600, color: cell.emphasize ? COLOR.turquoise : COLOR.textMuted, flexShrink: 0 }}>{cell.label}</span>
+            <span style={{ flex: 1, minWidth: 0, textAlign: "end", fontSize: "11.5px", fontWeight: 800, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{cell.amountText}</span>
+          </button>
+        ))}
+      </div>
+
+      {addingFor ? (
+        <BottomSheetPanel title={`הוספת כסף ל-${addingFor}`} onClose={() => setAddingFor(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <input
+              type="number"
+              autoFocus
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder="0"
+              style={{ width: "100%", padding: "12px", borderRadius: "12px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "20px", fontWeight: 800, textAlign: "center" }}
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={!(Number(amount) > 0)}
+              style={{ padding: "13px", borderRadius: "12px", background: Number(amount) > 0 ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: "#fff", fontSize: "14.5px", fontWeight: 800, cursor: Number(amount) > 0 ? "pointer" : "default" }}
+            >
+              הוספת כסף
+            </button>
+          </div>
+        </BottomSheetPanel>
+      ) : null}
+    </>
   );
 }
 
