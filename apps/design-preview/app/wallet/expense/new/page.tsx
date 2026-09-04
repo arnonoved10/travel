@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, IconPill, Field, PrimaryButton, CameraIcon, inputStyle, textareaStyle, COLOR, SPACE } from "../../../design-system";
 import { CurrencyPickerButton } from "../../../pickers";
 import { runDemoReceiptOcrAction } from "../../../actions";
-import { compressImageFile, today, nowTime, defaultCurrencyPriority, allCategories, addCustomCategory, categoryColor, type Category, type PaymentMethod, type Expense } from "../../../wallet-data";
+import { compressImageFile, today, nowTime, defaultCurrencyPriority, allCategories, addCustomCategory, categoryColor, CATEGORY_GROUPS, BUILTIN_CATEGORIES, type Category, type PaymentMethod, type Expense } from "../../../wallet-data";
 import { useWalletStore } from "../../../wallet-store";
 import { getImage } from "../../../image-store";
 
@@ -42,9 +42,28 @@ function AddExpenseForm() {
   const [title, setTitle] = useState("");
   const [merchant, setMerchant] = useState("");
   const [category, setCategory] = useState<Category>("אחר");
-  const [categories, setCategories] = useState<Category[]>(["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"]);
+  const [categories, setCategories] = useState<Category[]>(BUILTIN_CATEGORIES);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  // קטגוריות מאורגנות בקבוצות (CATEGORY_GROUPS) — כל קטגוריה-מותאמת-אישית
+  // שהמשתמש הוסיף בעצמו (לא חלק מהחבילות המובנות) מקובצת תחת "שלי" בסוף,
+  // כדי שתישאר נגישה-לבחירה-חוזרת בדיוק כמו קודם. openGroup עוקב אחרי
+  // הקטגוריה הנבחרת, כדי שהטופס ייפתח תמיד על הקבוצה הנכונה (גם בעריכה).
+  const groupedCategories = useMemo(() => {
+    const custom = categories.filter((c) => !BUILTIN_CATEGORIES.includes(c));
+    // הוצאה ישנה עם קטגוריה-שטוחה שהפכה עכשיו לשם-קבוצה (למשל "תחבורה"
+    // מלפני שהתפצלה לתת-סעיפים) לא תימצא באף קבוצה — מוסיפים אותה בכל
+    // זאת תחת "שלי" כדי שהעריכה עדיין תציג ותאפשר לבחור אותה, ולא "תיעלם".
+    const known = new Set([...BUILTIN_CATEGORIES, ...custom]);
+    const mineItems = known.has(category) ? custom : [...custom, category];
+    return mineItems.length > 0 ? [...CATEGORY_GROUPS, { label: "שלי", items: mineItems }] : CATEGORY_GROUPS;
+  }, [categories, category]);
+  const [openGroup, setOpenGroup] = useState<string>(() => groupedCategories.find((g) => g.items.includes("אחר"))?.label ?? CATEGORY_GROUPS[0]!.label);
+  useEffect(() => {
+    const g = groupedCategories.find((g) => g.items.includes(category));
+    if (g) setOpenGroup(g.label);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [tip, setTip] = useState("");
@@ -79,6 +98,7 @@ function AddExpenseForm() {
     addCustomCategory(name);
     setCategories(allCategories());
     setCategory(name);
+    setOpenGroup("שלי");
     setNewCategoryName("");
     setAddingCategory(false);
   }
@@ -321,8 +341,25 @@ function AddExpenseForm() {
 
       <div>
         <div style={{ fontSize: "12.5px", fontWeight: 600, color: COLOR.textSecondary, marginBottom: SPACE.sm }}>קטגוריה</div>
+        <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto", marginBottom: SPACE.sm }}>
+          {groupedCategories.map((g) => (
+            <IconPill
+              key={g.label}
+              label={g.label}
+              icon={<span aria-hidden style={{ width: "14px", height: "14px", borderRadius: "50%", background: categoryColor(g.items[0]!, CATEGORY_COLOR) }} />}
+              active={openGroup === g.label}
+              onClick={() => {
+                setOpenGroup(g.label);
+                // קבוצה עם תת-סעיף יחיד (למשל "מלון") — אין מה לבחור בתוכה,
+                // אז לחיצה אחת על הקבוצה כבר בוחרת אותו, בדיוק כמו הבחירה
+                // השטוחה הישנה. קבוצה עם כמה תת-סעיפים דורשת בחירה נוספת.
+                if (g.items.length === 1) setCategory(g.items[0]!);
+              }}
+            />
+          ))}
+        </div>
         <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto" }}>
-          {(categories.includes(category) ? categories : [...categories, category]).map((c) => (
+          {(groupedCategories.find((g) => g.label === openGroup)?.items ?? []).map((c) => (
             <IconPill
               key={c}
               label={c}

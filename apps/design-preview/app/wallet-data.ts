@@ -13,7 +13,30 @@ import { getImage, putImage } from "./image-store";
 // לא union סגור עוד: קטגוריה מותאמת-אישית שנוצרת פעם אחת (למשל "מסאז'")
 // נשמרת ונשארת זמינה לבחירה בפעם הבאה — לפי בקשה מפורשת.
 export type Category = string;
-export const BUILTIN_CATEGORIES: Category[] = ["מלון", "מסעדות", "תחבורה", "פעילויות", "קניות", "אחר"];
+
+/** רשימת-קטגוריות-פתיחה עשירה, מאורגנת בחבילות (קבוצה → תת-סעיפים) — לפי
+ * בקשה מפורשת: "תעזור לי אם שכחתי... תכניס אותם בחבילה כמו לדוגמא תחבורה
+ * מסעדות קניות... ואז שם בחירה תת סעיף". הקבוצה היא ארגון-תצוגה בלבד
+ * (למיון הבחירה בטופס-הוצאה) — הערך שנשמר בפועל על ההוצאה הוא תמיד תת-
+ * הסעיף הספציפי (למשל "מונית"), בדיוק כמו קטגוריה רגילה. משתמש קיים
+ * שכבר יש לו הוצאות עם הקטגוריות השטוחות הישנות (תחבורה/קניות) לא נשבר —
+ * הן ממשיכות להיות מוצגות/מחושבות נכון בכל מקום, רק לא יופיעו כברירת-
+ * מחדל-לבחירה-חוזרת כי הן הפכו לשם-קבוצה ולא לתת-סעיף.
+ */
+export interface CategoryGroup {
+  label: string;
+  items: Category[];
+}
+export const CATEGORY_GROUPS: CategoryGroup[] = [
+  { label: "מלון", items: ["מלון"] },
+  { label: "תחבורה", items: ["מונית", "הסעה", "טיסה", "השכרת רכב"] },
+  { label: "אוכל", items: ["מסעדות", "בר", "פירות"] },
+  { label: "סופר וקניות", items: ["סופר / 7-11", "בגדים", "נעליים", "מתנות", "דיוטי פרי", "סים"] },
+  { label: "בילויים", items: ["מסאז'", "סנוקר"] },
+  { label: "פעילויות", items: ["פעילויות"] },
+  { label: "אחר", items: ["אחר"] },
+];
+export const BUILTIN_CATEGORIES: Category[] = CATEGORY_GROUPS.flatMap((g) => g.items);
 export type PaymentMethod = "cash" | "credit" | "debit" | "transfer" | "digital_wallet" | "other";
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: "מזומן",

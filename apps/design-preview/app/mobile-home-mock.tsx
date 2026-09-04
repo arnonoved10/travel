@@ -1400,10 +1400,16 @@ export function MobileHomeMock() {
   const [chartCategories, setChartCategories] = useState<string[]>([]);
   const [chartSelected, setChartSelected] = useState<Set<string>>(new Set());
   useEffect(() => {
-    const cats = allCategories();
+    // רשימת-הפריסטים המובנית התרחבה (~18 תת-סעיפים בכמה קבוצות, לפי בקשה
+    // מפורשת) — הצגת כולם כברירת-מחדל כאן הייתה הופכת את הכרטיס הקומפקטי
+    // הזה לעמוס בצ'יפים בלי תועלת. במקום זאת מציגים כברירת-מחדל רק
+    // קטגוריות שיש בהן בפועל הוצאה אחת לפחות; "+ קטגוריה" עדיין מוסיפה
+    // קטגוריה חדשה (גם ריקה) על-גבי הרשימה הזו לפי דרישה מפורשת.
+    if (!walletStore.hydrated) return;
+    const cats = Array.from(new Set(walletStore.expenses.map((e) => e.category)));
     setChartCategories(cats);
     setChartSelected(new Set(cats));
-  }, []);
+  }, [walletStore.hydrated]);
   function toggleChartCategory(cat: string) {
     setChartSelected((prev) => {
       const next = new Set(prev);
