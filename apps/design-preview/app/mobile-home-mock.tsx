@@ -7,7 +7,7 @@ import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, categoryColor, type DocumentEntry } from "./wallet-data";
+import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, addCustomCategory, categoryColor, type DocumentEntry } from "./wallet-data";
 import { CurrencyPickerButton } from "./pickers";
 import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
@@ -697,7 +697,6 @@ function WalletCurrencyGrid({ walletStore }: { walletStore: ReturnType<typeof us
 
 const NAV_HEIGHT = 64;
 
-const CURRENCY_RATES_TO_THB: Record<"usd" | "eur" | "ils" | "gbp", number> = { usd: 36.2, eur: 39.4, ils: 9.8, gbp: 45.6 };
 const CURRENCY_LABEL: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: "דולר אמריקאי", eur: "אירו", ils: "שקל חדש", gbp: "לירה שטרלינג" };
 const CURRENCY_SYMBOL: Record<string, string> = { usd: "$", eur: "€", ils: "₪", thb: "฿", gbp: "£" };
 const ALL_CURRENCIES = ["usd", "eur", "ils", "thb", "gbp"] as const;
@@ -712,6 +711,10 @@ const RATE_FLAG_COUNTRY: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: 
 // חדשה (v2) כי הצורה השתנתה לגמרי (מזוגות-של-2 למערך שטוח).
 const SK_HOME_RATE_CURRENCIES = "design-preview-home-rate-currencies-v2";
 const DEFAULT_RATE_CURRENCIES: string[] = ["USD", "EUR", "GBP", "ILS"];
+// מטבע-ההשוואה בריבוע-השערים (היה THB קבוע בקוד) — עכשיו ניתן-לעריכה.
+const SK_HOME_RATE_BASE_CURRENCY = "design-preview-home-rate-base-currency-v1";
+// צבעי-רצועת-הימים בכרטיס "מלונות" (מלון/טיסה/הסעה/כלום) — ניתנים-לעריכה.
+const SK_HOME_NIGHT_COLORS = "design-preview-home-night-colors-v1";
 
 // תמונות אמיתיות (לא אייקונים מצוירים) לכל סוג-רכב שאפשר להזמין להסעה,
 // לפי בקשה מפורשת "שיהיה לי בחירה איזה סוג רכב הזמנתי... מונית או ואן או
@@ -1329,14 +1332,28 @@ export function MobileHomeMock() {
     date.setUTCDate(date.getUTCDate() + n);
     return date.toISOString().slice(0, 10);
   }
-  const [hotelNights, setHotelNights] = useState<{ date: string; covered: boolean }[]>([]);
+  // כל לילה בטיול מקבל גם דגל-טיסה וגם דגל-הסעה (לא רק כיסוי-מלון) — לפי
+  // בקשה מפורשת: "בתאריכים גם שיש טיסה גם צבע שונה... וגם שיש הסעה צבע
+  // שונה... וגם צבע שיש את הכל". נבדק מול *כל* ההזמנות בטיול (לא רק
+  // "הקרובות" כמו rideBookings/flightBookings למעלה, כי רצועת-הימים
+  // מכסה גם ימים שכבר עברו).
+  interface NightStatus {
+    date: string;
+    hotel: boolean;
+    flight: boolean;
+    ride: boolean;
+  }
+  const [hotelNights, setHotelNights] = useState<NightStatus[]>([]);
   useEffect(() => {
     if (!activeTripInfo) {
       setHotelNights([]);
       return;
     }
     const trip = activeTripInfo;
-    const hotelBookings = loadBookings().filter((b) => b.category === "hotel" && b.status !== "cancelled" && b.checkOut);
+    const allBookings = loadBookings();
+    const hotelBookings = allBookings.filter((b) => b.category === "hotel" && b.status !== "cancelled" && b.checkOut);
+    const flightSet = new Set(allBookings.filter((b) => b.category === "flight" && b.status !== "cancelled").map((b) => b.checkIn));
+    const rideSet = new Set(allBookings.filter((b) => b.category === "transport" && b.status !== "cancelled").map((b) => b.checkIn));
     const coveredSet = new Set<string>();
     for (const b of hotelBookings) {
       let d = b.checkIn;
@@ -1345,16 +1362,34 @@ export function MobileHomeMock() {
         d = addDaysStrUTC(d, 1);
       }
     }
-    const nights: { date: string; covered: boolean }[] = [];
+    const nights: NightStatus[] = [];
     let d = trip.startDate;
     while (d < trip.endDate && nights.length < 60) {
-      nights.push({ date: d, covered: coveredSet.has(d) });
+      nights.push({ date: d, hotel: coveredSet.has(d), flight: flightSet.has(d), ride: rideSet.has(d) });
       d = addDaysStrUTC(d, 1);
     }
     setHotelNights(nights);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
-  const hotelNightsCoveredCount = hotelNights.filter((n) => n.covered).length;
+  const hotelNightsCoveredCount = hotelNights.filter((n) => n.hotel).length;
+
+  // צבעי-הרצועה ניתנים לעריכה (לא קבועים בקוד) — לפי אותו עיקרון: "תמיד
+  // עריכה ושינוי, לא משהו קבוע". פלטת-ברירת-מחדל שמתאימה לשפת-הצבעים
+  // הקיימת של האפליקציה (COLOR.success/warning/purple וכו').
+  const NIGHT_COLOR_PRESETS = ["#43d6aa", "#4f8fe0", "#8a5adf", "#f5a544", "#ef6f61", "#e0699a", "#2dd4bf", "#facc15"];
+  const DEFAULT_NIGHT_COLORS = { hotel: "#43d6aa", none: "#ef6f61", flight: "#4f8fe0", ride: "#8a5adf" };
+  const [nightColors, setNightColors] = useState(DEFAULT_NIGHT_COLORS);
+  const [nightColorsLoaded, setNightColorsLoaded] = useState(false);
+  const [editingNightColors, setEditingNightColors] = useState(false);
+  useEffect(() => {
+    setNightColors(loadJSON(SK_HOME_NIGHT_COLORS, DEFAULT_NIGHT_COLORS));
+    setNightColorsLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!nightColorsLoaded) return;
+    saveJSON(SK_HOME_NIGHT_COLORS, nightColors);
+  }, [nightColors, nightColorsLoaded]);
 
   // "פילוח הוצאות" — גרף-דונאט בתחתית דף הבית, לפי בקשה מפורשת: כל קטגוריה
   // בצבע שלה, בחירת אילו קטגוריות מוצגות, וסינון לפי טווח-זמן. הקטגוריות
@@ -1376,6 +1411,23 @@ export function MobileHomeMock() {
       else next.add(cat);
       return next;
     });
+  }
+  // הוספת קטגוריה חדשה ישירות מהגרף — לפי בקשה מפורשת "שאוכל להוסיף עוד
+  // דברים והמערכת תיתן לי נתונים, לא רק מה שכתוב שם". משתמשת ב-
+  // addCustomCategory הקיים (אותה פונקציה בדיוק שמסך הוספת-הוצאה כבר
+  // משתמש בה — לא לוגיקת-קטגוריות כפולה), ומוסיפה אותה מיד ל-chartCategories
+  // ול-chartSelected (לא ממתינה ל-remount) כדי שברגע שתירשם הוצאה בקטגוריה
+  // הזו, הנתון האמיתי שלה יופיע בגרף.
+  const [addingChartCategory, setAddingChartCategory] = useState(false);
+  const [newChartCategoryName, setNewChartCategoryName] = useState("");
+  function handleAddChartCategory() {
+    const trimmed = newChartCategoryName.trim();
+    if (!trimmed) return;
+    addCustomCategory(trimmed);
+    setChartCategories(allCategories());
+    setChartSelected((prev) => new Set([...prev, trimmed]));
+    setNewChartCategoryName("");
+    setAddingChartCategory(false);
   }
   const chartData = useMemo(() => {
     if (!walletStore.hydrated) return { segments: [] as { category: string; value: number; color: string }[], total: 0 };
@@ -1443,14 +1495,26 @@ export function MobileHomeMock() {
   const [rateCurrencies, setRateCurrencies] = useState<string[]>(DEFAULT_RATE_CURRENCIES);
   const [rateCurrenciesLoaded, setRateCurrenciesLoaded] = useState(false);
   const [editingRates, setEditingRates] = useState(false);
+  // מטבע-ההשוואה של ריבוע-השערים (עד כה היה THB קבוע בקוד) — ניתן-לעריכה
+  // לפי העיקרון המפורש "תמיד עריכה, לא משהו קבוע". ברירת-המחדל נשארת THB
+  // בדיוק כמו ההתנהגות הקודמת; נשמר כהעדפת-תצוגה כמו rateCurrencies.
+  const [rateBaseCurrency, setRateBaseCurrency] = useState("THB");
+  const [rateBaseLoaded, setRateBaseLoaded] = useState(false);
+  const [editingRateBase, setEditingRateBase] = useState(false);
   useEffect(() => {
     setRateCurrencies(loadJSON(SK_HOME_RATE_CURRENCIES, DEFAULT_RATE_CURRENCIES));
     setRateCurrenciesLoaded(true);
+    setRateBaseCurrency(loadJSON(SK_HOME_RATE_BASE_CURRENCY, "THB"));
+    setRateBaseLoaded(true);
   }, []);
   useEffect(() => {
     if (!rateCurrenciesLoaded) return;
     saveJSON(SK_HOME_RATE_CURRENCIES, rateCurrencies);
   }, [rateCurrencies, rateCurrenciesLoaded]);
+  useEffect(() => {
+    if (!rateBaseLoaded) return;
+    saveJSON(SK_HOME_RATE_BASE_CURRENCY, rateBaseCurrency);
+  }, [rateBaseCurrency, rateBaseLoaded]);
   function setRateCurrencyAt(index: number, code: string) {
     setRateCurrencies((prev) => {
       const next = [...prev];
@@ -1575,15 +1639,17 @@ export function MobileHomeMock() {
   // בכלל נתון עבור המטבע הזה, לא בשער החי ולא בטבלת-הגיבוי המקומית.
   function rateForCode(code: string): number | null {
     const upper = code.toUpperCase();
+    const baseUpper = rateBaseCurrency.toUpperCase();
     if (currency.status === "success" && currency.data) {
       const rates = currency.data.ratesToILS;
-      const thb = rates.THB;
+      const baseRate = rates[baseUpper];
       const x = rates[upper];
-      if (thb && x) return x / thb;
+      if (baseRate && x) return x / baseRate;
     }
-    const lower = code.toLowerCase();
-    const fallback = (CURRENCY_RATES_TO_THB as Record<string, number>)[lower];
-    return fallback ?? null;
+    const xUsd = (CURRENCY_TO_USD as Record<string, number>)[code.toLowerCase()];
+    const baseUsd = (CURRENCY_TO_USD as Record<string, number>)[rateBaseCurrency.toLowerCase()];
+    if (xUsd == null || baseUsd == null) return null;
+    return xUsd / baseUsd;
   }
 
   return (
@@ -2026,46 +2092,128 @@ export function MobileHomeMock() {
           </>
         )}
 
-        {/* מלונות — לפי בקשה מפורשת: כמה לילות בטיול, כמה כבר מוזמנים, ורצועת-
-            ימים שמראה בדיוק אילו לילות מכוסים (ירוק) ואילו לא (אדום) — לחיצה
-            על לילה לא-מכוסה פותחת "הזמנה חדשה" עם היום והקטגוריה ממולאים. */}
+        {/* מלונות — עיצוב מחודש לפי בקשה מפורשת ("תעשה משהו יותר יפה"): כל יום
+            מקבל רקע לפי מצב-כיסוי המלון (ירוק/אדום, ניתן-לעריכה) + שלוש נקודות
+            קטנות שמראות אם יש גם טיסה וגם הסעה באותו יום — יום עם הכול מודגש
+            בשלוש נקודות מלאות. לחיצה על לילה בלי מלון פותחת "הזמנה חדשה"
+            ממולאת-מראש. עריכת-הצבעים עצמם (לא רק ברירת-מחדל קבועה) נפתחת
+            דרך העיפרון, לפי העיקרון "תמיד עריכה, לא משהו קבוע". */}
         {activeTripInfo && hotelNights.length > 0 ? (
-          <Card>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+          <Card style={{ background: "linear-gradient(160deg, rgba(79,143,224,0.07), rgba(138,90,223,0.05))" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
               <span style={{ fontWeight: 800, fontSize: "14px" }}>מלונות</span>
-              <span style={{ fontSize: "11px", fontWeight: 700, color: hotelNightsCoveredCount === hotelNights.length ? COLOR.success : COLOR.warning }}>
-                {hotelNightsCoveredCount} מתוך {hotelNights.length} לילות מוזמנים
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: hotelNightsCoveredCount === hotelNights.length ? nightColors.hotel : COLOR.warning }}>
+                  {hotelNightsCoveredCount} מתוך {hotelNights.length} לילות מוזמנים
+                </span>
+                <button
+                  type="button"
+                  aria-label="עריכת צבעי הרצועה"
+                  onClick={() => setEditingNightColors((v) => !v)}
+                  style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: "2px" }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={COLOR.purple} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: "4px", overflowX: "auto", paddingBottom: "2px" }}>
+
+            {editingNightColors ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px", marginBottom: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                {(
+                  [
+                    { key: "hotel" as const, label: "מלון מוזמן" },
+                    { key: "none" as const, label: "אין עדיין מלון" },
+                    { key: "flight" as const, label: "יש טיסה" },
+                    { key: "ride" as const, label: "יש הסעה" },
+                  ]
+                ).map((row) => (
+                  <div key={row.key} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "10.5px", color: COLOR.textSecondary, minWidth: "68px" }}>{row.label}</span>
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                      {NIGHT_COLOR_PRESETS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-label={c}
+                          onClick={() => setNightColors((prev) => ({ ...prev, [row.key]: c }))}
+                          style={{
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "50%",
+                            background: c,
+                            border: nightColors[row.key] === c ? "2px solid #fff" : "1px solid rgba(255,255,255,0.2)",
+                            cursor: "pointer",
+                            padding: 0,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setEditingNightColors(false)}
+                  style={{ padding: "6px", borderRadius: "8px", background: COLOR.turquoise, border: "none", color: "#04241c", fontSize: "10.5px", fontWeight: 700, cursor: "pointer", marginTop: "2px" }}
+                >
+                  ✓ סיום עריכה
+                </button>
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: "5px", overflowX: "auto", paddingBottom: "2px" }}>
               {hotelNights.map((n) => {
                 const dd = new Date(n.date);
+                const stateColor = n.hotel ? nightColors.hotel : nightColors.none;
                 return (
                   <Link
                     key={n.date}
-                    href={n.covered ? "/bookings" : `/bookings/new?category=hotel&date=${n.date}`}
+                    href={n.hotel ? "/bookings" : `/bookings/new?category=hotel&date=${n.date}`}
                     style={{
                       flexShrink: 0,
-                      minWidth: "34px",
+                      minWidth: "38px",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: "2px",
-                      padding: "6px 4px",
-                      borderRadius: "8px",
+                      gap: "3px",
+                      padding: "7px 5px",
+                      borderRadius: "12px",
                       textDecoration: "none",
-                      background: n.covered ? "rgba(67,214,170,0.12)" : "rgba(239,111,97,0.12)",
-                      border: `1px solid ${n.covered ? COLOR.success : COLOR.danger}55`,
+                      background: `${stateColor}1f`,
+                      border: `1px solid ${stateColor}66`,
                     }}
                   >
                     <span style={{ fontSize: "8.5px", color: COLOR.textMuted }}>{dd.toLocaleDateString("he-IL", { weekday: "short" })}</span>
-                    <span style={{ fontSize: "11px", fontWeight: 800, color: n.covered ? COLOR.success : COLOR.danger }}>{dd.getDate()}</span>
+                    <span style={{ fontSize: "12px", fontWeight: 800, color: stateColor }}>{dd.getDate()}</span>
+                    <div style={{ display: "flex", gap: "2px", marginTop: "1px" }}>
+                      <span aria-hidden style={{ width: "5px", height: "5px", borderRadius: "50%", background: n.hotel ? nightColors.hotel : "rgba(255,255,255,0.12)" }} />
+                      <span aria-hidden style={{ width: "5px", height: "5px", borderRadius: "50%", background: n.flight ? nightColors.flight : "rgba(255,255,255,0.12)" }} />
+                      <span aria-hidden style={{ width: "5px", height: "5px", borderRadius: "50%", background: n.ride ? nightColors.ride : "rgba(255,255,255,0.12)" }} />
+                    </div>
                   </Link>
                 );
               })}
             </div>
+
+            <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" }}>
+              {(
+                [
+                  { key: "hotel" as const, label: "מלון" },
+                  { key: "flight" as const, label: "טיסה" },
+                  { key: "ride" as const, label: "הסעה" },
+                ]
+              ).map((row) => (
+                <div key={row.key} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span aria-hidden style={{ width: "6px", height: "6px", borderRadius: "50%", background: nightColors[row.key] }} />
+                  <span style={{ fontSize: "9.5px", color: COLOR.textMuted }}>{row.label}</span>
+                </div>
+              ))}
+            </div>
+
             {hotelNightsCoveredCount < hotelNights.length ? (
-              <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "8px" }}>לחצו על לילה אדום כדי להזמין לו מלון</div>
+              <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "8px" }}>לחצו על יום ללא מלון כדי להזמין לו אחד</div>
             ) : null}
           </Card>
         ) : null}
@@ -2087,7 +2235,7 @@ export function MobileHomeMock() {
             הריבוע שהמחשבון היה בו קודם נשאר נקי (מקום-פנוי), בדיוק כמו שאר
             המקומות-הפנויים שממתינים להחלטה בדף הזה. */}
         <Card>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
             <span style={{ fontWeight: 800, fontSize: "14px" }}>שערי מטבעות</span>
             {currency.status === "success" ? (
               <span style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.success, background: "rgba(67,214,170,0.14)", border: `1px solid ${COLOR.success}40`, borderRadius: "999px", padding: "2px 7px" }}>שער חי</span>
@@ -2097,6 +2245,36 @@ export function MobileHomeMock() {
               <span style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.warning, background: "rgba(245,165,68,0.14)", border: `1px solid ${COLOR.warning}40`, borderRadius: "999px", padding: "2px 7px" }}>נתוני הדגמה</span>
             )}
           </div>
+
+          {/* מטבע-ההשוואה של הריבועים ניתן-לעריכה (היה THB קבוע בקוד) — לפי
+              העיקרון "תמיד עריכה, לא משהו קבוע". ברירת-המחדל נשארת THB. */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
+            <span style={{ fontSize: "10px", color: COLOR.textMuted }}>ביחס ל-{rateBaseCurrency}</span>
+            <button
+              type="button"
+              aria-label="עריכת מטבע ההשוואה"
+              onClick={() => setEditingRateBase((v) => !v)}
+              style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: "2px" }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={COLOR.purple} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+          </div>
+          {editingRateBase ? (
+            <div style={{ marginBottom: "10px" }}>
+              <CurrencyPickerButton
+                selectedCode={rateBaseCurrency}
+                onSelect={(code) => {
+                  setRateBaseCurrency(code);
+                  setEditingRateBase(false);
+                }}
+                options={ALL_CURRENCIES.map((c) => c.toUpperCase())}
+                testId="home-rate-base-currency"
+              />
+            </div>
+          ) : null}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "14px", alignItems: "start" }}>
             {/* ריבוע-שערים מאוחד — כל 4 המטבעות + המחשבון החופשי, שניהם באותו ריבוע */}
@@ -2148,7 +2326,7 @@ export function MobileHomeMock() {
                             <span style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.textMuted }}>{code}</span>
                           </div>
                           <div style={{ fontSize: "11.5px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
-                            {currency.status === "loading" ? "…" : rate != null ? `฿${rate.toFixed(2)}` : "—"}
+                            {currency.status === "loading" ? "…" : rate != null ? `${CURRENCY_SYMBOL[rateBaseCurrency.toLowerCase()] ?? rateBaseCurrency}${rate.toFixed(2)}` : "—"}
                           </div>
                         </div>
                       );
@@ -2338,7 +2516,47 @@ export function MobileHomeMock() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setAddingChartCategory((v) => !v)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "5px 10px",
+                borderRadius: "999px",
+                fontSize: "10.5px",
+                fontWeight: 700,
+                cursor: "pointer",
+                background: "rgba(255,255,255,0.04)",
+                border: `1px dashed ${COLOR.cardBorder}`,
+                color: COLOR.purple,
+              }}
+            >
+              + קטגוריה
+            </button>
           </div>
+
+          {addingChartCategory ? (
+            <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
+              <input
+                autoFocus
+                value={newChartCategoryName}
+                onChange={(e) => setNewChartCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddChartCategory()}
+                placeholder="שם קטגוריה חדשה"
+                style={{ flex: 1, padding: "7px 10px", borderRadius: "8px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "12px" }}
+              />
+              <button
+                type="button"
+                onClick={handleAddChartCategory}
+                disabled={!newChartCategoryName.trim()}
+                style={{ padding: "7px 14px", borderRadius: "8px", background: newChartCategoryName.trim() ? COLOR.purple : "rgba(255,255,255,0.08)", border: "none", color: "#fff", fontSize: "11.5px", fontWeight: 700, cursor: newChartCategoryName.trim() ? "pointer" : "default" }}
+              >
+                הוספה
+              </button>
+            </div>
+          ) : null}
 
           {chartData.total === 0 ? (
             <div style={{ textAlign: "center", color: COLOR.textSecondary, fontSize: "12.5px", padding: "20px 0" }}>אין עדיין הוצאות בטווח/בקטגוריות שנבחרו</div>
