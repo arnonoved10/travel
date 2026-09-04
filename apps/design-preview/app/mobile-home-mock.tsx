@@ -164,6 +164,14 @@ function JournalNavIcon({ size = 21, color = "#fff" }: { size?: number; color?: 
     </svg>
   );
 }
+function MapNavIcon({ size = 21, color = "#fff" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z" />
+      <path d="M9 4v14M15 6v14" />
+    </svg>
+  );
+}
 function WalletNavIcon({ size = 21, color = "#fff" }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1884,11 +1892,10 @@ export function MobileHomeMock() {
           </Card>
         </Link>
 
-        {/* כרטיס שערי-מטבעות — לפי בקשה מפורשת: כל 4 המטבעות במלבן אחד
-            (עיפרון בפינה פותח 4 בוררי-מטבע עם דגלים). המלבן השני שהתפנה
-            (שהיה ריבוע-שערים נוסף) מכיל עכשיו את המחשבון החופשי, צמוד
-            לצידו. המלבן המלא שהתפנה למטה (איפה שהמחשבון היה בעבר) ריק —
-            ממתין להחלטה, בדיוק כמו שאר המקומות-הפנויים בדף הזה. */}
+        {/* כרטיס שערי-מטבעות — לפי בקשה מפורשת: המחשבון החופשי עבר לתוך
+            אותו ריבוע-ממש של השערים (לא רק צמוד לידו) — ריבוע אחד עם הכול.
+            הריבוע שהמחשבון היה בו קודם נשאר נקי (מקום-פנוי), בדיוק כמו שאר
+            המקומות-הפנויים שממתינים להחלטה בדף הזה. */}
         <Card>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
             <span style={{ fontWeight: 800, fontSize: "14px" }}>שערי מטבעות</span>
@@ -1901,8 +1908,8 @@ export function MobileHomeMock() {
             )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "14px", alignItems: "stretch" }}>
-            {/* מלבן-שערים מאוחד — כל 4 המטבעות */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "14px", alignItems: "start" }}>
+            {/* ריבוע-שערים מאוחד — כל 4 המטבעות + המחשבון החופשי, שניהם באותו ריבוע */}
             <div style={{ position: "relative", padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
               <button
                 type="button"
@@ -1945,45 +1952,45 @@ export function MobileHomeMock() {
                       </div>
                     );
                   })}
+
+                  <div style={{ borderTop: `1px solid ${COLOR.cardBorder}`, marginTop: "4px", paddingTop: "8px" }}>
+                    <div style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.textMuted, marginBottom: "5px" }}>מחשבון חופשי</div>
+                    <input
+                      type="number"
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      style={{ width: "100%", padding: "6px 8px", borderRadius: "8px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "12px", marginBottom: "5px" }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                      <CurrencyPickerButton selectedCode={customFrom.toUpperCase()} onSelect={(code) => setCustomFrom(code.toLowerCase() as CurrencyCode)} options={ALL_CURRENCIES.map((c) => c.toUpperCase())} />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomFrom(customTo);
+                          setCustomTo(customFrom);
+                        }}
+                        aria-label="החלפת מטבעות"
+                        style={{ alignSelf: "center", width: "24px", height: "24px", borderRadius: "8px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: "rotate(90deg)" }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M7 10h13l-4-4M17 14H4l4 4" />
+                        </svg>
+                      </button>
+                      <CurrencyPickerButton selectedCode={customTo.toUpperCase()} onSelect={(code) => setCustomTo(code.toLowerCase() as CurrencyCode)} options={ALL_CURRENCIES.map((c) => c.toUpperCase())} />
+                    </div>
+                    <div style={{ fontSize: "11px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums", wordBreak: "break-word", marginTop: "5px" }}>
+                      {(Number(customAmount) || 0).toLocaleString()} {customFrom.toUpperCase()} = {convert(Number(customAmount) || 0, customFrom, customTo).toLocaleString(undefined, { maximumFractionDigits: 2 })} {customTo.toUpperCase()}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* המלבן שהתפנה — המחשבון החופשי, בפריסה אנכית כדי להתאים לרוחב-משבצת */}
-            <div style={{ padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}`, display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textMuted }}>מחשבון חופשי</div>
-              <input
-                type="number"
-                value={customAmount}
-                onChange={(e) => setCustomAmount(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                style={{ width: "100%", padding: "7px 8px", borderRadius: "8px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "13px" }}
-              />
-              <CurrencyPickerButton selectedCode={customFrom.toUpperCase()} onSelect={(code) => setCustomFrom(code.toLowerCase() as CurrencyCode)} options={ALL_CURRENCIES.map((c) => c.toUpperCase())} />
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomFrom(customTo);
-                  setCustomTo(customFrom);
-                }}
-                aria-label="החלפת מטבעות"
-                style={{ alignSelf: "center", width: "26px", height: "26px", borderRadius: "8px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: "rotate(90deg)" }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M7 10h13l-4-4M17 14H4l4 4" />
-                </svg>
-              </button>
-              <CurrencyPickerButton selectedCode={customTo.toUpperCase()} onSelect={(code) => setCustomTo(code.toLowerCase() as CurrencyCode)} options={ALL_CURRENCIES.map((c) => c.toUpperCase())} />
-              <div style={{ fontSize: "12px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums", wordBreak: "break-word" }}>
-                {(Number(customAmount) || 0).toLocaleString()} {customFrom.toUpperCase()} = {convert(Number(customAmount) || 0, customFrom, customTo).toLocaleString(undefined, { maximumFractionDigits: 2 })} {customTo.toUpperCase()}
-              </div>
+            {/* הריבוע שהמחשבון היה בו קודם — נשאר נקי לפי בקשה מפורשת. */}
+            <div style={{ padding: "9px 10px", borderRadius: "12px", border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "120px" }}>
+              <span style={{ fontSize: "10.5px", color: COLOR.textMuted, textAlign: "center" }}>מקום פנוי — נחליט יחד מה יהיה כאן</span>
             </div>
-          </div>
-
-          {/* המלבן המלא שהתפנה כשהמחשבון עלה לשבת ליד ריבוע-השערים — לפי
-              בקשה מפורשת נשאר ריק בינתיים, ממתין להחלטה. */}
-          <div style={{ padding: "9px 10px", borderRadius: "12px", border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "40px", marginBottom: "14px" }}>
-            <span style={{ fontSize: "10.5px", color: COLOR.textMuted, textAlign: "center" }}>מקום פנוי — נחליט יחד מה יהיה כאן</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
@@ -2183,6 +2190,7 @@ export function MobileHomeMock() {
         {[
           { Icon: HouseNavIcon, label: "בית", active: true, href: "/" },
           { Icon: SuitcaseNavIcon, label: "מסלול", active: false, href: "/route" },
+          { Icon: MapNavIcon, label: "מפה", active: false, href: "/map" },
           { Icon: JournalNavIcon, label: "יומן", active: false, href: "/planner?day=2026-05-04&city=%D7%91%D7%A0%D7%92%D7%A7%D7%95%D7%A7" },
           { Icon: WalletNavIcon, label: "ארנק", active: false, href: "/wallet" },
           { Icon: MoreNavIcon, label: "עוד", active: false, href: "/more" },
