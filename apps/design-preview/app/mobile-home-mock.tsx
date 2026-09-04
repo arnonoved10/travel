@@ -13,6 +13,7 @@ import { activeTrip, allTrips, tripProgress as computeTripProgressFor, disambigu
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
 import { loadBookings, updateBooking, FLIGHT_STATUS_LABEL, type VehicleType, type FlightStatus } from "./bookings-data";
 import { FlagIcon } from "./country-currency-data";
+import { DonutChart } from "./donut-chart";
 
 // עוטפת קריאה ל-API חיצוני בכמה ניסיונות עם השהיה עולה — ראו הערה בשימוש
 // למטה. נצפה בפועל מול production: גם Route Handler רגיל (לא רק server
@@ -169,6 +170,14 @@ function MapNavIcon({ size = 21, color = "#fff" }: { size?: number; color?: stri
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z" />
       <path d="M9 4v14M15 6v14" />
+    </svg>
+  );
+}
+function ReceiptNavIcon({ size = 21, color = "#fff" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 3h12v18l-2.5-1.5L13 21l-1.5-1.5L10 21l-2.5-1.5L6 21z" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
     </svg>
   );
 }
@@ -582,40 +591,6 @@ const HOME_CATEGORY_COLOR: Record<string, string> = {
 /** גרף-דונאט ידני (אין ספריית-גרפים בפרויקט) — אותה טכניקת stroke-dasharray
  * כמו ב-Ring למעלה, רק כמה עיגולים-חופפים במקום אחד, כל אחד עם היסט
  * מצטבר (offset) כדי שהם ייצרו פרוסות רצופות סביב ההיקף. */
-function DonutChart({ segments, size = 130, strokeWidth = 22 }: { segments: { color: string; value: number }[]; size?: number; strokeWidth?: number }) {
-  const total = segments.reduce((sum, s) => sum + s.value, 0);
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  let cumulative = 0;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={strokeWidth} />
-      {total > 0
-        ? segments.map((seg, i) => {
-            const fraction = seg.value / total;
-            const dash = fraction * circumference;
-            const offset = -cumulative * circumference;
-            cumulative += fraction;
-            return (
-              <circle
-                key={i}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                fill="none"
-                stroke={seg.color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={`${dash} ${circumference - dash}`}
-                strokeDashoffset={offset}
-                transform={`rotate(-90 ${size / 2} ${size / 2})`}
-              />
-            );
-          })
-        : null}
-    </svg>
-  );
-}
-
 interface WalletGridCell {
   key: string;
   label: string;
@@ -2667,6 +2642,7 @@ export function MobileHomeMock() {
           { Icon: MapNavIcon, label: "מפה", active: false, href: "/map" },
           { Icon: JournalNavIcon, label: "יומן", active: false, href: "/planner?day=2026-05-04&city=%D7%91%D7%A0%D7%92%D7%A7%D7%95%D7%A7" },
           { Icon: WalletNavIcon, label: "ארנק", active: false, href: "/wallet" },
+          { Icon: ReceiptNavIcon, label: "הוצאות", active: false, href: "/expenses" },
           { Icon: MoreNavIcon, label: "עוד", active: false, href: "/more" },
         ].map(({ Icon, label, active, href }) => (
           <Link

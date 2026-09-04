@@ -207,10 +207,11 @@ const LEGACY_NAV_ITEMS = [
   { href: "/planner", label: "יומן", key: "planner", icon: LegacyCalendarIcon },
   { href: "/map", label: "מפה", key: "map", icon: LegacyMapPinIcon },
   { href: "/wallet", label: "ארנק", key: "wallet", icon: LegacyWalletIcon },
+  { href: "/expenses", label: "הוצאות", key: "expenses", icon: LegacyExpenseIcon },
   { href: "/more", label: "עוד", key: "more", icon: LegacyMoreIcon },
 ] as const;
 
-export function LegacyBottomNav({ active }: { active: "home" | "route" | "planner" | "map" | "wallet" | "more" }) {
+export function LegacyBottomNav({ active }: { active: "home" | "route" | "planner" | "map" | "wallet" | "expenses" | "more" }) {
   return (
     <div
       style={{
