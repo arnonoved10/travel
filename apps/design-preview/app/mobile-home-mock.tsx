@@ -7,7 +7,7 @@ import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, type DocumentEntry } from "./wallet-data";
+import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, categoryColor, type DocumentEntry } from "./wallet-data";
 import { CurrencyPickerButton } from "./pickers";
 import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
@@ -556,6 +556,55 @@ function Ring({ percent, size = 56, color = COLOR.turquoise }: { percent: number
         {percent}%
       </span>
     </div>
+  );
+}
+
+// אותו מיפוי-צבעים-קבועים בדיוק כמו במסך "דוחות ותקציב" (wallet/reports),
+// כדי שאותה קטגוריה תמיד תיראה באותו צבע בכל האפליקציה. קטגוריות-
+// מותאמות-אישית (מעבר לששת אלה) מקבלות צבע דטרמיניסטי מ-categoryColor.
+const HOME_CATEGORY_COLOR: Record<string, string> = {
+  מלון: "#4f8fe0",
+  מסעדות: COLOR.success,
+  תחבורה: COLOR.warning,
+  פעילויות: COLOR.purple,
+  קניות: "#e0699a",
+  אחר: COLOR.textSecondary,
+};
+
+/** גרף-דונאט ידני (אין ספריית-גרפים בפרויקט) — אותה טכניקת stroke-dasharray
+ * כמו ב-Ring למעלה, רק כמה עיגולים-חופפים במקום אחד, כל אחד עם היסט
+ * מצטבר (offset) כדי שהם ייצרו פרוסות רצופות סביב ההיקף. */
+function DonutChart({ segments, size = 130, strokeWidth = 22 }: { segments: { color: string; value: number }[]; size?: number; strokeWidth?: number }) {
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let cumulative = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={strokeWidth} />
+      {total > 0
+        ? segments.map((seg, i) => {
+            const fraction = seg.value / total;
+            const dash = fraction * circumference;
+            const offset = -cumulative * circumference;
+            cumulative += fraction;
+            return (
+              <circle
+                key={i}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${dash} ${circumference - dash}`}
+                strokeDashoffset={offset}
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            );
+          })
+        : null}
+    </svg>
   );
 }
 
@@ -1228,6 +1277,51 @@ export function MobileHomeMock() {
     setRideInfo({ bookingId: next.id, title: next.title, countdownLabel });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
+
+  // "פילוח הוצאות" — גרף-דונאט בתחתית דף הבית, לפי בקשה מפורשת: כל קטגוריה
+  // בצבע שלה, בחירת אילו קטגוריות מוצגות, וסינון לפי טווח-זמן. הקטגוריות
+  // הזמינות (קבועות + מותאמות-אישית) נטענות פעם אחת אחרי ה-mount (localStorage),
+  // ומסומנות כברירת-מחדל כולן. משתמש ב-store.expenses/store.convertAmount
+  // הקיימים — אותו חישוב בדיוק כמו ב-wallet/reports, רק עם סינון-טווח נוסף.
+  const [chartRange, setChartRange] = useState<"trip" | "week" | "today">("trip");
+  const [chartCategories, setChartCategories] = useState<string[]>([]);
+  const [chartSelected, setChartSelected] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const cats = allCategories();
+    setChartCategories(cats);
+    setChartSelected(new Set(cats));
+  }, []);
+  function toggleChartCategory(cat: string) {
+    setChartSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
+  const chartData = useMemo(() => {
+    if (!walletStore.hydrated) return { segments: [] as { category: string; value: number; color: string }[], total: 0 };
+    const todayStr = today();
+    const weekAgoStr = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+    const filtered = walletStore.expenses.filter((e) => {
+      if (!chartSelected.has(e.category)) return false;
+      if (chartRange === "today") return e.date === todayStr;
+      if (chartRange === "week") return e.date >= weekAgoStr && e.date <= todayStr;
+      return true;
+    });
+    const byCat = new Map<string, number>();
+    for (const e of filtered) {
+      const ils = walletStore.convertAmount(e.amount, e.currency, "ILS") ?? 0;
+      byCat.set(e.category, (byCat.get(e.category) ?? 0) + ils);
+    }
+    const segments = Array.from(byCat.entries())
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, value]) => ({ category, value, color: categoryColor(category, HOME_CATEGORY_COLOR) }));
+    const total = segments.reduce((sum, s) => sum + s.value, 0);
+    return { segments, total };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletStore.hydrated, walletStore.expenses, walletStore.rates.data, chartSelected, chartRange]);
 
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
   async function handleSignOut() {
@@ -1968,6 +2062,98 @@ export function MobileHomeMock() {
             );
           })()
         ) : null}
+
+        {/* פילוח-הוצאות — גרף-דונאט בתחתית דף הבית, לפי בקשה מפורשת: בחירת
+            קטגוריות + טווח-זמן (כל הטיול/שבוע/היום). אותו מיפוי-צבעים כמו
+            "דוחות ותקציב" לעקביות מלאה באפליקציה. */}
+        <Card>
+          <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "10px" }}>פילוח הוצאות</div>
+
+          <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+            {(
+              [
+                { key: "trip", label: "כל הטיול" },
+                { key: "week", label: "השבוע" },
+                { key: "today", label: "היום" },
+              ] as const
+            ).map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setChartRange(r.key)}
+                aria-pressed={chartRange === r.key}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  background: chartRange === r.key ? COLOR.purple : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${chartRange === r.key ? COLOR.purple : COLOR.cardBorder}`,
+                  color: "#fff",
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "14px" }}>
+            {chartCategories.map((cat) => {
+              const on = chartSelected.has(cat);
+              const color = categoryColor(cat, HOME_CATEGORY_COLOR);
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => toggleChartCategory(cat)}
+                  aria-pressed={on}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "5px 10px",
+                    borderRadius: "999px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    background: on ? `${color}22` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${on ? color : COLOR.cardBorder}`,
+                    color: on ? "#fff" : COLOR.textMuted,
+                    opacity: on ? 1 : 0.6,
+                  }}
+                >
+                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: color, flexShrink: 0 }} />
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+
+          {chartData.total === 0 ? (
+            <div style={{ textAlign: "center", color: COLOR.textSecondary, fontSize: "12.5px", padding: "20px 0" }}>אין עדיין הוצאות בטווח/בקטגוריות שנבחרו</div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <DonutChart segments={chartData.segments} />
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: "9px", color: COLOR.textMuted }}>סה״כ</span>
+                  <span style={{ fontSize: "13px", fontWeight: 800, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{formatMoney(chartData.total, "ILS")}</span>
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+                {chartData.segments.map((seg) => (
+                  <div key={seg.category} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: seg.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: "11.5px", color: COLOR.textPrimary, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{seg.category}</span>
+                    <span style={{ fontSize: "11.5px", fontWeight: 700, color: COLOR.textSecondary, fontVariantNumeric: "tabular-nums" }}>{formatMoney(seg.value, "ILS")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
 
       </div>
 
