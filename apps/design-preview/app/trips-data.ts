@@ -117,6 +117,7 @@ export const TRIP_SCOPED_BASE_KEYS: string[] = [
   SK.conversions,
   SK.receipts,
   SK.baseCcy,
+  SK.budget,
   SK.manualCountry,
   SK.geoCountry,
   SK.deposits,

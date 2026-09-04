@@ -12,6 +12,7 @@ import {
   type MoneyAddition,
   type ConversionRecord,
   type Deposit,
+  type TripBudget,
   SK,
   loadJSON,
   saveJSON,
@@ -49,6 +50,7 @@ export function useWalletStore() {
   const [conversions, setConversions] = useState<ConversionRecord[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [baseCurrency, setBaseCurrency] = useState("ILS");
+  const [budget, setBudgetState] = useState<TripBudget | null>(null);
   const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
   const [geoCountryCode, setGeoCountryCode] = useState<string | null>(null);
   const [rates, setRates] = useState<{ status: "loading" | "success" | "error"; data: DemoCurrencyResult | null }>({ status: "loading", data: null });
@@ -81,6 +83,7 @@ export function useWalletStore() {
     setConversions(loadJSON(tripScopedKey(SK.conversions, tripId), []));
     setDeposits(loadJSON(tripScopedKey(SK.deposits, tripId), []));
     setBaseCurrency(loadJSON(tripScopedKey(SK.baseCcy, tripId), "ILS"));
+    setBudgetState(loadJSON<TripBudget | null>(tripScopedKey(SK.budget, tripId), null));
     setManualCountryCode(loadJSON<string | null>(tripScopedKey(SK.manualCountry, tripId), null));
     setGeoCountryCode(loadJSON<string | null>(tripScopedKey(SK.geoCountry, tripId), null));
     setHydrated(true);
@@ -114,6 +117,10 @@ export function useWalletStore() {
     if (!hydrated) return;
     saveJSON(tripScopedKey(SK.baseCcy, tripId), baseCurrency);
   }, [baseCurrency, hydrated, tripId]);
+  useEffect(() => {
+    if (!hydrated) return;
+    saveJSON(tripScopedKey(SK.budget, tripId), budget);
+  }, [budget, hydrated, tripId]);
   useEffect(() => {
     if (!hydrated) return;
     saveJSON(tripScopedKey(SK.manualCountry, tripId), manualCountryCode);
@@ -482,6 +489,8 @@ export function useWalletStore() {
     deposits,
     baseCurrency,
     setBaseCurrency,
+    budget,
+    setBudget: setBudgetState,
     manualCountryCode,
     setManualCountryCode,
     geoCountryCode,

@@ -179,6 +179,7 @@ export const SK = {
   conversions: "design-preview-wallet-conversions-v2",
   receipts: "design-preview-wallet-receipts-v2",
   baseCcy: "design-preview-wallet-basecurrency-v2",
+  budget: "design-preview-wallet-budget-v1",
   manualCountry: "design-preview-wallet-manual-country-v1",
   geoCountry: "design-preview-wallet-geo-country-v1",
   lastBackupAt: "design-preview-wallet-last-backup-v1",
@@ -328,6 +329,11 @@ export function compressImageFile(file: File, maxDim = 1000, quality = 0.72): Pr
 
 // ============================== גיבוי / שחזור / דוח (משותף) ==============================
 
+export interface TripBudget {
+  amount: number;
+  currency: string;
+}
+
 export interface WalletState {
   balances: CurrencyBalance[];
   expenses: Expense[];
@@ -336,6 +342,7 @@ export interface WalletState {
   conversions: ConversionRecord[];
   receipts: Record<string, string>;
   baseCurrency: string;
+  budget: TripBudget | null;
 }
 
 export function buildBackupBlob(state: WalletState): Blob {
@@ -366,6 +373,7 @@ export function parseBackupJSON(raw: string): WalletState | null {
       conversions: Array.isArray(parsed.conversions) ? parsed.conversions : [],
       receipts: parsed.receipts && typeof parsed.receipts === "object" ? parsed.receipts : {},
       baseCurrency: typeof parsed.baseCurrency === "string" ? parsed.baseCurrency : "ILS",
+      budget: parsed.budget && typeof parsed.budget.amount === "number" && typeof parsed.budget.currency === "string" ? parsed.budget : null,
     };
   } catch {
     return null;
@@ -405,6 +413,7 @@ export async function readWalletStateFromStorage(tripId: string): Promise<Wallet
     conversions: loadJSON(tripScopedKey(SK.conversions, tripId), []),
     receipts,
     baseCurrency: loadJSON(tripScopedKey(SK.baseCcy, tripId), "ILS"),
+    budget: loadJSON<TripBudget | null>(tripScopedKey(SK.budget, tripId), null),
   };
 }
 export async function writeWalletStateToStorage(state: WalletState, tripId: string): Promise<void> {
@@ -422,6 +431,7 @@ export async function writeWalletStateToStorage(state: WalletState, tripId: stri
     }
   }
   saveJSON(tripScopedKey(SK.baseCcy, tripId), state.baseCurrency);
+  saveJSON(tripScopedKey(SK.budget, tripId), state.budget);
 }
 
 // ============================== מטבע מקומי — זיהוי אוטומטי ==============================

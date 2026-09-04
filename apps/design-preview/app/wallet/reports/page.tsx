@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ScreenShell, ScreenHeader, Card, Money, COLOR, SPACE } from "../../design-system";
+import { ScreenShell, ScreenHeader, Card, Money, PrimaryButton, EditIcon, TrashIcon, inputStyle, COLOR, SPACE } from "../../design-system";
 import { formatMoney, categoryColor, type Category } from "../../wallet-data";
+import { CurrencyPickerButton } from "../../pickers";
 import { useWalletStore } from "../../wallet-store";
 import { activeTrip, type DemoTrip } from "../../trips-data";
 
@@ -27,10 +28,7 @@ export default function ReportsScreen() {
 
   if (!store.hydrated) return null;
 
-  const totalBudget = 10000;
   const totalSpent = store.expenses.reduce((sum, e) => sum + (store.convertAmount(e.amount, e.currency, "ILS") ?? 0), 0);
-  const remaining = Math.max(0, totalBudget - totalSpent);
-  const pct = Math.min(100, Math.round((totalSpent / totalBudget) * 100));
 
   // "ימי-הוצאה" — כמה ימים שונים יש בהם לפחות הוצאה אחת, לצורך "ממוצע
   // ליום" — אותה שיטת-חישוב כמו ב-wallet/page.tsx, לא המצאה חדשה.
@@ -70,23 +68,7 @@ export default function ReportsScreen() {
     <ScreenShell>
       <ScreenHeader title="דוחות ותקציב" />
 
-      <Card>
-        <div style={{ fontSize: "12px", color: COLOR.textSecondary, marginBottom: "4px" }}>תקציב כולל</div>
-        <div style={{ fontSize: "22px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.sm }}>
-          <Money text={formatMoney(totalBudget, "ILS")} />
-        </div>
-        <div style={{ height: "8px", borderRadius: "999px", background: COLOR.cardElevated, overflow: "hidden" }}>
-          <div style={{ width: `${pct}%`, height: "100%", background: COLOR.primary }} />
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: SPACE.sm, fontSize: "11.5px", color: COLOR.textSecondary }}>
-          <span>
-            נותר <Money text={formatMoney(remaining, "ILS")} />
-          </span>
-          <span>
-            הוצאתי <Money text={formatMoney(totalSpent, "ILS")} />
-          </span>
-        </div>
-      </Card>
+      <BudgetCard store={store} totalSpent={totalSpent} />
 
       <div>
         <div style={{ fontSize: "13.5px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.sm }}>תזרים כספים</div>
@@ -162,5 +144,117 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
         <Money text={value} />
       </span>
     </div>
+  );
+}
+
+/** תקציב אמיתי, לפי בקשה מפורשת: לא סכום קבוע מראש (כמו הקודם), אלא
+ * שדה שהמשתמש בעצמו קובע — נשמר ב-useWalletStore (SK.budget, אותו דפוס
+ * כמו baseCurrency), ניתן לעריכה/מחיקה כאן. כל עוד לא הוגדר, מוצג מצב-ריק
+ * עם טופס-הזנה במקום פס-התקדמות מזויף. */
+function BudgetCard({ store, totalSpent }: { store: ReturnType<typeof useWalletStore>; totalSpent: number }) {
+  const [editing, setEditing] = useState(store.budget == null);
+  const [amount, setAmount] = useState(store.budget ? String(store.budget.amount) : "");
+  const [currency, setCurrency] = useState<string | null>(store.budget?.currency ?? store.baseCurrency);
+
+  // מרענן את הטופס בכל פעם שנכנסים למצב-עריכה/ריק — כדי שמחיקת תקציב לא
+  // תשאיר ערכים ישנים בשדות (למשל אחרי מחיקה, השדה חייב להיות נקי ולא
+  // "7500" שנשאר מעריכה קודמת), ושלחיצה על "עריכה" תמיד תציג את הערך
+  // האמיתי הנוכחי.
+  useEffect(() => {
+    if (editing || store.budget == null) {
+      setAmount(store.budget ? String(store.budget.amount) : "");
+      setCurrency(store.budget?.currency ?? store.baseCurrency);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, store.budget]);
+
+  const budgetInILS = store.budget ? store.convertAmount(store.budget.amount, store.budget.currency, "ILS") : null;
+  const pct = budgetInILS != null && budgetInILS > 0 ? Math.min(100, Math.round((totalSpent / budgetInILS) * 100)) : 0;
+  const remaining = budgetInILS != null ? Math.max(0, budgetInILS - totalSpent) : null;
+
+  function save() {
+    const n = Number(amount);
+    if (!amount || n <= 0 || !currency) return;
+    store.setBudget({ amount: n, currency });
+    setEditing(false);
+  }
+
+  if (editing || store.budget == null) {
+    return (
+      <Card style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+        <div style={{ fontSize: "12px", color: COLOR.textSecondary }}>הגדרת תקציב לטיול</div>
+        <div style={{ display: "flex", gap: SPACE.sm }}>
+          <input
+            type="number"
+            min={0}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            style={{ ...inputStyle, flex: 1 }}
+            placeholder="סכום"
+          />
+          <div style={{ flex: 1 }}>
+            <CurrencyPickerButton selectedCode={currency} onSelect={setCurrency} priorityCodes={store.balances.map((b) => b.code)} />
+          </div>
+        </div>
+        <PrimaryButton onClick={save}>שמירת תקציב</PrimaryButton>
+        {store.budget ? (
+          <button
+            type="button"
+            onClick={() => {
+              setAmount(String(store.budget!.amount));
+              setCurrency(store.budget!.currency);
+              setEditing(false);
+            }}
+            style={{ background: "none", border: "none", color: COLOR.textSecondary, fontSize: "12px", cursor: "pointer", padding: 0 }}
+          >
+            ביטול
+          </button>
+        ) : null}
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+        <span style={{ fontSize: "12px", color: COLOR.textSecondary }}>תקציב כולל</span>
+        <div style={{ display: "flex", gap: SPACE.md }}>
+          <button type="button" aria-label="עריכת תקציב" onClick={() => setEditing(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
+            <EditIcon />
+          </button>
+          <button
+            type="button"
+            aria-label="מחיקת תקציב"
+            onClick={() => {
+              if (confirm("למחוק את התקציב?")) store.setBudget(null);
+            }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}
+          >
+            <TrashIcon />
+          </button>
+        </div>
+      </div>
+      {budgetInILS == null ? (
+        <div style={{ fontSize: "12.5px", color: COLOR.textSecondary }}>טוען שער החלפה...</div>
+      ) : (
+        <>
+          <div style={{ fontSize: "22px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.sm }}>
+            <Money text={formatMoney(budgetInILS, "ILS")} />
+          </div>
+          <div style={{ height: "8px", borderRadius: "999px", background: COLOR.cardElevated, overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? COLOR.danger : COLOR.primary }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: SPACE.sm, fontSize: "11.5px", color: COLOR.textSecondary }}>
+            <span>
+              נותר <Money text={formatMoney(remaining ?? 0, "ILS")} />
+            </span>
+            <span>
+              הוצאתי <Money text={formatMoney(totalSpent, "ILS")} />
+            </span>
+          </div>
+        </>
+      )}
+    </Card>
   );
 }

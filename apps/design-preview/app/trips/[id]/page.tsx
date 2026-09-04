@@ -8,6 +8,8 @@ import { CountryPickerButton } from "../../pickers";
 import { findAnyTrip, updateTrip, deleteCustomTrip, setActiveTrip, type DemoTrip } from "../../trips-data";
 import { loadStops, countActivities, type TripStop } from "../../trip-content";
 import { DateRangePicker } from "../../date-range-picker";
+import { useWalletStore } from "../../wallet-store";
+import { formatMoney } from "../../wallet-data";
 
 export default function TripOverviewScreen() {
   const router = useRouter();
@@ -17,6 +19,11 @@ export default function TripOverviewScreen() {
   const [activityCount, setActivityCount] = useState(0);
   const [editingDates, setEditingDates] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
+  // תמיד נקרא (חוקי-Hooks), גם אם הטיול הזה אינו הפעיל — אבל מה שהוא
+  // מחזיר שייך תמיד ל"הטיול הפעיל" (currentScopeTripId), ולכן משתמשים בו
+  // בפועל רק כש-canEditRoute (למטה) אמיתי, אחרת היינו מציגים תקציב/הוצאות
+  // של טיול אחר בטעות.
+  const store = useWalletStore();
 
   useEffect(() => {
     setTrip(findAnyTrip(params.id));
@@ -135,7 +142,21 @@ export default function TripOverviewScreen() {
           badge={stops.length > 1 && missingTransportCount > 0 ? String(missingTransportCount) : undefined}
           onClick={canEditRoute && stops.length > 1 ? () => router.push("/route") : undefined}
         />
-        <SummaryRow label="תקציב" value="עלות כוללת" badge={<Money text="₪ 8,740" />} last />
+        <SummaryRow
+          label="תקציב"
+          value={!canEditRoute ? "הפכו לטיול הפעיל כדי לנהל תקציב" : !store.hydrated ? "טוען..." : store.budget == null ? "טרם הוגדר תקציב" : "הוצאתי מתוך התקציב"}
+          badge={
+            canEditRoute && store.hydrated && store.budget != null
+              ? (() => {
+                  const spentILS = store.expenses.reduce((sum, e) => sum + (store.convertAmount(e.amount, e.currency, "ILS") ?? 0), 0);
+                  const budgetILS = store.convertAmount(store.budget.amount, store.budget.currency, "ILS");
+                  return budgetILS != null ? <Money text={`${formatMoney(spentILS, "ILS")} / ${formatMoney(budgetILS, "ILS")}`} /> : undefined;
+                })()
+              : undefined
+          }
+          onClick={canEditRoute ? () => router.push("/wallet/reports") : undefined}
+          last
+        />
       </Card>
 
       <div style={{ display: "flex", gap: SPACE.sm }}>
