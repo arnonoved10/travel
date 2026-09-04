@@ -306,20 +306,44 @@ export default function WalletPreviewScreen() {
                 + הוספת מטבע
               </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, secondaryBalances.length))}, 1fr)`, gap: "6px" }}>
+            {/* שני מטבעות בכל מלבן (לא מלבן לכל מטבע) — לפי בקשה מפורשת, אותו
+                עיקרון שכבר יושם בכרטיס-השערים בדף הבית. כשנשאר מלבן חסר-זוג
+                מציגים "מקום פנוי" דש-קווקו במקומו, כדי שהצד הפנוי באמת יישאר
+                פנוי לדברים נוספים במקום להיעלם. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px" }}>
               {secondaryBalances.length === 0 ? (
                 <div style={{ gridColumn: "1 / -1", fontSize: "11.5px", color: COLOR.textMuted, padding: "8px 2px" }}>אין עדיין מטבעות נוספים בארנק</div>
               ) : (
-                secondaryBalances.map((b) => {
-                  const country = primaryCountryForCurrency(b.code);
-                  return (
-                    <button key={b.code} type="button" onClick={() => router.push(`/wallet/currency/${b.code}`)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", padding: "9px 4px", borderRadius: "12px", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, cursor: "pointer" }}>
-                      {country ? <FlagIcon countryCode={country.code} size={20} /> : <span>{currencyMeta(b.code).symbol}</span>}
-                      <span style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textSecondary }}>{b.code}</span>
-                      <span style={{ fontSize: "12px", fontWeight: 800, color: b.balance < 0 ? COLOR.danger : "#fff" }}>{formatMoney(b.balance, b.code)}</span>
-                    </button>
+                (() => {
+                  const pairs: (typeof secondaryBalances | null)[] = [];
+                  for (let i = 0; i < secondaryBalances.length; i += 2) pairs.push(secondaryBalances.slice(i, i + 2));
+                  if (pairs.length % 2 === 1) pairs.push(null);
+                  return pairs.map((pair, i) =>
+                    pair ? (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", borderRadius: "12px", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, overflow: "hidden" }}>
+                        {pair.map((b, j) => {
+                          const country = primaryCountryForCurrency(b.code);
+                          return (
+                            <button
+                              key={b.code}
+                              type="button"
+                              onClick={() => router.push(`/wallet/currency/${b.code}`)}
+                              style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 10px", background: "none", border: "none", borderTop: j > 0 ? `1px solid ${COLOR.cardBorder}` : "none", cursor: "pointer", textAlign: "start" }}
+                            >
+                              {country ? <FlagIcon countryCode={country.code} size={18} /> : <span>{currencyMeta(b.code).symbol}</span>}
+                              <span style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textSecondary, flexShrink: 0 }}>{b.code}</span>
+                              <span style={{ flex: 1, minWidth: 0, textAlign: "end", fontSize: "12px", fontWeight: 800, color: b.balance < 0 ? COLOR.danger : "#fff" }}>{formatMoney(b.balance, b.code)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div key={i} style={{ borderRadius: "12px", border: `1px dashed ${COLOR.cardBorder}`, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "44px" }}>
+                        <span style={{ fontSize: "10.5px", color: COLOR.textMuted }}>מקום פנוי</span>
+                      </div>
+                    ),
                   );
-                })
+                })()
               )}
             </div>
           </div>
