@@ -2249,7 +2249,9 @@ export function MobileHomeMock() {
             </div>
           ) : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "14px", alignItems: "start" }}>
+          {/* לפי בקשה מפורשת: ריבוע-הארנק גדל וריבוע-השערים מצטמצם, כדי שיהיה
+              יותר מקום לארנק — לא עוד חלוקה שווה (1fr/1fr). */}
+          <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: "8px", marginBottom: "14px", alignItems: "start" }}>
             {/* ריבוע-שערים מאוחד — כל 4 המטבעות + המחשבון החופשי, שניהם באותו ריבוע */}
             <div style={{ position: "relative", padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
               <button
@@ -2341,8 +2343,10 @@ export function MobileHomeMock() {
             </div>
 
             {/* הריבוע שהמחשבון היה בו קודם — לפי בקשה מפורשת עכשיו מציג את
-                4 מטבעות הארנק, אחד מתחת לשני, במקביל למלבן השערים. */}
+                4 מטבעות הארנק, אחד מתחת לשני, במקביל למלבן השערים, עם
+                כותרת "ארנק" מעליו וריבוע גדול יותר (0.8fr/1.2fr למעלה). */}
             <div style={{ padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+              <div style={{ fontSize: "10.5px", fontWeight: 800, color: COLOR.textPrimary, marginBottom: "6px" }}>ארנק</div>
               <WalletCurrencyStack walletStore={walletStore} />
             </div>
           </div>
