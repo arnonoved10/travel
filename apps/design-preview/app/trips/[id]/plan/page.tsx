@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, PlusIcon, ChevronIcon, COLOR, SPACE, RADIUS } from "../../../design-system";
+import { LegacyBottomNav } from "../../../route/legacy-shared";
 import { activitiesForDate, cityForDate, loadStops, type TripActivity } from "../../../trip-content";
 import { findAnyTrip, type DemoTrip } from "../../../trips-data";
 import type { DemoWeatherResult } from "../../../actions";
@@ -349,6 +350,12 @@ function DailyPlanContent() {
       >
         <PlusIcon />
       </button>
+
+      {/* היה חסר לגמרי במסך הזה — היעד האמיתי של טאב "יומן" (דרך /planner)
+          נשאר בלי סרגל-ניווט תחתון, כך שלא היה אפשר לעבור למסך אחר בלי
+          "חזרה" בדפדפן. אותו סרגל בדיוק כמו שאר מסכי-הניווט הראשיים
+          (בית/מסלול/מפה/יומן/ארנק/עוד). */}
+      <LegacyBottomNav active="planner" />
     </ScreenShell>
   );
 }
