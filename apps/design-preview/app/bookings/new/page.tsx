@@ -3,10 +3,11 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, Field, PrimaryButton, inputStyle, COLOR, SPACE } from "../../design-system";
-import { createBooking, CATEGORY_LABEL, type BookingCategory } from "../../bookings-data";
+import { createBooking, CATEGORY_LABEL, FLIGHT_STATUS_LABEL, type BookingCategory, type FlightStatus } from "../../bookings-data";
 import { today } from "../../wallet-data";
 
 const CATEGORY_TABS: { key: BookingCategory; label: string }[] = (Object.keys(CATEGORY_LABEL) as BookingCategory[]).map((key) => ({ key, label: CATEGORY_LABEL[key] }));
+const FLIGHT_STATUS_TABS: { key: FlightStatus; label: string }[] = (Object.keys(FLIGHT_STATUS_LABEL) as FlightStatus[]).map((key) => ({ key, label: FLIGHT_STATUS_LABEL[key] }));
 
 function isBookingCategory(value: string | null): value is BookingCategory {
   return !!value && Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, value);
@@ -30,6 +31,13 @@ function NewBookingForm() {
   const [guests, setGuests] = useState("");
   const [totalPrice, setTotalPrice] = useState("");
   const [phone, setPhone] = useState("");
+  // שדות חדשים לטיימר-אמיתי בדף הבית (לא ספירה-לאחור ברמת-יום בלבד):
+  // שעת-איסוף להסעה; מספר-טיסה/שעת-המראה/סטטוס לטיסה. הסטטוס מוזן ידנית
+  // (לא חיבור-חי — ר' תיעוד ב-bookings-data.ts).
+  const [pickupTime, setPickupTime] = useState("");
+  const [flightNumber, setFlightNumber] = useState("");
+  const [departTime, setDepartTime] = useState("");
+  const [flightStatus, setFlightStatus] = useState<FlightStatus>("on_time");
   const [error, setError] = useState<string | null>(null);
 
   function handleSave() {
@@ -47,6 +55,10 @@ function NewBookingForm() {
       guests: guests ? Number(guests) : undefined,
       totalPrice: totalPrice.trim() || undefined,
       phone: phone.trim() || undefined,
+      pickupTime: category === "transport" && pickupTime ? pickupTime : undefined,
+      flightNumber: category === "flight" && flightNumber.trim() ? flightNumber.trim() : undefined,
+      departTime: category === "flight" && departTime ? departTime : undefined,
+      flightStatus: category === "flight" ? flightStatus : undefined,
     });
     router.push(`/bookings/${booking.id}`);
   }
@@ -79,6 +91,32 @@ function NewBookingForm() {
           </Field>
         </div>
       </div>
+
+      {category === "transport" ? (
+        <Field label="שעת איסוף (לא חובה)">
+          <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} style={inputStyle} />
+        </Field>
+      ) : null}
+
+      {category === "flight" ? (
+        <>
+          <div style={{ display: "flex", gap: SPACE.sm }}>
+            <div style={{ flex: 1 }}>
+              <Field label="מספר טיסה (לא חובה)">
+                <input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} placeholder="לדוגמה: LY 082" style={inputStyle} />
+              </Field>
+            </div>
+            <div style={{ flex: 1 }}>
+              <Field label="שעת המראה (לא חובה)">
+                <input type="time" value={departTime} onChange={(e) => setDepartTime(e.target.value)} style={inputStyle} />
+              </Field>
+            </div>
+          </div>
+          <Field label="סטטוס הטיסה">
+            <PillTabs options={FLIGHT_STATUS_TABS} value={flightStatus} onChange={setFlightStatus} />
+          </Field>
+        </>
+      ) : null}
 
       <Field label="כתובת (לא חובה)">
         <input value={address} onChange={(e) => setAddress(e.target.value)} style={inputStyle} />

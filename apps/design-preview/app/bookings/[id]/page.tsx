@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, PrimaryButton, SecondaryButton, Field, Money, CheckIcon, COLOR, SPACE, inputStyle } from "../../design-system";
-import { findBooking, updateBooking, deleteBooking, type Booking } from "../../bookings-data";
+import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, PrimaryButton, SecondaryButton, Field, Money, CheckIcon, PillTabs, COLOR, SPACE, inputStyle } from "../../design-system";
+import { findBooking, updateBooking, deleteBooking, FLIGHT_STATUS_LABEL, type Booking, type FlightStatus } from "../../bookings-data";
 import { formatMoney } from "../../wallet-data";
 import { useWalletStore } from "../../wallet-store";
 import { ToastBar } from "../../toast-bar";
@@ -163,6 +163,8 @@ export default function BookingDetailsScreen() {
   );
 }
 
+const FLIGHT_STATUS_TABS: { key: FlightStatus; label: string }[] = (Object.keys(FLIGHT_STATUS_LABEL) as FlightStatus[]).map((key) => ({ key, label: FLIGHT_STATUS_LABEL[key] }));
+
 function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onClose: () => void; onSave: (patch: Partial<Omit<Booking, "id">>) => void }) {
   const [title, setTitle] = useState(booking.title);
   const [address, setAddress] = useState(booking.address ?? "");
@@ -171,6 +173,12 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
   const [guests, setGuests] = useState(booking.guests ? String(booking.guests) : "");
   const [totalPrice, setTotalPrice] = useState(booking.totalPrice ?? "");
   const [phone, setPhone] = useState(booking.phone ?? "");
+  // לפי העיקרון "תמיד עריכה, לא משהו קבוע" — גם השדות החדשים (שעת-איסוף/
+  // מספר-טיסה/שעת-המראה/סטטוס) ניתנים לעריכה כאן, לא רק בעת יצירה.
+  const [pickupTime, setPickupTime] = useState(booking.pickupTime ?? "");
+  const [flightNumber, setFlightNumber] = useState(booking.flightNumber ?? "");
+  const [departTime, setDepartTime] = useState(booking.departTime ?? "");
+  const [flightStatus, setFlightStatus] = useState<FlightStatus>(booking.flightStatus ?? "on_time");
 
   const canSave = title.trim().length > 0 && checkIn.length > 0;
 
@@ -206,6 +214,33 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
         <Field label="טלפון (לא חובה)">
           <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
         </Field>
+
+        {booking.category === "transport" ? (
+          <Field label="שעת איסוף (לא חובה)">
+            <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} style={inputStyle} />
+          </Field>
+        ) : null}
+
+        {booking.category === "flight" ? (
+          <>
+            <div style={{ display: "flex", gap: SPACE.sm }}>
+              <div style={{ flex: 1 }}>
+                <Field label="מספר טיסה (לא חובה)">
+                  <input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} placeholder="לדוגמה: LY 082" style={inputStyle} />
+                </Field>
+              </div>
+              <div style={{ flex: 1 }}>
+                <Field label="שעת המראה (לא חובה)">
+                  <input type="time" value={departTime} onChange={(e) => setDepartTime(e.target.value)} style={inputStyle} />
+                </Field>
+              </div>
+            </div>
+            <Field label="סטטוס הטיסה">
+              <PillTabs options={FLIGHT_STATUS_TABS} value={flightStatus} onChange={setFlightStatus} />
+            </Field>
+          </>
+        ) : null}
+
         <PrimaryButton
           disabled={!canSave}
           onClick={() =>
@@ -218,6 +253,10 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
               guests: guests ? Number(guests) : undefined,
               totalPrice: totalPrice.trim() || undefined,
               phone: phone.trim() || undefined,
+              pickupTime: booking.category === "transport" && pickupTime ? pickupTime : undefined,
+              flightNumber: booking.category === "flight" && flightNumber.trim() ? flightNumber.trim() : undefined,
+              departTime: booking.category === "flight" && departTime ? departTime : undefined,
+              flightStatus: booking.category === "flight" ? flightStatus : undefined,
             })
           }
         >

@@ -15,6 +15,19 @@ export type BookingCategory = "hotel" | "flight" | "transport" | "car" | "attrac
  * בדף הבית (ר' VEHICLE_PHOTO ב-mobile-home-mock.tsx). */
 export type VehicleType = "taxi" | "van" | "suv" | "premium";
 
+/** סטטוס-טיסה (category "flight" בלבד) — מוזן/מעודכן **ידנית** ע"י
+ * המשתמש, לא חיבור-חי לשירות-מעקב-טיסות אמיתי (הוחלט במפורש: חיבור כזה
+ * דורש שירות חיצוני עם מפתח-API, בדיוק כמו שאר האינטגרציות בהדגמה הזו
+ * שלא קיימות — ר' התיעוד בראש הקובץ). */
+export type FlightStatus = "on_time" | "delayed" | "boarding" | "landed" | "cancelled";
+export const FLIGHT_STATUS_LABEL: Record<FlightStatus, string> = {
+  on_time: "בזמן",
+  delayed: "מתעכבת",
+  boarding: "עלייה למטוס",
+  landed: "נחתה",
+  cancelled: "בוטלה",
+};
+
 export interface Booking {
   id: string;
   category: BookingCategory;
@@ -28,6 +41,13 @@ export interface Booking {
   totalPrice?: string;
   phone?: string;
   vehicleType?: VehicleType;
+  /** שעת-איסוף אמיתית (HH:MM), category "transport" בלבד — מזינים אותה
+   * כדי לקבל טיימר-אמיתי בדף הבית במקום ספירה-לאחור ברמת-יום בלבד. */
+  pickupTime?: string;
+  /** מספר-טיסה, שעת-המראה (HH:MM) וסטטוס — category "flight" בלבד. */
+  flightNumber?: string;
+  departTime?: string;
+  flightStatus?: FlightStatus;
 }
 
 export const CATEGORY_LABEL: Record<BookingCategory, string> = {
