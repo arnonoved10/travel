@@ -14,6 +14,7 @@ import {
   LegacyDepositIcon,
 } from "../route/legacy-shared";
 import { type DemoCurrencyResult } from "../actions";
+import { DonutChart } from "../donut-chart";
 import { useWalletStore } from "../wallet-store";
 import { TripSwitcherPill } from "../trip-switcher";
 import { useStoredImage } from "../use-stored-image";
@@ -196,6 +197,32 @@ export default function WalletPreviewScreen() {
   const avgDaily = totalExpenseAll / tripDaysSoFar;
   const TRIP_TOTAL_DAYS = 48;
   const forecastTotal = avgDaily * TRIP_TOTAL_DAYS;
+
+  // פילוח לפי מטבע — לפי בקשה מפורשת: "כמה הוצאות באיזה מטבעות ועל מה".
+  // כל מטבע שהייתה בו הוצאה אי-פעם בטיול: סכום כולל (במטבע המקורי, לא
+  // ממוצע) + כמה תנועות. הוצאות בלבד — המרות (store.conversions) נשארות
+  // נפרדות לגמרי, כבר כך היום (convertCurrency לא נוגע ב-expenses), בדיוק
+  // כמו שצריך: "כסף שהמרנו לא נכנס כהוצאה".
+  const CURRENCY_CHART_COLORS = ["#43d6aa", "#4f8fe0", "#8a5adf", "#f5a544", "#ef6f61", "#e0699a", "#2dd4bf", "#facc15"];
+  const expenseByCurrency = new Map<string, { total: number; count: number }>();
+  for (const e of expenses) {
+    const row = expenseByCurrency.get(e.currency) ?? { total: 0, count: 0 };
+    row.total += e.amount;
+    row.count += 1;
+    expenseByCurrency.set(e.currency, row);
+  }
+  const totalExpensesILS = expenses.reduce((sum, e) => sum + (convert(e.amount, e.currency, "ILS") ?? 0), 0);
+  const currencyRows = Array.from(expenseByCurrency.entries())
+    .map(([code, row], i) => ({
+      code,
+      total: row.total,
+      count: row.count,
+      ilsValue: convert(row.total, code, "ILS") ?? 0,
+      color: CURRENCY_CHART_COLORS[i % CURRENCY_CHART_COLORS.length]!,
+      // המרות-מטבע שהמקור שלהן הוא המטבע הזה — מוצג ליד המטבע, לא כהוצאה.
+      conversionsFrom: conversions.filter((c) => c.fromCurrency === code),
+    }))
+    .sort((a, b) => b.ilsValue - a.ilsValue);
 
   const filteredExpenses = paymentFilter === "all" ? expenses : expenses.filter((e) => e.paymentMethod === paymentFilter);
   const menuExpense = expenses.find((e) => e.id === menuForExpense) ?? null;
@@ -446,7 +473,7 @@ export default function WalletPreviewScreen() {
                 <div style={{ background: "rgba(138,90,223,0.12)", border: `1px solid ${COLOR.purple}40`, borderRadius: "10px", padding: "8px", fontSize: "11.5px", color: "#c9b3ff", marginBottom: "8px" }}>
                   תחזית לסוף הטיול (48 ימים): <strong>{formatMoney(forecastTotal, baseCurrency)}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: "6px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: COLOR.textSecondary, marginBottom: "10px" }}>
                   <span>
                     מזומן/חיוב: <strong style={{ color: "#fff" }}>{formatMoney(cashExpenseTotal, baseCurrency)}</strong>
                   </span>
@@ -454,7 +481,42 @@ export default function WalletPreviewScreen() {
                     אשראי: <strong style={{ color: "#fff" }}>{formatMoney(creditExpenseTotal, baseCurrency)}</strong>
                   </span>
                 </div>
+
+                {/* פילוח לפי מטבע — לפי בקשה מפורשת: "כמה הוצאות באיזה
+                    מטבעות ועל מה", עם ציון-מיוחד להמרות (לא נספרות כהוצאה,
+                    רק מוצגות לצד המטבע שממנו הן יצאו). */}
+                {currencyRows.length > 0 ? (
+                  <div style={{ marginBottom: "10px" }}>
+                    <div style={{ fontSize: "11.5px", fontWeight: 800, color: "#fff", marginBottom: "8px" }}>פילוח לפי מטבע</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{ flexShrink: 0 }}>
+                        <DonutChart segments={currencyRows.map((r) => ({ color: r.color, value: r.ilsValue }))} size={72} strokeWidth={13} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {currencyRows.map((r) => (
+                          <div key={r.code}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "11px" }}>
+                              <span style={{ display: "flex", alignItems: "center", gap: "5px", color: COLOR.textSecondary }}>
+                                <span aria-hidden style={{ width: "7px", height: "7px", borderRadius: "50%", background: r.color, flexShrink: 0 }} />
+                                {r.code}
+                                <span style={{ color: COLOR.textMuted }}>({r.count})</span>
+                              </span>
+                              <strong style={{ color: "#fff" }}>{formatMoney(r.total, r.code)}</strong>
+                            </div>
+                            {r.conversionsFrom.map((c) => (
+                              <div key={c.id} style={{ fontSize: "9.5px", color: COLOR.purple, marginTop: "1px" }}>
+                                הומר {formatMoney(c.fromAmount, c.fromCurrency)} ל-{c.toCurrency}, התקבלו {formatMoney(c.toAmount, c.toCurrency)}
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div style={{ fontSize: "11px", color: COLOR.textMuted }}>סך כל היתרות (כל המטבעות ממוירים ל-{currencyMeta(baseCurrency).name}): {totalConvertedToBase != null ? formatMoney(totalConvertedToBase, baseCurrency) : "טוען שער..."}</div>
+                <div style={{ fontSize: "11px", color: COLOR.textMuted, marginTop: "3px" }}>סך כל ההוצאות בשקלים (לפי שער-חי): {formatMoney(totalExpensesILS, "ILS")}</div>
                 <button type="button" onClick={() => router.push("/wallet/reports")} style={{ marginTop: "8px", background: "none", border: "none", color: COLOR.purple, fontSize: "11px", fontWeight: 700, cursor: "pointer", padding: 0 }}>
                   לדוח התקציב המלא ←
                 </button>
