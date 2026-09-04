@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export type CurrentUser = { email: string; displayName: string };
+export type CurrentUser = { id: string; email: string; displayName: string };
 
 /**
  * שם לתצוגה מתוך פרטי המשתמש. אין עדיין שדה "שם מלא" בטופס ההרשמה, ולכן
@@ -34,13 +34,15 @@ export function useCurrentUser(): CurrentUser | null {
       supabase.auth.getUser().then(({ data }) => {
         if (!isActive) return;
         const email = data.user?.email;
-        setUser(email ? { email, displayName: toDisplayName(email, data.user?.user_metadata?.full_name) } : null);
+        const id = data.user?.id;
+        setUser(email && id ? { id, email, displayName: toDisplayName(email, data.user?.user_metadata?.full_name) } : null);
       });
 
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         if (!isActive) return;
         const email = session?.user?.email;
-        setUser(email ? { email, displayName: toDisplayName(email, session?.user?.user_metadata?.full_name) } : null);
+        const id = session?.user?.id;
+        setUser(email && id ? { id, email, displayName: toDisplayName(email, session?.user?.user_metadata?.full_name) } : null);
       });
       unsubscribe = () => data.subscription.unsubscribe();
     } catch {
