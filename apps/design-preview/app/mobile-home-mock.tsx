@@ -1936,24 +1936,36 @@ export function MobileHomeMock() {
                   </button>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "7px", paddingTop: "12px" }}>
-                  {rateCurrencies.map((code) => {
-                    const rate = rateForCode(code);
-                    const flagCode = primaryCountryForCurrency(code)?.code;
-                    return (
-                      <div key={code}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "2px" }}>
-                          {flagCode ? <FlagIcon countryCode={flagCode} size={13} /> : null}
-                          <span style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textMuted }}>{code} / ฿</span>
+                <div style={{ paddingTop: "12px" }}>
+                  {/* 2 מטבעות בשורה (במקום שורה לכל מטבע) — 2 שורות בסך הכול
+                      לארבעת המטבעות, עם קווי-הפרדה ביניהם, כדי לפנות מקום
+                      למחשבון למטה, לפי בקשה מפורשת. */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                    {rateCurrencies.map((code, i) => {
+                      const rate = rateForCode(code);
+                      const flagCode = primaryCountryForCurrency(code)?.code;
+                      return (
+                        <div
+                          key={code}
+                          style={{
+                            padding: "6px 8px",
+                            borderInlineEnd: i % 2 === 0 ? `1px solid ${COLOR.cardBorder}` : "none",
+                            borderBottom: i < 2 ? `1px solid ${COLOR.cardBorder}` : "none",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "2px" }}>
+                            {flagCode ? <FlagIcon countryCode={flagCode} size={12} /> : null}
+                            <span style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.textMuted }}>{code}</span>
+                          </div>
+                          <div style={{ fontSize: "11.5px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
+                            {currency.status === "loading" ? "…" : rate != null ? `฿${rate.toFixed(2)}` : "—"}
+                          </div>
                         </div>
-                        <div style={{ fontSize: "12.5px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
-                          {currency.status === "loading" ? "…" : rate != null ? `1 = ฿${rate.toFixed(2)}` : "אין נתון"}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
 
-                  <div style={{ borderTop: `1px solid ${COLOR.cardBorder}`, marginTop: "4px", paddingTop: "8px" }}>
+                  <div style={{ borderTop: `1px solid ${COLOR.cardBorder}`, marginTop: "8px", paddingTop: "8px" }}>
                     <div style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.textMuted, marginBottom: "5px" }}>מחשבון חופשי</div>
                     <input
                       type="number"
