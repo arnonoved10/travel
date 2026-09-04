@@ -626,15 +626,12 @@ interface WalletGridCell {
 }
 
 /** כל המטבעות שבארנק (כולל יתרות-אפס — 4 מטבעות-הבסיס תמיד קיימים
- * ב-walletStore.balances, ר' defaultCurrencyPriority) + כל כרטיס-אשראי,
- * כל אחד "משבצת" משלו באותה מסגרת אחת — לפי בקשה מפורשת: "תחלק אותה לכל
- * סוגי המטבעות... לפחות 4 או 5, כי צריך תמיד שיהיה מטבע מקומי, שקל, דולר,
- * אירו, וכ.א". לא עוד טבעת-ענק אחת + שורה-גוללת נסתרת. כל מטבע מקבל דגל
+ * ב-walletStore.balances, ר' defaultCurrencyPriority). כל מטבע מקבל דגל
  * לפי הארץ שלו (primaryCountryForCurrency, אותה פונקציה ששאר האפליקציה
  * כבר משתמשת בה). */
 function buildWalletGridCells(walletStore: ReturnType<typeof useWalletStore>): WalletGridCell[] {
   const localCode = walletStore.localCurrency.currencyCode;
-  const cells: WalletGridCell[] = walletStore.balances.map((b) => ({
+  return walletStore.balances.map((b) => ({
     key: `bal-${b.code}`,
     label: b.code,
     amountText: formatMoney(b.balance, b.code),
@@ -642,53 +639,21 @@ function buildWalletGridCells(walletStore: ReturnType<typeof useWalletStore>): W
     emphasize: b.code === localCode,
     flagCountryCode: primaryCountryForCurrency(b.code)?.code ?? null,
   }));
-  for (const c of walletStore.cards) {
-    const spent = walletStore.expenses.filter((e) => e.cardId === c.id).reduce((sum, e) => sum + (walletStore.convertAmount(e.amount, e.currency, c.currency) ?? 0), 0);
-    const remaining = c.creditLimit != null ? Math.max(0, c.creditLimit - spent) : null;
-    cells.push({
-      key: `card-${c.id}`,
-      label: c.nickname,
-      amountText: formatMoney(remaining ?? spent, c.currency),
-      subLabel: remaining != null ? "נותר במסגרת" : "הוצאתי בכרטיס",
-    });
-  }
-  return cells;
 }
 
-function WalletCurrencyGrid({ walletStore }: { walletStore: ReturnType<typeof useWalletStore> }) {
-  if (!walletStore.hydrated) return <div style={{ fontSize: "12px", color: COLOR.textMuted }}>טוען...</div>;
+/** לפי בקשה מפורשת: 4 מטבעות הארנק עברו מהכרטיס "הארנק שלי" (שנשאר ריק
+ * לגמרי עכשיו) אל תוך המלבן הריק שהיה ליד "שערי מטבעות" — כרשימה אחת-
+ * מתחת-לשנייה (לא רשת), במקביל למלבן השערים. */
+function WalletCurrencyStack({ walletStore }: { walletStore: ReturnType<typeof useWalletStore> }) {
+  if (!walletStore.hydrated) return <div style={{ fontSize: "11px", color: COLOR.textMuted }}>טוען...</div>;
   const cells = buildWalletGridCells(walletStore);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
-      {cells.map((cell) => (
-        <div
-          key={cell.key}
-          style={{
-            padding: "10px",
-            borderRadius: "12px",
-            background: cell.emphasize ? "rgba(67,214,170,0.12)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${cell.emphasize ? `${COLOR.turquoise}55` : COLOR.cardBorder}`,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              fontSize: "10.5px",
-              fontWeight: cell.emphasize ? 700 : 600,
-              color: cell.emphasize ? COLOR.turquoise : COLOR.textMuted,
-              marginBottom: "3px",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {cell.flagCountryCode ? <FlagIcon countryCode={cell.flagCountryCode} size={14} /> : null}
-            {cell.label}
-            {cell.subLabel ? ` · ${cell.subLabel}` : ""}
-          </div>
-          <div style={{ fontSize: "15px", fontWeight: 800, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums" }}>{cell.amountText}</div>
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {cells.map((cell, i) => (
+        <div key={cell.key} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 0", borderTop: i > 0 ? `1px solid ${COLOR.cardBorder}` : "none" }}>
+          {cell.flagCountryCode ? <FlagIcon countryCode={cell.flagCountryCode} size={13} /> : null}
+          <span style={{ fontSize: "9.5px", fontWeight: cell.emphasize ? 700 : 600, color: cell.emphasize ? COLOR.turquoise : COLOR.textMuted, flexShrink: 0 }}>{cell.label}</span>
+          <span style={{ flex: 1, minWidth: 0, textAlign: "end", fontSize: "11.5px", fontWeight: 800, color: COLOR.textPrimary, fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{cell.amountText}</span>
         </div>
       ))}
     </div>
@@ -2232,17 +2197,11 @@ export function MobileHomeMock() {
           </Card>
         ) : null}
 
-        {/* ארנק — מסגרת אחת מחולקת למשבצת לכל מטבע שיש בו יתרה (כולל
-            יתרות-אפס — 4 מטבעות-הבסיס תמיד קיימים) וכל כרטיס-אשראי, לפי
-            בקשה מפורשת: "תחלק אותה לכל סוגי המטבעות... לפחות 4 או 5".
-            מסך-ארנק אמיתי קיים כעת ב-/design-preview/wallet — לחיצה מנווטת
-            אליו. */}
-        <Link href="/wallet" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-          <Card style={{ cursor: "pointer" }}>
-            <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "10px" }}>הארנק שלי</div>
-            <WalletCurrencyGrid walletStore={walletStore} />
-          </Card>
-        </Link>
+        {/* ארנק — לפי בקשה מפורשת נשאר ריק לגמרי; 4 המטבעות עברו למלבן
+            הריק שליד "שערי מטבעות" (ר' WalletCurrencyStack למטה). */}
+        <Card style={{ border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70px" }}>
+          <span style={{ fontSize: "11px", color: COLOR.textMuted, textAlign: "center" }}>מקום פנוי — נחליט יחד מה יהיה כאן</span>
+        </Card>
 
         {/* כרטיס שערי-מטבעות — לפי בקשה מפורשת: המחשבון החופשי עבר לתוך
             אותו ריבוע-ממש של השערים (לא רק צמוד לידו) — ריבוע אחד עם הכול.
@@ -2381,9 +2340,10 @@ export function MobileHomeMock() {
               )}
             </div>
 
-            {/* הריבוע שהמחשבון היה בו קודם — נשאר נקי לפי בקשה מפורשת. */}
-            <div style={{ padding: "9px 10px", borderRadius: "12px", border: `1px dashed ${COLOR.cardBorder}`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "120px" }}>
-              <span style={{ fontSize: "10.5px", color: COLOR.textMuted, textAlign: "center" }}>מקום פנוי — נחליט יחד מה יהיה כאן</span>
+            {/* הריבוע שהמחשבון היה בו קודם — לפי בקשה מפורשת עכשיו מציג את
+                4 מטבעות הארנק, אחד מתחת לשני, במקביל למלבן השערים. */}
+            <div style={{ padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+              <WalletCurrencyStack walletStore={walletStore} />
             </div>
           </div>
 
