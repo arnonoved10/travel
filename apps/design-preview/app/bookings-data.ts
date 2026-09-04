@@ -10,6 +10,11 @@ import { currentScopeTripId } from "./trips-data";
  */
 export type BookingCategory = "hotel" | "flight" | "transport" | "car" | "attraction";
 
+/** סוג-הרכב שהוזמן להסעה (category "transport" בלבד) — לפי בקשה מפורשת:
+ * "שיהיה לי בחירה איזה סוג רכב הזמנתי". כל סוג מקבל תמונה אמיתית משלו
+ * בדף הבית (ר' VEHICLE_PHOTO ב-mobile-home-mock.tsx). */
+export type VehicleType = "taxi" | "van" | "suv" | "premium";
+
 export interface Booking {
   id: string;
   category: BookingCategory;
@@ -22,6 +27,7 @@ export interface Booking {
   guests?: number;
   totalPrice?: string;
   phone?: string;
+  vehicleType?: VehicleType;
 }
 
 export const CATEGORY_LABEL: Record<BookingCategory, string> = {

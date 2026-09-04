@@ -11,7 +11,7 @@ import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, 
 import { CurrencyPickerButton } from "./pickers";
 import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
-import { loadBookings } from "./bookings-data";
+import { loadBookings, updateBooking, type VehicleType } from "./bookings-data";
 import { FlagIcon } from "./country-currency-data";
 
 // עוטפת קריאה ל-API חיצוני בכמה ניסיונות עם השהיה עולה — ראו הערה בשימוש
@@ -713,12 +713,23 @@ const RATE_FLAG_COUNTRY: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: 
 const SK_HOME_RATE_CURRENCIES = "design-preview-home-rate-currencies-v2";
 const DEFAULT_RATE_CURRENCIES: string[] = ["USD", "EUR", "GBP", "ILS"];
 
-// תמונה אמיתית (לא אייקון מצויר) של שברולט טראוורס שחורה, לפי בקשה מפורשת
-// "שיראה כמו אמיתי" — אותו עיקרון בדיוק שכבר קיים בקובץ הזה לגבי תמונת-
-// הפרופיל: לא ממציאים תחליף-מצויר כשמבקשים תמונה אמיתית. המקור: Wikimedia
-// Commons, קובץ בשם Chevrolet Traverse Redline 3.6 C1XX Facelift Midnight
-// Black, רישיון CC BY-SA 4.0 (שמחייב קרדיט — ר' שורת-הקרדיט ליד השימוש).
-const RIDE_CAR_PHOTO_URL = "https://commons.wikimedia.org/wiki/Special:FilePath/Chevrolet_Traverse_Redline_3.6_C1XX_Facelift_Midnight_Black_%281%29.jpg?width=480";
+// תמונות אמיתיות (לא אייקונים מצוירים) לכל סוג-רכב שאפשר להזמין להסעה,
+// לפי בקשה מפורשת "שיהיה לי בחירה איזה סוג רכב הזמנתי... מונית או ואן או
+// רכב גדול או פרימיום". אותו עיקרון כמו תמונת-הפרופיל בקובץ הזה: לא
+// ממציאים תחליף-מצויר כשמבקשים תמונה שנראית אמיתית. כל התמונות מ-
+// Wikimedia Commons, עם קרדיט (ר' שורת-הקרדיט ליד השימוש):
+// - מונית: Black Nissan Crew Taxi.jpg — CC BY-SA 4.0
+// - ואן: Mercedes-Benz Vito W638.JPG — נחלת-הכלל (public domain)
+// - רכב גדול: Chevrolet Traverse Redline...Midnight Black.jpg — CC BY-SA 4.0
+// - פרימיום: Mercedes s-class w223 black.jpg — CC BY-SA 4.0
+const VEHICLE_PHOTO: Record<VehicleType, string> = {
+  taxi: "https://commons.wikimedia.org/wiki/Special:FilePath/Black_Nissan_Crew_Taxi.jpg?width=480",
+  van: "https://commons.wikimedia.org/wiki/Special:FilePath/Mercedes-Benz_Vito_W638.JPG?width=480",
+  suv: "https://commons.wikimedia.org/wiki/Special:FilePath/Chevrolet_Traverse_Redline_3.6_C1XX_Facelift_Midnight_Black_%281%29.jpg?width=480",
+  premium: "https://commons.wikimedia.org/wiki/Special:FilePath/Mercedes_s-class_w223_black_%281%29.jpg?width=480",
+};
+const VEHICLE_LABEL: Record<VehicleType, string> = { taxi: "מונית", van: "ואן", suv: "רכב גדול", premium: "פרימיום" };
+const DEFAULT_VEHICLE: VehicleType = "suv";
 // שערי-דמו גסים מול דולר (בסיס משותף לחישוב חופשי בין כל זוג) — לא מקור אמיתי.
 const CURRENCY_TO_USD: Record<CurrencyCode, number> = { usd: 1, eur: 1.08, ils: 0.27, thb: 0.0276, gbp: 1.26 };
 
@@ -1259,32 +1270,52 @@ export function MobileHomeMock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
 
-  // "ההסעה שלי" — לפי בקשה מפורשת, בצד השמאלי של כרטיס "המסלול שלי". לא
+  // "ההסעה שלי" ו"הטיסות שלי" — שני כרטיסים באותו דפוס בדיוק: הזמנות
+  // אמיתיות (bookings-data, קטגוריות "transport"/"flight") עם ספירה-
+  // לאחור אמיתית לפי תאריך (ברמת-יום, כי אין שדה-שעה במודל ההזמנות היום —
+  // לא ממציאים דיוק שאין), עריכה/מחיקה דרך מסך /bookings/[id] הקיים
+  // (לא בונים מסך-עריכה כפול), ומעבר בין כמה הזמנות אם יש יותר מאחת. לא
   // מחזירים את מנגנון-הטיימר-המזויף הישן (HOME_TIMER_EVENTS, שרוקן בכוונה
-  // בשלב קודם בסשן הזה) — במקום זה קוראים הזמנת-הסעה אמיתית (bookings-data,
-  // קטגוריית "transport") ומחשבים ספירה-לאחור אמיתית לפי התאריך שלה (ברמת-
-  // דיוק של יום, כי אין שדה-שעה במודל ההזמנות היום — לא ממציאים דיוק
-  // שאין). אם אין הזמנת-הסעה עתידית, מוצג מצב-ריק כן במקום למלא נתון בדוי.
-  const [rideInfo, setRideInfo] = useState<{ bookingId: string; title: string; countdownLabel: string } | null>(null);
+  // בשלב קודם בסשן הזה).
+  interface BookingCardInfo {
+    id: string;
+    title: string;
+    countdownLabel: string;
+  }
+  function dayCountdownLabel(dateStr: string, todayStr: string): string {
+    const daysUntil = Math.round((new Date(dateStr).getTime() - new Date(todayStr).getTime()) / 86400000);
+    return daysUntil <= 0 ? "היום" : daysUntil === 1 ? "מחר" : `בעוד ${daysUntil} ימים`;
+  }
+  const [rideBookings, setRideBookings] = useState<(BookingCardInfo & { vehicleType: VehicleType })[]>([]);
+  const [rideIndex, setRideIndex] = useState(0);
+  const [flightBookings, setFlightBookings] = useState<BookingCardInfo[]>([]);
+  const [flightIndex, setFlightIndex] = useState(0);
+  const [editingVehicleFor, setEditingVehicleFor] = useState<string | null>(null);
   useEffect(() => {
     if (!activeTripInfo) {
-      setRideInfo(null);
+      setRideBookings([]);
+      setFlightBookings([]);
       return;
     }
     const todayStr = today();
-    const upcoming = loadBookings()
-      .filter((b) => b.category === "transport" && b.status !== "cancelled" && b.checkIn >= todayStr)
-      .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
-    const next = upcoming[0];
-    if (!next) {
-      setRideInfo(null);
-      return;
-    }
-    const daysUntil = Math.round((new Date(next.checkIn).getTime() - new Date(todayStr).getTime()) / 86400000);
-    const countdownLabel = daysUntil <= 0 ? "היום" : daysUntil === 1 ? "מחר" : `בעוד ${daysUntil} ימים`;
-    setRideInfo({ bookingId: next.id, title: next.title, countdownLabel });
+    const all = loadBookings();
+    const upcoming = (category: "transport" | "flight") =>
+      all
+        .filter((b) => b.category === category && b.status !== "cancelled" && b.checkIn >= todayStr)
+        .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+    setRideBookings(upcoming("transport").map((b) => ({ id: b.id, title: b.title, countdownLabel: dayCountdownLabel(b.checkIn, todayStr), vehicleType: b.vehicleType ?? DEFAULT_VEHICLE })));
+    setFlightBookings(upcoming("flight").map((b) => ({ id: b.id, title: b.title, countdownLabel: dayCountdownLabel(b.checkIn, todayStr) })));
+    setRideIndex(0);
+    setFlightIndex(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
+  function setRideVehicle(bookingId: string, vehicleType: VehicleType) {
+    updateBooking(bookingId, { vehicleType });
+    setRideBookings((prev) => prev.map((r) => (r.id === bookingId ? { ...r, vehicleType } : r)));
+    setEditingVehicleFor(null);
+  }
+  const currentRide = rideBookings[rideIndex] ?? null;
+  const currentFlight = flightBookings[flightIndex] ?? null;
 
   // "פילוח הוצאות" — גרף-דונאט בתחתית דף הבית, לפי בקשה מפורשת: כל קטגוריה
   // בצבע שלה, בחירת אילו קטגוריות מוצגות, וסינון לפי טווח-זמן. הקטגוריות
@@ -1802,11 +1833,12 @@ export function MobileHomeMock() {
           </Link>
         ) : null}
 
-        {/* "המסלול שלי" — לפי בקשה מפורשת, מחולק לימין/שמאל באותו רכיב-
-            מלבן-אחד כמו כרטיס-השעונים (ישראל/תאילנד): ימין = התקדמות-הטיול
-            כמו קודם, שמאל = "ההסעה שלי" — הזמנת-הסעה אמיתית + תמונה. שאר
-            הנתונים (עיר נוכחית / הפעילות הבאה / המעבר הבא) עברו למסגרת-
-            משבצות נפרדת מתחת, בלי לשנות את המידע עצמו. */}
+        {/* "המסלול שלי" + "ההסעה שלי" + "הטיסות שלי" — לפי בקשה מפורשת,
+            שלושתם יחד באותה שורה (מצומצמים). הסעה: תמונה אמיתית לפי סוג-
+            רכב נבחר (עיפרון קטן פותח 4 תמונות-בחירה), עריכה/מחיקה דרך
+            /bookings/[id] הקיים, וחיצי הבא/קודם אם יש כמה הסעות. טיסות:
+            אותו דפוס בדיוק, בלי בחירת-רכב (לא רלוונטי). שאר הנתונים (עיר
+            נוכחית / הפעילות הבאה / המעבר הבא) נשארים במסגרת נפרדת מתחת. */}
         {tripChecked && !activeTripInfo ? (
           <Link href="/trips/new" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
             <Card style={{ cursor: "pointer", textAlign: "center" }}>
@@ -1816,40 +1848,115 @@ export function MobileHomeMock() {
           </Link>
         ) : (
           <>
-            <Card style={{ padding: "11px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
-                <Link href="/route" style={{ flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                    <Ring percent={tripProgress?.percent ?? 0} size={22} color={COLOR.turquoise} />
-                    <span style={{ fontSize: "10px", color: COLOR.textSecondary }}>המסלול שלי</span>
+            <Card style={{ padding: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                {/* המסלול שלי */}
+                <Link href="/route" style={{ minWidth: 0, textDecoration: "none", color: "inherit" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "5px" }}>
+                    <Ring percent={tripProgress?.percent ?? 0} size={18} color={COLOR.turquoise} />
+                    <span style={{ fontSize: "9px", color: COLOR.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>המסלול שלי</span>
                   </div>
-                  <div style={{ fontSize: "16px", fontWeight: 800, color: COLOR.turquoise }}>
-                    יום {tripProgress?.dayIndex ?? "—"} <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "11px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: COLOR.turquoise }}>
+                    יום {tripProgress?.dayIndex ?? "—"}
                   </div>
-                  <div style={{ fontSize: "9px", color: COLOR.textMuted, marginTop: "1px" }}>
-                    נותרו <span style={{ color: COLOR.purple, fontWeight: 700 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
+                  <div style={{ fontSize: "8.5px", color: COLOR.textMuted, marginTop: "1px" }}>
+                    <span style={{ color: COLOR.purple, fontWeight: 700 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים נותרו
                   </div>
                 </Link>
-                <div style={{ width: "1px", alignSelf: "stretch", background: COLOR.cardBorder }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "10px", color: COLOR.textSecondary, marginBottom: "6px" }}>ההסעה שלי</div>
-                  {rideInfo ? (
-                    <Link href={`/bookings/${rideInfo.bookingId}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
-                      <div style={{ borderRadius: "8px", overflow: "hidden", marginBottom: "5px", height: "44px" }}>
-                        <img src={RIDE_CAR_PHOTO_URL} alt="שברולט טראוורס שחורה" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+
+                {/* ההסעה שלי */}
+                <div style={{ minWidth: 0, borderInlineStart: `1px solid ${COLOR.cardBorder}`, paddingInlineStart: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }}>
+                    <span style={{ fontSize: "9px", color: COLOR.textSecondary }}>ההסעה שלי</span>
+                    {rideBookings.length > 1 ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                        <button type="button" aria-label="ההסעה הקודמת" onClick={() => setRideIndex((i) => (i - 1 + rideBookings.length) % rideBookings.length)} style={{ background: "none", border: "none", color: COLOR.textMuted, cursor: "pointer", fontSize: "10px", padding: "1px" }}>
+                          ›
+                        </button>
+                        <span style={{ fontSize: "8px", color: COLOR.textMuted }}>
+                          {rideIndex + 1}/{rideBookings.length}
+                        </span>
+                        <button type="button" aria-label="ההסעה הבאה" onClick={() => setRideIndex((i) => (i + 1) % rideBookings.length)} style={{ background: "none", border: "none", color: COLOR.textMuted, cursor: "pointer", fontSize: "10px", padding: "1px" }}>
+                          ‹
+                        </button>
                       </div>
-                      <div style={{ fontSize: "11px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rideInfo.title}</div>
-                      <div style={{ fontSize: "12px", fontWeight: 800, color: COLOR.turquoise }}>{rideInfo.countdownLabel}</div>
+                    ) : null}
+                  </div>
+                  {currentRide ? (
+                    <>
+                      <Link href={`/bookings/${currentRide.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                        <div style={{ borderRadius: "7px", overflow: "hidden", marginBottom: "4px", height: "34px" }}>
+                          <img src={VEHICLE_PHOTO[currentRide.vehicleType]} alt={VEHICLE_LABEL[currentRide.vehicleType]} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        </div>
+                        <div style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentRide.title}</div>
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: COLOR.turquoise }}>{currentRide.countdownLabel}</div>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setEditingVehicleFor(editingVehicleFor === currentRide.id ? null : currentRide.id)}
+                        style={{ background: "none", border: "none", color: COLOR.purple, fontSize: "8.5px", fontWeight: 700, cursor: "pointer", padding: "3px 0 0" }}
+                      >
+                        {VEHICLE_LABEL[currentRide.vehicleType]} · שינוי סוג רכב
+                      </button>
+                      {editingVehicleFor === currentRide.id ? (
+                        <div style={{ display: "flex", gap: "3px", marginTop: "3px" }}>
+                          {(Object.keys(VEHICLE_PHOTO) as VehicleType[]).map((vt) => (
+                            <button
+                              key={vt}
+                              type="button"
+                              aria-label={VEHICLE_LABEL[vt]}
+                              onClick={() => setRideVehicle(currentRide.id, vt)}
+                              style={{ padding: 0, border: currentRide.vehicleType === vt ? `2px solid ${COLOR.turquoise}` : "1px solid transparent", borderRadius: "5px", cursor: "pointer", overflow: "hidden", width: "20px", height: "20px", flexShrink: 0 }}
+                            >
+                              <img src={VEHICLE_PHOTO[vt]} alt={VEHICLE_LABEL[vt]} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Link href="/bookings/new" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                      <div style={{ fontSize: "10px", color: COLOR.textSecondary }}>אין הסעה</div>
+                      <div style={{ fontSize: "9.5px", color: COLOR.purple, fontWeight: 700, marginTop: "2px" }}>+ הוספה</div>
+                    </Link>
+                  )}
+                </div>
+
+                {/* הטיסות שלי */}
+                <div style={{ minWidth: 0, borderInlineStart: `1px solid ${COLOR.cardBorder}`, paddingInlineStart: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }}>
+                    <span style={{ fontSize: "9px", color: COLOR.textSecondary }}>הטיסות שלי</span>
+                    {flightBookings.length > 1 ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                        <button type="button" aria-label="הטיסה הקודמת" onClick={() => setFlightIndex((i) => (i - 1 + flightBookings.length) % flightBookings.length)} style={{ background: "none", border: "none", color: COLOR.textMuted, cursor: "pointer", fontSize: "10px", padding: "1px" }}>
+                          ›
+                        </button>
+                        <span style={{ fontSize: "8px", color: COLOR.textMuted }}>
+                          {flightIndex + 1}/{flightBookings.length}
+                        </span>
+                        <button type="button" aria-label="הטיסה הבאה" onClick={() => setFlightIndex((i) => (i + 1) % flightBookings.length)} style={{ background: "none", border: "none", color: COLOR.textMuted, cursor: "pointer", fontSize: "10px", padding: "1px" }}>
+                          ‹
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  {currentFlight ? (
+                    <Link href={`/bookings/${currentFlight.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                      <div style={{ height: "34px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "4px" }}>
+                        <DetailedPlaneIcon size={26} />
+                      </div>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentFlight.title}</div>
+                      <div style={{ fontSize: "11px", fontWeight: 800, color: COLOR.turquoise }}>{currentFlight.countdownLabel}</div>
                     </Link>
                   ) : (
                     <Link href="/bookings/new" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
-                      <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>אין הסעה מתוכננת</div>
-                      <div style={{ fontSize: "10.5px", color: COLOR.purple, fontWeight: 700, marginTop: "3px" }}>+ הוספת הסעה</div>
+                      <div style={{ fontSize: "10px", color: COLOR.textSecondary }}>אין טיסה</div>
+                      <div style={{ fontSize: "9.5px", color: COLOR.purple, fontWeight: 700, marginTop: "2px" }}>+ הוספה</div>
                     </Link>
                   )}
                 </div>
               </div>
-              {rideInfo ? <div style={{ fontSize: "8.5px", color: COLOR.textMuted, marginTop: "8px" }}>צילום הרכב: Wikimedia Commons (CC BY-SA 4.0)</div> : null}
+              {currentRide ? <div style={{ fontSize: "8px", color: COLOR.textMuted, marginTop: "8px" }}>צילומי הרכבים: Wikimedia Commons</div> : null}
             </Card>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
