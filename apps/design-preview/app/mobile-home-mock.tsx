@@ -648,6 +648,13 @@ type CurrencyCode = (typeof ALL_CURRENCIES)[number];
 // דגל-הארץ שמייצג כל מטבע בכרטיס "שערי מטבעות" — אותה מוסכמה כמו
 // primaryCountryForCurrency (הארץ הראשונה ברשימת המדינות עם המטבע הזה).
 const RATE_FLAG_COUNTRY: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: "US", eur: "DE", ils: "IL", gbp: "GB" };
+
+// תמונה אמיתית (לא אייקון מצויר) של שברולט טראוורס שחורה, לפי בקשה מפורשת
+// "שיראה כמו אמיתי" — אותו עיקרון בדיוק שכבר קיים בקובץ הזה לגבי תמונת-
+// הפרופיל: לא ממציאים תחליף-מצויר כשמבקשים תמונה אמיתית. המקור: Wikimedia
+// Commons, קובץ בשם Chevrolet Traverse Redline 3.6 C1XX Facelift Midnight
+// Black, רישיון CC BY-SA 4.0 (שמחייב קרדיט — ר' שורת-הקרדיט ליד השימוש).
+const RIDE_CAR_PHOTO_URL = "https://commons.wikimedia.org/wiki/Special:FilePath/Chevrolet_Traverse_Redline_3.6_C1XX_Facelift_Midnight_Black_%281%29.jpg?width=480";
 // שערי-דמו גסים מול דולר (בסיס משותף לחישוב חופשי בין כל זוג) — לא מקור אמיתי.
 const CURRENCY_TO_USD: Record<CurrencyCode, number> = { usd: 1, eur: 1.08, ils: 0.27, thb: 0.0276, gbp: 1.26 };
 
@@ -1188,6 +1195,33 @@ export function MobileHomeMock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
 
+  // "ההסעה שלי" — לפי בקשה מפורשת, בצד השמאלי של כרטיס "המסלול שלי". לא
+  // מחזירים את מנגנון-הטיימר-המזויף הישן (HOME_TIMER_EVENTS, שרוקן בכוונה
+  // בשלב קודם בסשן הזה) — במקום זה קוראים הזמנת-הסעה אמיתית (bookings-data,
+  // קטגוריית "transport") ומחשבים ספירה-לאחור אמיתית לפי התאריך שלה (ברמת-
+  // דיוק של יום, כי אין שדה-שעה במודל ההזמנות היום — לא ממציאים דיוק
+  // שאין). אם אין הזמנת-הסעה עתידית, מוצג מצב-ריק כן במקום למלא נתון בדוי.
+  const [rideInfo, setRideInfo] = useState<{ bookingId: string; title: string; countdownLabel: string } | null>(null);
+  useEffect(() => {
+    if (!activeTripInfo) {
+      setRideInfo(null);
+      return;
+    }
+    const todayStr = today();
+    const upcoming = loadBookings()
+      .filter((b) => b.category === "transport" && b.status !== "cancelled" && b.checkIn >= todayStr)
+      .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+    const next = upcoming[0];
+    if (!next) {
+      setRideInfo(null);
+      return;
+    }
+    const daysUntil = Math.round((new Date(next.checkIn).getTime() - new Date(todayStr).getTime()) / 86400000);
+    const countdownLabel = daysUntil <= 0 ? "היום" : daysUntil === 1 ? "מחר" : `בעוד ${daysUntil} ימים`;
+    setRideInfo({ bookingId: next.id, title: next.title, countdownLabel });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+
   // התנתקות אמיתית — שני הכפתורים במסך הזה היו stubs של הדגמה.
   async function handleSignOut() {
     const errorMessage = await signOutCurrentUser();
@@ -1631,9 +1665,11 @@ export function MobileHomeMock() {
           </Link>
         ) : null}
 
-        {/* "המסלול שלי" — היה מלבן גדול לתצוגת יום-בטיול בלבד. מחולק עכשיו
-            ל-4 משבצות (לפי בקשה מפורשת): יום-בטיול, עיר נוכחית, הפעילות
-            הבאה היום, והמעבר הבא במסלול — כל אחת מנתונים אמיתיים. */}
+        {/* "המסלול שלי" — לפי בקשה מפורשת, מחולק לימין/שמאל באותו רכיב-
+            מלבן-אחד כמו כרטיס-השעונים (ישראל/תאילנד): ימין = התקדמות-הטיול
+            כמו קודם, שמאל = "ההסעה שלי" — הזמנת-הסעה אמיתית + תמונה. שאר
+            הנתונים (עיר נוכחית / הפעילות הבאה / המעבר הבא) עברו למסגרת-
+            משבצות נפרדת מתחת, בלי לשנות את המידע עצמו. */}
         {tripChecked && !activeTripInfo ? (
           <Link href="/trips/new" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
             <Card style={{ cursor: "pointer", textAlign: "center" }}>
@@ -1642,45 +1678,69 @@ export function MobileHomeMock() {
             </Card>
           </Link>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
-            <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
-              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                  <Ring percent={tripProgress?.percent ?? 0} size={26} color={COLOR.turquoise} />
-                  <span style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted }}>המסלול שלי</span>
-                </div>
-                <div style={{ fontSize: "14px", fontWeight: 800, color: COLOR.turquoise }}>
-                  יום {tripProgress?.dayIndex ?? "—"} <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "11px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
-                </div>
-                <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "2px" }}>
-                  נותרו <span style={{ color: COLOR.purple, fontWeight: 700 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
+          <>
+            <Card style={{ padding: "11px" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                <Link href="/route" style={{ flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                    <Ring percent={tripProgress?.percent ?? 0} size={22} color={COLOR.turquoise} />
+                    <span style={{ fontSize: "10px", color: COLOR.textSecondary }}>המסלול שלי</span>
+                  </div>
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: COLOR.turquoise }}>
+                    יום {tripProgress?.dayIndex ?? "—"} <span style={{ color: COLOR.textSecondary, fontWeight: 600, fontSize: "11px" }}>מתוך {tripProgress?.totalDays ?? "—"}</span>
+                  </div>
+                  <div style={{ fontSize: "9px", color: COLOR.textMuted, marginTop: "1px" }}>
+                    נותרו <span style={{ color: COLOR.purple, fontWeight: 700 }}>{tripProgress?.daysRemaining ?? "—"}</span> ימים
+                  </div>
+                </Link>
+                <div style={{ width: "1px", alignSelf: "stretch", background: COLOR.cardBorder }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "10px", color: COLOR.textSecondary, marginBottom: "6px" }}>ההסעה שלי</div>
+                  {rideInfo ? (
+                    <Link href={`/bookings/${rideInfo.bookingId}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                      <div style={{ borderRadius: "8px", overflow: "hidden", marginBottom: "5px", height: "44px" }}>
+                        <img src={RIDE_CAR_PHOTO_URL} alt="שברולט טראוורס שחורה" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      </div>
+                      <div style={{ fontSize: "11px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rideInfo.title}</div>
+                      <div style={{ fontSize: "12px", fontWeight: 800, color: COLOR.turquoise }}>{rideInfo.countdownLabel}</div>
+                    </Link>
+                  ) : (
+                    <Link href="/bookings/new" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                      <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>אין הסעה מתוכננת</div>
+                      <div style={{ fontSize: "10.5px", color: COLOR.purple, fontWeight: 700, marginTop: "3px" }}>+ הוספת הסעה</div>
+                    </Link>
+                  )}
                 </div>
               </div>
-            </Link>
-            <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
-              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
-                <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>כרגע ב</div>
-                <div style={{ fontSize: "14px", fontWeight: 800, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{routeStatus?.currentCity ?? "—"}</div>
-              </div>
-            </Link>
-            <Link
-              href={routeStatus?.todayActivity ? `/activities/${routeStatus.todayActivity.id}` : activeTripInfo ? `/trips/${activeTripInfo.id}/plan?day=${today()}` : "/route"}
-              style={{ textDecoration: "none", color: "inherit" }}
-            >
-              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
-                <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>הפעילות הבאה היום</div>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {routeStatus?.todayActivity ? `${routeStatus.todayActivity.time} · ${routeStatus.todayActivity.title}` : "אין פעילויות היום"}
+              {rideInfo ? <div style={{ fontSize: "8.5px", color: COLOR.textMuted, marginTop: "8px" }}>צילום הרכב: Wikimedia Commons (CC BY-SA 4.0)</div> : null}
+            </Card>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
+              <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
+                <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                  <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>כרגע ב</div>
+                  <div style={{ fontSize: "14px", fontWeight: 800, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{routeStatus?.currentCity ?? "—"}</div>
                 </div>
-              </div>
-            </Link>
-            <Link href="/route" style={{ textDecoration: "none", color: "inherit" }}>
-              <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
-                <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>המעבר הבא</div>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{routeStatus?.nextTransitionLabel ?? "—"}</div>
-              </div>
-            </Link>
-          </div>
+              </Link>
+              <Link
+                href={routeStatus?.todayActivity ? `/activities/${routeStatus.todayActivity.id}` : activeTripInfo ? `/trips/${activeTripInfo.id}/plan?day=${today()}` : "/route"}
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                  <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>הפעילות הבאה היום</div>
+                  <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {routeStatus?.todayActivity ? `${routeStatus.todayActivity.time} · ${routeStatus.todayActivity.title}` : "אין פעילויות היום"}
+                  </div>
+                </div>
+              </Link>
+              <Link href="/route" style={{ textDecoration: "none", color: "inherit", gridColumn: "span 2" }}>
+                <div style={{ padding: "10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                  <div style={{ fontSize: "10.5px", fontWeight: 600, color: COLOR.textMuted, marginBottom: "6px" }}>המעבר הבא</div>
+                  <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{routeStatus?.nextTransitionLabel ?? "—"}</div>
+                </div>
+              </Link>
+            </div>
+          </>
         )}
 
         {/* ארנק — מסגרת אחת מחולקת למשבצת לכל מטבע שיש בו יתרה (כולל
