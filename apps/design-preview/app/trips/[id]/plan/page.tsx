@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, PlusIcon, ChevronIcon, COLOR, SPACE, RADIUS } from "../../../design-system";
 import { activitiesForDate, cityForDate, loadStops, type TripActivity } from "../../../trip-content";
+import { findAnyTrip, type DemoTrip } from "../../../trips-data";
 import type { DemoWeatherResult } from "../../../actions";
 import { fetchWeather } from "../../../weather-client";
 import { today } from "../../../wallet-data";
@@ -36,6 +37,19 @@ function addDaysStr(dateISO: string, n: number): string {
   const date = new Date(Date.UTC(y!, m! - 1, d!));
   date.setUTCDate(date.getUTCDate() + n);
   return date.toISOString().slice(0, 10);
+}
+
+/** כל התאריכים בטווח [start, end] (כולל) — לרצועת-הימים בראש המסך, כדי
+ * שכל יום בטיול יהיה נגיש בגלילה, לא רק הימים הסמוכים ליום הנבחר. תקרה
+ * הגנתית (400 יום) כדי שלא ליצור מערך-ענק אם תאריכי-הטיול פגומים. */
+function dateRange(start: string, end: string): string[] {
+  const days: string[] = [];
+  let d = start;
+  while (d <= end && days.length < 400) {
+    days.push(d);
+    d = addDaysStr(d, 1);
+  }
+  return days.length > 0 ? days : [start];
 }
 
 // ---------- אייקוני מזג-אוויר איכותיים ואחידים, ממופים ממחרוזת ה-condition
@@ -232,13 +246,32 @@ function DailyPlanContent() {
   // איתו כבר בפאס הראשון. אותה בעיה שכבר נפתרה נכון עבור activities למטה
   // (state+effect) — city פשוט לא היה עקבי איתה.
   const [city, setCity] = useState("");
+  const [trip, setTrip] = useState<DemoTrip | null>(null);
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
+  const dayButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  useEffect(() => {
+    const loaded = findAnyTrip(params.id);
+    setTrip(loaded);
+    // אם לא הגיע יום מפורש ב-URL (?day=) והיום שגוי-כברירת-מחדל (today())
+    // לא נמצא בכלל בטווח התאריכים של הטיול (טיול עתידי/היסטורי) — עוברים
+    // ליום הראשון של הטיול, אחרת הרצועה החדשה (שמכסה רק את טווח הטיול)
+    // הייתה נטענת בלי שום כפתור מסומן כ"נבחר".
+    if (loaded && !search.get("day") && (date < loaded.startDate || date > loaded.endDate)) setDate(loaded.startDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
 
   useEffect(() => {
     setActivities(activitiesForDate(params.id, date));
     setCity(cityForDate(params.id, date));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
+
+  // גלילה-אוטומטית ליום הנבחר בכל פעם שהוא משתנה (כולל טעינה ראשונית) —
+  // כדי שהיום הנבחר תמיד יהיה גלוי גם ברצועה שמכסה טיול ארוך.
+  useEffect(() => {
+    dayButtonRefs.current.get(date)?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [date, trip]);
 
   // מזג-אוויר אמיתי (Open-Meteo) של המיקום האמיתי של התחנה ליום הזה (לפי
   // הקואורדינטות שאותרו כשהתחנה נשמרה) — ולא בנגקוק קבועה. אם לתחנה עוד
@@ -254,13 +287,13 @@ function DailyPlanContent() {
 
   const monthLabel = new Date(date).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
   const dayLabel = new Date(date).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" });
-  const strip = [-1, 0, 1, 2].map((offset) => addDaysStr(date, offset));
+  const strip = trip ? dateRange(trip.startDate, trip.endDate) : [date];
 
   return (
     <ScreenShell>
       <ScreenHeader title="התוכנית היומית" subtitle={monthLabel} />
 
-      <div style={{ display: "flex", gap: SPACE.sm, justifyContent: "space-between" }}>
+      <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto", paddingBottom: "2px" }}>
         {strip.map((d) => {
           const active = d === date;
           const dd = new Date(d);
@@ -268,8 +301,13 @@ function DailyPlanContent() {
             <button
               key={d}
               type="button"
+              data-testid="plan-day-button"
+              ref={(el) => {
+                if (el) dayButtonRefs.current.set(d, el);
+                else dayButtonRefs.current.delete(d);
+              }}
               onClick={() => setDate(d)}
-              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 4px", borderRadius: `${RADIUS.card}px`, background: active ? COLOR.primary : COLOR.card, border: `1px solid ${active ? COLOR.primary : COLOR.border}`, cursor: "pointer" }}
+              style={{ flexShrink: 0, minWidth: "48px", display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 4px", borderRadius: `${RADIUS.card}px`, background: active ? COLOR.primary : COLOR.card, border: `1px solid ${active ? COLOR.primary : COLOR.border}`, cursor: "pointer" }}
             >
               <span style={{ fontSize: "10px", color: active ? "#fff" : COLOR.textSecondary }}>{dd.toLocaleDateString("he-IL", { weekday: "short" })}</span>
               <span style={{ fontSize: "14px", fontWeight: 700, color: active ? "#fff" : COLOR.textPrimary }}>{dd.getDate()}</span>

@@ -6,20 +6,22 @@ import { ScreenShell, ScreenHeader, Card, ElevatedCard, Badge, PrimaryButton, Da
 import { FlagIcon } from "../../country-currency-data";
 import { CountryPickerButton } from "../../pickers";
 import { findAnyTrip, updateTrip, deleteCustomTrip, setActiveTrip, type DemoTrip } from "../../trips-data";
-import { loadStops } from "../../trip-content";
+import { loadStops, countActivities, type TripStop } from "../../trip-content";
 import { DateRangePicker } from "../../date-range-picker";
 
 export default function TripOverviewScreen() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [trip, setTrip] = useState<DemoTrip | null | undefined>(undefined);
-  const [cityCount, setCityCount] = useState(0);
+  const [stops, setStops] = useState<TripStop[]>([]);
+  const [activityCount, setActivityCount] = useState(0);
   const [editingDates, setEditingDates] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
 
   useEffect(() => {
     setTrip(findAnyTrip(params.id));
-    setCityCount(new Set(loadStops(params.id).map((s) => s.city)).size);
+    setStops(loadStops(params.id));
+    setActivityCount(countActivities(params.id));
   }, [params.id]);
 
   if (trip === undefined) return null;
@@ -32,7 +34,9 @@ export default function TripOverviewScreen() {
     );
   }
 
-  const isJapan = trip.id === "japan-2025";
+  const destinationNames = Array.from(new Set(stops.map((s) => s.city)));
+  const missingTransportCount = stops.slice(0, -1).filter((s) => !s.transportToNext.trim()).length;
+  const canEditRoute = trip.status === "active";
 
   async function handleShareTrip() {
     if (!trip) return;
@@ -118,9 +122,19 @@ export default function TripOverviewScreen() {
 
       <Card>
         <div style={{ fontSize: "14px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.md }}>סיכום הטיול</div>
-        <SummaryRow label="יעדים" value={isJapan ? "טוקיו, קיוטו, אוסקה" : trip.name} badge={isJapan ? String(cityCount) : undefined} />
-        <SummaryRow label="פעילויות" value="" badge={isJapan ? "12" : "0"} />
-        <SummaryRow label="תחבורה" value={isJapan ? "JR Pass כלול" : "טרם הוגדר"} />
+        <SummaryRow
+          label="יעדים"
+          value={destinationNames.length > 0 ? destinationNames.join(", ") : trip.name}
+          badge={destinationNames.length > 0 ? String(stops.length) : undefined}
+          onClick={canEditRoute ? () => router.push("/route") : undefined}
+        />
+        <SummaryRow label="פעילויות" value="" badge={String(activityCount)} onClick={() => router.push(`/trips/${trip.id}/plan`)} />
+        <SummaryRow
+          label="תחבורה"
+          value={stops.length <= 1 ? "אין מעברים להגדיר" : missingTransportCount === 0 ? "הכול מוגדר" : "חסרה הגדרת תחבורה"}
+          badge={stops.length > 1 && missingTransportCount > 0 ? String(missingTransportCount) : undefined}
+          onClick={canEditRoute && stops.length > 1 ? () => router.push("/route") : undefined}
+        />
         <SummaryRow label="תקציב" value="עלות כוללת" badge={<Money text="₪ 8,740" />} last />
       </Card>
 
@@ -174,9 +188,10 @@ function fmt(iso: string) {
 function EditTripDetailsSheet({ trip, onClose, onSave }: { trip: DemoTrip; onClose: () => void; onSave: (patch: Partial<Omit<DemoTrip, "id">>) => void }) {
   const [name, setName] = useState(trip.name);
   const [countryCode, setCountryCode] = useState<string | null>(trip.countryCode);
-  const [travelers, setTravelers] = useState(String(trip.travelers));
+  const [adults, setAdults] = useState(String(trip.adults));
+  const [children, setChildren] = useState(String(trip.children));
 
-  const canSave = name.trim().length > 0 && !!countryCode && Number(travelers) > 0;
+  const canSave = name.trim().length > 0 && !!countryCode && Number(adults) >= 1;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -189,12 +204,15 @@ function EditTripDetailsSheet({ trip, onClose, onSave }: { trip: DemoTrip; onClo
         <Field label="יעד">
           <CountryPickerButton selectedCode={countryCode} onSelect={(c) => setCountryCode(c.code)} placeholder="בחר יעד" />
         </Field>
-        <Field label="מספר נוסעים">
-          <input type="number" min={1} value={travelers} onChange={(e) => setTravelers(e.target.value)} style={inputStyle} />
+        <Field label="מבוגרים">
+          <input type="number" min={1} value={adults} onChange={(e) => setAdults(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="ילדים">
+          <input type="number" min={0} value={children} onChange={(e) => setChildren(e.target.value)} style={inputStyle} />
         </Field>
         <PrimaryButton
           disabled={!canSave}
-          onClick={() => canSave && countryCode && onSave({ name: name.trim(), countryCode, travelers: Number(travelers) })}
+          onClick={() => canSave && countryCode && onSave({ name: name.trim(), countryCode, adults: Number(adults), children: Number(children) || 0 })}
         >
           שמירה
         </PrimaryButton>
@@ -217,9 +235,26 @@ function StatChip({ icon, label, onClick }: { icon: React.ReactNode; label: stri
   );
 }
 
-function SummaryRow({ label, value, badge, last }: { label: string; value: string; badge?: React.ReactNode; last?: boolean }) {
+function SummaryRow({ label, value, badge, last, onClick }: { label: string; value: string; badge?: React.ReactNode; last?: boolean; onClick?: () => void }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: last ? "none" : `1px solid ${COLOR.border}` }}>
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        width: "100%",
+        padding: "10px 0",
+        background: "transparent",
+        border: "none",
+        borderBottom: last ? "none" : `1px solid ${COLOR.border}`,
+        cursor: onClick ? "pointer" : "default",
+        fontFamily: "inherit",
+        textAlign: "start" as const,
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
         <SuitcaseIcon size={16} />
         <span style={{ fontSize: "12.5px", color: COLOR.textSecondary }}>{label}</span>
@@ -228,6 +263,6 @@ function SummaryRow({ label, value, badge, last }: { label: string; value: strin
         {value ? <span style={{ fontSize: "12.5px", color: COLOR.textPrimary, fontWeight: 600 }}>{value}</span> : null}
         {badge ? typeof badge === "string" ? <Badge tone="primary">{badge}</Badge> : badge : null}
       </div>
-    </div>
+    </Tag>
   );
 }

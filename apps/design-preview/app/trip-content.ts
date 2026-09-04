@@ -119,3 +119,35 @@ export function cityForDate(tripId: string, date: string): string {
   const stop = stops.find((s) => date >= s.startDate && date <= s.endDate);
   return stop?.city ?? "";
 }
+/** סך כל הפעילויות בטיול (על פני כל התאריכים) — לשימוש בכרטיס "סיכום
+ * הטיול", שהיה מציג "0" קבוע לכל טיול חוץ מ"יפן" בלי לספור בפועל. */
+export function countActivities(tripId: string): number {
+  const map = loadActivities(tripId);
+  return Object.values(map).reduce((sum, list) => sum + list.length, 0);
+}
+/** התאריך הראשון (מסודר) בטווח [startDate, endDate] שאין בו אף פעילות —
+ * לשימוש בכרטיס "כמעט מוכנים לטיול" בדף הבית. */
+export function firstDateWithoutActivity(tripId: string, startDate: string, endDate: string): string | null {
+  const map = loadActivities(tripId);
+  let d = startDate;
+  while (d <= endDate) {
+    if (!(map[d]?.length)) return d;
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    d = next.toISOString().slice(0, 10);
+  }
+  return null;
+}
+/** כמה ימים בטווח הטיול אין בהם אף פעילות — לשימוש באותו כרטיס. */
+export function countDatesWithoutActivity(tripId: string, startDate: string, endDate: string): number {
+  const map = loadActivities(tripId);
+  let count = 0;
+  let d = startDate;
+  while (d <= endDate) {
+    if (!(map[d]?.length)) count += 1;
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    d = next.toISOString().slice(0, 10);
+  }
+  return count;
+}

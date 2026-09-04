@@ -27,6 +27,8 @@ export interface DemoTrip {
   endDate: string;
   nights: number;
   travelers: number;
+  adults: number;
+  children: number;
 }
 
 function daysBetween(a: string, b: string): number {
@@ -45,13 +47,15 @@ export const JAPAN_TRIP: DemoTrip = {
   endDate: JAPAN_END,
   nights: daysBetween(JAPAN_START, JAPAN_END),
   travelers: 2,
+  adults: 2,
+  children: 0,
 };
 
 export const DEMO_TRIPS: DemoTrip[] = [
   JAPAN_TRIP,
-  { id: "italy-2025", name: "איטליה", countryCode: "IT", status: "upcoming", startDate: "2025-09-05", endDate: "2025-09-15", nights: 10, travelers: 2 },
-  { id: "newyork-2026", name: "ניו יורק", countryCode: "US", status: "upcoming", startDate: "2026-01-26", endDate: "2026-02-01", nights: 6, travelers: 1 },
-  { id: "thailand-2026", name: "תאילנד", countryCode: "TH", status: "upcoming", startDate: "2026-10-24", endDate: "2026-11-03", nights: 10, travelers: 2 },
+  { id: "italy-2025", name: "איטליה", countryCode: "IT", status: "upcoming", startDate: "2025-09-05", endDate: "2025-09-15", nights: 10, travelers: 2, adults: 2, children: 0 },
+  { id: "newyork-2026", name: "ניו יורק", countryCode: "US", status: "upcoming", startDate: "2026-01-26", endDate: "2026-02-01", nights: 6, travelers: 1, adults: 1, children: 0 },
+  { id: "thailand-2026", name: "תאילנד", countryCode: "TH", status: "upcoming", startDate: "2026-10-24", endDate: "2026-11-03", nights: 10, travelers: 2, adults: 2, children: 0 },
 ];
 
 export function daysUntil(dateISO: string, referenceDate = today()): number {
@@ -83,11 +87,11 @@ export function loadCustomTrips(): DemoTrip[] {
  * טיול עתידי נוצר כ"עתידי". הפיכה לפעיל דרכה מורידה גם כל טיול-פעיל אחר
  * (לעולם לא שניים בו-זמנית) — אותה הבטחה כמו setActiveTrip.
  */
-export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status">): DemoTrip {
+export function saveCustomTrip(trip: Omit<DemoTrip, "id" | "status" | "travelers">): DemoTrip {
   const trips = loadCustomTrips();
   const ref = today();
   const status: TripStatus = trip.endDate < ref ? "completed" : trip.startDate <= ref ? "active" : "upcoming";
-  const full: DemoTrip = { ...trip, id: nextId("trip"), status };
+  const full: DemoTrip = { ...trip, id: nextId("trip"), status, travelers: trip.adults + trip.children };
   saveJSON(SK_CUSTOM_TRIPS, [...trips, full]);
   if (status === "active") setActiveTrip(full.id, ref);
   return full;
@@ -309,6 +313,7 @@ export function updateTrip(id: string, patch: Partial<Omit<DemoTrip, "id">>): De
   const customIdx = custom.findIndex((t) => t.id === id);
   if (customIdx !== -1) {
     const updated = { ...custom[customIdx]!, ...patch };
+    if (patch.adults != null || patch.children != null) updated.travelers = updated.adults + updated.children;
     const arr = [...custom];
     arr[customIdx] = updated;
     saveJSON(SK_CUSTOM_TRIPS, arr);
@@ -318,7 +323,8 @@ export function updateTrip(id: string, patch: Partial<Omit<DemoTrip, "id">>): De
   const base = findAnyTrip(id);
   if (!base) return null;
   const updated = { ...base, ...patch };
-  saveJSON(SK_TRIP_OVERRIDES, { ...overrides, [id]: { name: updated.name, countryCode: updated.countryCode, startDate: updated.startDate, endDate: updated.endDate, nights: daysBetween(updated.startDate, updated.endDate), travelers: updated.travelers, status: updated.status } });
+  if (patch.adults != null || patch.children != null) updated.travelers = updated.adults + updated.children;
+  saveJSON(SK_TRIP_OVERRIDES, { ...overrides, [id]: { name: updated.name, countryCode: updated.countryCode, startDate: updated.startDate, endDate: updated.endDate, nights: daysBetween(updated.startDate, updated.endDate), travelers: updated.travelers, adults: updated.adults, children: updated.children, status: updated.status } });
   return updated;
 }
 

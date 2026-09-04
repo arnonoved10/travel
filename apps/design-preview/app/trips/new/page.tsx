@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { ScreenShell, ScreenHeader, Card, Field, PrimaryButton, IconPill, inputStyle, COLOR, SPACE, PinIcon } from "../../design-system";
+import { ScreenShell, ScreenHeader, Card, Field, PrimaryButton, SecondaryButton, IconPill, TrashIcon, inputStyle, COLOR, SPACE, PinIcon } from "../../design-system";
 import { CountryPickerButton } from "../../pickers";
 import { COUNTRIES } from "../../country-currency-data";
 import { saveCustomTrip } from "../../trips-data";
+import { addStop } from "../../trip-content";
 import { ToastBar } from "../../toast-bar";
 import type { ToastState } from "../../toast-bar";
 
@@ -17,27 +18,77 @@ const STYLES = [
   { key: "vacation", label: "חופשה" },
 ] as const;
 
+interface DestinationDraft {
+  key: number;
+  countryCode: string | null;
+  countryName: string;
+  city: string;
+  startDate: string;
+  endDate: string;
+}
+
+let draftKeySeq = 0;
+function emptyDestination(countryCode: string | null, countryName: string, startDate: string, endDate: string): DestinationDraft {
+  draftKeySeq += 1;
+  return { key: draftKeySeq, countryCode, countryName, city: "", startDate, endDate };
+}
+
 function NewTripForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [countryCode, setCountryCode] = useState<string | null>(params.get("country"));
-  const [startDate, setStartDate] = useState(params.get("start") ?? "");
-  const [endDate, setEndDate] = useState(params.get("end") ?? "");
+  const initialCountryCode = params.get("country");
+  const initialCountryName = COUNTRIES.find((c) => c.code === initialCountryCode)?.nameHe ?? "";
+  const [destinations, setDestinations] = useState<DestinationDraft[]>([
+    emptyDestination(initialCountryCode, initialCountryName, params.get("start") ?? "", params.get("end") ?? ""),
+  ]);
+  const [adults, setAdults] = useState("");
+  const [children, setChildren] = useState("");
   const [style, setStyle] = useState<(typeof STYLES)[number]["key"]>("vacation");
-  const [budgetMin, setBudgetMin] = useState(6000);
-  const [budgetMax, setBudgetMax] = useState(10000);
-  const [countryName, setCountryName] = useState<string>(() => COUNTRIES.find((c) => c.code === params.get("country"))?.nameHe ?? "");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  const nights = startDate && endDate ? Math.max(0, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000)) : 0;
+  function updateDestination(key: number, patch: Partial<DestinationDraft>) {
+    setDestinations((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  }
+  function addDestination() {
+    setDestinations((prev) => [...prev, emptyDestination(null, "", "", "")]);
+  }
+  function removeDestination(key: number) {
+    setDestinations((prev) => (prev.length > 1 ? prev.filter((d) => d.key !== key) : prev));
+  }
 
   function handleSubmit() {
-    if (!countryCode) return setError("יש לבחור יעד");
-    if (!startDate || !endDate) return setError("יש להזין תאריכי התחלה וסיום");
-    if (endDate < startDate) return setError("תאריך הסיום חייב להיות אחרי תאריך ההתחלה");
+    if (destinations.some((d) => !d.countryCode)) return setError("יש לבחור יעד לכל שורה");
+    if (destinations.some((d) => !d.startDate || !d.endDate)) return setError("יש להזין תאריכי התחלה וסיום לכל יעד");
+    if (destinations.some((d) => d.endDate < d.startDate)) return setError("תאריך הסיום חייב להיות אחרי תאריך ההתחלה");
+    const adultsNum = Number(adults);
+    if (!adults || adultsNum < 1) return setError("יש להזין לפחות מבוגר אחד");
+    const childrenNum = children ? Number(children) : 0;
     setError(null);
-    const trip = saveCustomTrip({ name: countryName || countryCode, countryCode, startDate, endDate, nights: nights + 1, travelers: 2 });
+
+    const startDate = destinations.reduce((min, d) => (d.startDate < min ? d.startDate : min), destinations[0]!.startDate);
+    const endDate = destinations.reduce((max, d) => (d.endDate > max ? d.endDate : max), destinations[0]!.endDate);
+    const nights = Math.max(0, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000));
+    const first = destinations[0]!;
+
+    const trip = saveCustomTrip({
+      name: first.countryName || first.countryCode!,
+      countryCode: first.countryCode!,
+      startDate,
+      endDate,
+      nights,
+      adults: adultsNum,
+      children: childrenNum,
+    });
+    // תחנה נוצרת אוטומטית רק כשבאמת יש כמה יעדים — טיול ביעד יחיד (המקרה
+    // הנפוץ) נשאר בלי אף תחנה, כמו קודם: תחנה יחידה שמכסה את כל טווח
+    // הטיול הייתה "מסתירה" תחנות מדויקות-יותר שנוספות אחר-כך דרך /route
+    // לאותם תאריכים (cityForDate בוחרת את התחנה הראשונה שמכסה תאריך נתון).
+    if (destinations.length > 1) {
+      for (const d of destinations) {
+        addStop(trip.id, { city: d.city.trim() || d.countryName, countryCode: d.countryCode!, startDate: d.startDate, endDate: d.endDate, transportToNext: "" });
+      }
+    }
     setToast({ message: "הטיול נוצר בהצלחה" });
     setTimeout(() => router.push(`/trips/${trip.id}`), 500);
   }
@@ -46,26 +97,51 @@ function NewTripForm() {
     <ScreenShell>
       <ScreenHeader title="טיול חדש" />
 
-      <Field label="בחר יעד">
-        <CountryPickerButton
-          selectedCode={countryCode}
-          onSelect={(c) => {
-            setCountryCode(c.code);
-            setCountryName(c.nameHe);
-          }}
-          placeholder="לחצו לבחירת יעד"
-        />
-      </Field>
+      <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
+        {destinations.map((d, idx) => (
+          <Card key={d.key} style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>יעד {idx + 1}</div>
+              {destinations.length > 1 ? (
+                <button
+                  type="button"
+                  aria-label="הסרת יעד"
+                  onClick={() => removeDestination(d.key)}
+                  style={{ width: "32px", height: "32px", borderRadius: "50%", background: "transparent", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                >
+                  <TrashIcon size={16} />
+                </button>
+              ) : null}
+            </div>
+            <Field label="בחר יעד">
+              <CountryPickerButton
+                selectedCode={d.countryCode}
+                onSelect={(c) => updateDestination(d.key, { countryCode: c.code, countryName: c.nameHe })}
+                placeholder="לחצו לבחירת יעד"
+              />
+            </Field>
+            <Field label="עיר (לא חובה)">
+              <input value={d.city} onChange={(e) => updateDestination(d.key, { city: e.target.value })} style={inputStyle} placeholder={d.countryName || "שם העיר"} />
+            </Field>
+            <Field label="תאריך התחלה">
+              <input type="date" value={d.startDate} onChange={(e) => updateDestination(d.key, { startDate: e.target.value })} style={inputStyle} />
+            </Field>
+            <Field label="תאריך סיום">
+              <input type="date" value={d.endDate} onChange={(e) => updateDestination(d.key, { endDate: e.target.value })} style={inputStyle} />
+            </Field>
+          </Card>
+        ))}
+        <SecondaryButton onClick={addDestination}>+ הוספת יעד</SecondaryButton>
+      </div>
 
       <Card style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>תאריכי הטיול</div>
-        <Field label="תאריך התחלה">
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+        <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary }}>נוסעים</div>
+        <Field label="מבוגרים">
+          <input type="number" min={1} value={adults} onChange={(e) => setAdults(e.target.value)} style={inputStyle} placeholder="לדוגמה: 2" />
         </Field>
-        <Field label="תאריך סיום">
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
+        <Field label="ילדים">
+          <input type="number" min={0} value={children} onChange={(e) => setChildren(e.target.value)} style={inputStyle} placeholder="לדוגמה: 0" />
         </Field>
-        {nights > 0 ? <div style={{ fontSize: "12px", color: COLOR.textSecondary }}>משך הטיול: {nights} לילות / {nights + 1} ימים</div> : null}
       </Card>
 
       <div>
@@ -75,14 +151,6 @@ function NewTripForm() {
             <IconPill key={s.key} label={s.label} icon={<PinIcon color={style === s.key ? COLOR.primaryLight : COLOR.textSecondary} />} active={style === s.key} onClick={() => setStyle(s.key)} />
           ))}
         </div>
-      </div>
-
-      <div>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: SPACE.sm }}>
-          תקציב משוער לאדם: ₪{budgetMin.toLocaleString()} - ₪{budgetMax.toLocaleString()}
-        </div>
-        <input type="range" min={1000} max={20000} step={500} value={budgetMin} onChange={(e) => setBudgetMin(Math.min(Number(e.target.value), budgetMax - 500))} style={{ width: "100%" }} />
-        <input type="range" min={1000} max={20000} step={500} value={budgetMax} onChange={(e) => setBudgetMax(Math.max(Number(e.target.value), budgetMin + 500))} style={{ width: "100%" }} />
       </div>
 
       {error ? <div style={{ color: COLOR.danger, fontSize: "12.5px" }}>{error}</div> : null}
