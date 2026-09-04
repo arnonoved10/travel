@@ -1317,6 +1317,45 @@ export function MobileHomeMock() {
   const currentRide = rideBookings[rideIndex] ?? null;
   const currentFlight = flightBookings[flightIndex] ?? null;
 
+  // "מלונות" — כמה לילות יש בטיול וכמה מהם מכוסים בהזמנת-מלון אמיתית
+  // (category "hotel"), לפי לילה בודד (לא רק ספירה כוללת כמו ב"כמעט
+  // מוכנים לטיול"): "ליל ה-X" מכוסה אם יש הזמנת-מלון שה-checkIn/checkOut
+  // שלה חופפים אותו. UTC בכוונה (לא new Date(iso) רגיל) — אותה הגנה
+  // בדיוק מפני לולאה-אינסופית/תקיעת-תאריך שכבר תועדה במקומות אחרים
+  // בקוד הזה (route/map) באזורי-זמן עם היסט חיובי מ-UTC כמו ישראל.
+  function addDaysStrUTC(dateISO: string, n: number): string {
+    const [y, m, d] = dateISO.split("-").map(Number);
+    const date = new Date(Date.UTC(y!, m! - 1, d!));
+    date.setUTCDate(date.getUTCDate() + n);
+    return date.toISOString().slice(0, 10);
+  }
+  const [hotelNights, setHotelNights] = useState<{ date: string; covered: boolean }[]>([]);
+  useEffect(() => {
+    if (!activeTripInfo) {
+      setHotelNights([]);
+      return;
+    }
+    const trip = activeTripInfo;
+    const hotelBookings = loadBookings().filter((b) => b.category === "hotel" && b.status !== "cancelled" && b.checkOut);
+    const coveredSet = new Set<string>();
+    for (const b of hotelBookings) {
+      let d = b.checkIn;
+      while (d < b.checkOut!) {
+        coveredSet.add(d);
+        d = addDaysStrUTC(d, 1);
+      }
+    }
+    const nights: { date: string; covered: boolean }[] = [];
+    let d = trip.startDate;
+    while (d < trip.endDate && nights.length < 60) {
+      nights.push({ date: d, covered: coveredSet.has(d) });
+      d = addDaysStrUTC(d, 1);
+    }
+    setHotelNights(nights);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+  const hotelNightsCoveredCount = hotelNights.filter((n) => n.covered).length;
+
   // "פילוח הוצאות" — גרף-דונאט בתחתית דף הבית, לפי בקשה מפורשת: כל קטגוריה
   // בצבע שלה, בחירת אילו קטגוריות מוצגות, וסינון לפי טווח-זמן. הקטגוריות
   // הזמינות (קבועות + מותאמות-אישית) נטענות פעם אחת אחרי ה-mount (localStorage),
@@ -1986,6 +2025,50 @@ export function MobileHomeMock() {
             </div>
           </>
         )}
+
+        {/* מלונות — לפי בקשה מפורשת: כמה לילות בטיול, כמה כבר מוזמנים, ורצועת-
+            ימים שמראה בדיוק אילו לילות מכוסים (ירוק) ואילו לא (אדום) — לחיצה
+            על לילה לא-מכוסה פותחת "הזמנה חדשה" עם היום והקטגוריה ממולאים. */}
+        {activeTripInfo && hotelNights.length > 0 ? (
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+              <span style={{ fontWeight: 800, fontSize: "14px" }}>מלונות</span>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: hotelNightsCoveredCount === hotelNights.length ? COLOR.success : COLOR.warning }}>
+                {hotelNightsCoveredCount} מתוך {hotelNights.length} לילות מוזמנים
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: "4px", overflowX: "auto", paddingBottom: "2px" }}>
+              {hotelNights.map((n) => {
+                const dd = new Date(n.date);
+                return (
+                  <Link
+                    key={n.date}
+                    href={n.covered ? "/bookings" : `/bookings/new?category=hotel&date=${n.date}`}
+                    style={{
+                      flexShrink: 0,
+                      minWidth: "34px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "2px",
+                      padding: "6px 4px",
+                      borderRadius: "8px",
+                      textDecoration: "none",
+                      background: n.covered ? "rgba(67,214,170,0.12)" : "rgba(239,111,97,0.12)",
+                      border: `1px solid ${n.covered ? COLOR.success : COLOR.danger}55`,
+                    }}
+                  >
+                    <span style={{ fontSize: "8.5px", color: COLOR.textMuted }}>{dd.toLocaleDateString("he-IL", { weekday: "short" })}</span>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: n.covered ? COLOR.success : COLOR.danger }}>{dd.getDate()}</span>
+                  </Link>
+                );
+              })}
+            </div>
+            {hotelNightsCoveredCount < hotelNights.length ? (
+              <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "8px" }}>לחצו על לילה אדום כדי להזמין לו מלון</div>
+            ) : null}
+          </Card>
+        ) : null}
 
         {/* ארנק — מסגרת אחת מחולקת למשבצת לכל מטבע שיש בו יתרה (כולל
             יתרות-אפס — 4 מטבעות-הבסיס תמיד קיימים) וכל כרטיס-אשראי, לפי

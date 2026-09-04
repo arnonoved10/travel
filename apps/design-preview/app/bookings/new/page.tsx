@@ -1,21 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, PillTabs, Field, PrimaryButton, inputStyle, COLOR, SPACE } from "../../design-system";
 import { createBooking, CATEGORY_LABEL, type BookingCategory } from "../../bookings-data";
 import { today } from "../../wallet-data";
 
 const CATEGORY_TABS: { key: BookingCategory; label: string }[] = (Object.keys(CATEGORY_LABEL) as BookingCategory[]).map((key) => ({ key, label: CATEGORY_LABEL[key] }));
 
+function isBookingCategory(value: string | null): value is BookingCategory {
+  return !!value && Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, value);
+}
+
 /** יצירת הזמנה חדשה (מלון/טיסה/תחבורה/רכב/אטרקציה) — לפני כן לא הייתה שום
- * דרך ליצור הזמנה במסך הזה, רק לערוך/לבטל/למחוק הזמנות-דמו קבועות. */
-export default function NewBookingScreen() {
+ * דרך ליצור הזמנה במסך הזה, רק לערוך/לבטל/למחוק הזמנות-דמו קבועות. תומך
+ * במילוי-מראש דרך ה-URL (?category=hotel&date=2026-01-01) — לשימוש מכרטיס
+ * "מלונות" בדף הבית, שמפנה ישירות ליום ספציפי שטרם הוזמן. */
+function NewBookingForm() {
   const router = useRouter();
-  const [category, setCategory] = useState<BookingCategory>("hotel");
+  const params = useSearchParams();
+  const prefillCategory = params.get("category");
+  const prefillDate = params.get("date");
+  const [category, setCategory] = useState<BookingCategory>(isBookingCategory(prefillCategory) ? prefillCategory : "hotel");
   const [title, setTitle] = useState("");
   const [confirmationNumber, setConfirmationNumber] = useState("");
-  const [checkIn, setCheckIn] = useState(today());
+  const [checkIn, setCheckIn] = useState(prefillDate || today());
   const [checkOut, setCheckOut] = useState("");
   const [address, setAddress] = useState("");
   const [guests, setGuests] = useState("");
@@ -90,5 +99,13 @@ export default function NewBookingScreen() {
       {error ? <div style={{ color: COLOR.danger, fontSize: "12.5px" }}>{error}</div> : null}
       <PrimaryButton onClick={handleSave}>שמירת ההזמנה</PrimaryButton>
     </ScreenShell>
+  );
+}
+
+export default function NewBookingScreen() {
+  return (
+    <Suspense fallback={null}>
+      <NewBookingForm />
+    </Suspense>
   );
 }
