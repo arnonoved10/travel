@@ -464,18 +464,17 @@ export async function writeWalletStateToStorage(state: WalletState, tripId: stri
 // ============================== מטבע מקומי — זיהוי אוטומטי ==============================
 
 // יעדי-הטיול לפי סדר (תואם בדיוק ל-STOPS ב-route/page.tsx) + קוד-המדינה
-// שלהם — לצורך "יעד טיול פעיל לפי תאריך". טווח כל תחנה הוא [firstDay של
-// התחנה, firstDay של התחנה הבאה) והתחנה האחרונה נמשכת עד TRIP_LAST_DAY.
+// שלהם — משמש היום רק לגזירת תאריכי-ההתחלה/סיום של טיול-הדמו הקבוע
+// JAPAN_TRIP ב-trips-data.ts (טוקיו→קיוטו→אוסקה→הירושימה→טוקיו,
+// 15/06/2025-28/06/2025, לפי רשימת-היעדים במסך "שינוי סדר היעדים").
+// **לא** משמש יותר לזיהוי "מטבע מקומי" — זה עבר ל-activeTrip() האמיתי
+// ב-trips-data.ts (ר' התיעוד ב-resolveLocalCurrency למטה), כי הנתון הזה
+// קבוע-לתאריך ולא מתעדכן לטיולים אמיתיים שהמשתמש יוצר.
 interface TripStopCountry {
   city: string;
   countryCode: string;
   firstDay: string;
 }
-// עודכן להתאים לטיול-הדמו של חבילת-העיצוב המחייבת (7 תמונות): יפן,
-// טוקיו→קיוטו→אוסקה→הירושימה→טוקיו, 15/06/2025-28/06/2025 — בדיוק לפי
-// רשימת-היעדים במסך "שינוי סדר היעדים". מטבע-מקומי לפי-כך מתעדכן אוטומטית
-// ל-JPY (ין יפני) דרך אותה לוגיקה קיימת ב-resolveLocalCurrency, בהתאמה
-// לצילומי-המסך של הארנק שכולם מציגים "יין יפני" כמטבע המקומי.
 export const TRIP_STOP_COUNTRIES: TripStopCountry[] = [
   { city: "טוקיו", countryCode: "JP", firstDay: "2025-06-15" },
   { city: "קיוטו", countryCode: "JP", firstDay: "2025-06-18" },
@@ -484,17 +483,6 @@ export const TRIP_STOP_COUNTRIES: TripStopCountry[] = [
   { city: "טוקיו", countryCode: "JP", firstDay: "2025-06-26" },
 ];
 export const TRIP_LAST_DAY = "2025-06-28";
-
-export function activeDestinationCountry(referenceDate: string): { countryCode: string; city: string } | null {
-  if (referenceDate < TRIP_STOP_COUNTRIES[0]!.firstDay || referenceDate >= TRIP_LAST_DAY) return null;
-  for (let i = 0; i < TRIP_STOP_COUNTRIES.length; i++) {
-    const stop = TRIP_STOP_COUNTRIES[i]!;
-    const start = stop.firstDay;
-    const end = i + 1 < TRIP_STOP_COUNTRIES.length ? TRIP_STOP_COUNTRIES[i + 1]!.firstDay : TRIP_LAST_DAY;
-    if (referenceDate >= start && referenceDate < end) return { countryCode: stop.countryCode, city: stop.city };
-  }
-  return null;
-}
 
 export interface LocalCurrencyResolution {
   currencyCode: string;
@@ -505,19 +493,21 @@ export interface LocalCurrencyResolution {
 
 /**
  * קובע את "המטבע המקומי" הנוכחי לפי סדר-העדיפות המבוקש: (1) מדינה שנבחרה
- * ידנית תמיד גוברת — זו "האפשרות לשנות ידנית" המפורשת; (2) אחרת, יעד-טיול
- * פעיל לפי תאריך; (3) אחרת, מיקום-מכשיר שזוהה (geolocation); (4) אחרת,
- * מטבע-הבסיס של המשתמש. מעולם לא נוגע ביתרות/היסטוריה — קובע רק תצוגה.
+ * ידנית תמיד גוברת — זו "האפשרות לשנות ידנית" המפורשת; (2) אחרת, יעד-הטיול
+ * הפעיל **האמיתי** (מועבר ע"י הקורא — ר' `tripCountryCode`, שמחושב דרך
+ * `activeTrip()` ב-`trips-data.ts`, לא דרך `activeDestinationCountry`
+ * המבוסס על נתון-דמו קבוע-לתאריך שאינו קשור לטיול האמיתי של המשתמש);
+ * (3) אחרת, מיקום-מכשיר שזוהה (geolocation); (4) אחרת, מטבע-הבסיס של
+ * המשתמש. מעולם לא נוגע ביתרות/היסטוריה — קובע רק תצוגה.
  */
-export function resolveLocalCurrency(opts: { manualCountryCode: string | null; geoCountryCode: string | null; baseCurrency: string; referenceDate?: string }): LocalCurrencyResolution {
+export function resolveLocalCurrency(opts: { manualCountryCode: string | null; geoCountryCode: string | null; baseCurrency: string; tripCountryCode?: string | null }): LocalCurrencyResolution {
   if (opts.manualCountryCode) {
     const country = COUNTRY_BY_CODE[opts.manualCountryCode];
     if (country) return { currencyCode: country.currencyCodes[0]!, countryCode: country.code, source: "manual", sourceLabel: "נבחר ידנית" };
   }
-  const trip = activeDestinationCountry(opts.referenceDate ?? today());
-  if (trip) {
-    const country = COUNTRY_BY_CODE[trip.countryCode];
-    if (country) return { currencyCode: country.currencyCodes[0]!, countryCode: country.code, source: "trip", sourceLabel: `לפי יעד הטיול הפעיל (${trip.city})` };
+  if (opts.tripCountryCode) {
+    const country = COUNTRY_BY_CODE[opts.tripCountryCode];
+    if (country) return { currencyCode: country.currencyCodes[0]!, countryCode: country.code, source: "trip", sourceLabel: "לפי יעד הטיול הפעיל" };
   }
   if (opts.geoCountryCode) {
     const country = COUNTRY_BY_CODE[opts.geoCountryCode];

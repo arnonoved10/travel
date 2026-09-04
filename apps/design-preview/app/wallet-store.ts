@@ -26,7 +26,7 @@ import {
   tripScopedKey,
   notifyStorageFailure,
 } from "./wallet-data";
-import { currentScopeTripId } from "./trips-data";
+import { currentScopeTripId, activeTrip } from "./trips-data";
 import { putImage, deleteImage } from "./image-store";
 
 /**
@@ -53,6 +53,11 @@ export function useWalletStore() {
   const [budget, setBudgetState] = useState<TripBudget | null>(null);
   const [manualCountryCode, setManualCountryCode] = useState<string | null>(null);
   const [geoCountryCode, setGeoCountryCode] = useState<string | null>(null);
+  // כמו manualCountryCode/geoCountryCode — מתחיל null (בטוח-להידרציה: אותו
+  // ערך בשרת ובלקוח) ומתמלא רק ב-useEffect אחרי ה-mount. קריאה ישירה של
+  // activeTrip() בזמן-רינדור (כמו שנוסה בהתחלה) שברה הידרציה (React #418)
+  // כי לשרת אין localStorage לקרוא ממנו.
+  const [tripCountryCode, setTripCountryCode] = useState<string | null>(null);
   const [rates, setRates] = useState<{ status: "loading" | "success" | "error"; data: DemoCurrencyResult | null }>({ status: "loading", data: null });
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +91,7 @@ export function useWalletStore() {
     setBudgetState(loadJSON<TripBudget | null>(tripScopedKey(SK.budget, tripId), null));
     setManualCountryCode(loadJSON<string | null>(tripScopedKey(SK.manualCountry, tripId), null));
     setGeoCountryCode(loadJSON<string | null>(tripScopedKey(SK.geoCountry, tripId), null));
+    setTripCountryCode(activeTrip()?.countryCode ?? null);
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -140,7 +146,14 @@ export function useWalletStore() {
       .catch(() => setRates({ status: "error", data: null }));
   }, []);
 
-  const localCurrency = useMemo(() => resolveLocalCurrency({ manualCountryCode, geoCountryCode, baseCurrency }), [manualCountryCode, geoCountryCode, baseCurrency]);
+  // "מטבע מקומי" צריך לעקוב אחרי הטיול האמיתי הפעיל (activeTrip, אותו
+  // מקור-אמת שדף הבית/מסלול/מפה כבר משתמשים בו) — לא אחרי הנתון-הישן
+  // המבוסס-תאריך-קבוע (activeDestinationCountry) שהיה שריד מדגם-הדמו
+  // המקורי (יפן, יוני 2025) ולא התעדכן מעולם לטיולים אמיתיים.
+  const localCurrency = useMemo(
+    () => resolveLocalCurrency({ manualCountryCode, geoCountryCode, baseCurrency, tripCountryCode }),
+    [manualCountryCode, geoCountryCode, baseCurrency, tripCountryCode],
+  );
 
   // 4 מטבעות-בסיס קבועים תמיד זמינים בארנק (יתרת-אפס אם עוד אין בהם כסף):
   // המטבע המקומי של יעד הטיול, דולר, אירו ושקל — ניתן עדיין להסיר כל אחד
