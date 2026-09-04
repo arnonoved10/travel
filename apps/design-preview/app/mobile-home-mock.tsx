@@ -7,7 +7,8 @@ import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, today, loadJSON, SK, type DocumentEntry } from "./wallet-data";
+import { formatMoney, today, loadJSON, SK, primaryCountryForCurrency, type DocumentEntry } from "./wallet-data";
+import { CurrencyPickerButton } from "./pickers";
 import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
 import { loadBookings } from "./bookings-data";
@@ -564,13 +565,16 @@ interface WalletGridCell {
   amountText: string;
   subLabel?: string;
   emphasize?: boolean;
+  flagCountryCode?: string | null;
 }
 
 /** כל המטבעות שבארנק (כולל יתרות-אפס — 4 מטבעות-הבסיס תמיד קיימים
  * ב-walletStore.balances, ר' defaultCurrencyPriority) + כל כרטיס-אשראי,
  * כל אחד "משבצת" משלו באותה מסגרת אחת — לפי בקשה מפורשת: "תחלק אותה לכל
  * סוגי המטבעות... לפחות 4 או 5, כי צריך תמיד שיהיה מטבע מקומי, שקל, דולר,
- * אירו, וכ.א". לא עוד טבעת-ענק אחת + שורה-גוללת נסתרת. */
+ * אירו, וכ.א". לא עוד טבעת-ענק אחת + שורה-גוללת נסתרת. כל מטבע מקבל דגל
+ * לפי הארץ שלו (primaryCountryForCurrency, אותה פונקציה ששאר האפליקציה
+ * כבר משתמשת בה). */
 function buildWalletGridCells(walletStore: ReturnType<typeof useWalletStore>): WalletGridCell[] {
   const localCode = walletStore.localCurrency.currencyCode;
   const cells: WalletGridCell[] = walletStore.balances.map((b) => ({
@@ -579,6 +583,7 @@ function buildWalletGridCells(walletStore: ReturnType<typeof useWalletStore>): W
     amountText: formatMoney(b.balance, b.code),
     subLabel: b.code === localCode ? "מקומי" : undefined,
     emphasize: b.code === localCode,
+    flagCountryCode: primaryCountryForCurrency(b.code)?.code ?? null,
   }));
   for (const c of walletStore.cards) {
     const spent = walletStore.expenses.filter((e) => e.cardId === c.id).reduce((sum, e) => sum + (walletStore.convertAmount(e.amount, e.currency, c.currency) ?? 0), 0);
@@ -610,6 +615,9 @@ function WalletCurrencyGrid({ walletStore }: { walletStore: ReturnType<typeof us
         >
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
               fontSize: "10.5px",
               fontWeight: cell.emphasize ? 700 : 600,
               color: cell.emphasize ? COLOR.turquoise : COLOR.textMuted,
@@ -619,6 +627,7 @@ function WalletCurrencyGrid({ walletStore }: { walletStore: ReturnType<typeof us
               whiteSpace: "nowrap",
             }}
           >
+            {cell.flagCountryCode ? <FlagIcon countryCode={cell.flagCountryCode} size={14} /> : null}
             {cell.label}
             {cell.subLabel ? ` · ${cell.subLabel}` : ""}
           </div>
@@ -631,11 +640,14 @@ function WalletCurrencyGrid({ walletStore }: { walletStore: ReturnType<typeof us
 
 const NAV_HEIGHT = 64;
 
-const CURRENCY_RATES_TO_THB: Record<"usd" | "eur" | "ils", number> = { usd: 36.2, eur: 39.4, ils: 9.8 };
-const CURRENCY_LABEL: Record<"usd" | "eur" | "ils", string> = { usd: "דולר אמריקאי", eur: "אירו", ils: "שקל חדש" };
+const CURRENCY_RATES_TO_THB: Record<"usd" | "eur" | "ils" | "gbp", number> = { usd: 36.2, eur: 39.4, ils: 9.8, gbp: 45.6 };
+const CURRENCY_LABEL: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: "דולר אמריקאי", eur: "אירו", ils: "שקל חדש", gbp: "לירה שטרלינג" };
 const CURRENCY_SYMBOL: Record<string, string> = { usd: "$", eur: "€", ils: "₪", thb: "฿", gbp: "£" };
 const ALL_CURRENCIES = ["usd", "eur", "ils", "thb", "gbp"] as const;
 type CurrencyCode = (typeof ALL_CURRENCIES)[number];
+// דגל-הארץ שמייצג כל מטבע בכרטיס "שערי מטבעות" — אותה מוסכמה כמו
+// primaryCountryForCurrency (הארץ הראשונה ברשימת המדינות עם המטבע הזה).
+const RATE_FLAG_COUNTRY: Record<"usd" | "eur" | "ils" | "gbp", string> = { usd: "US", eur: "DE", ils: "IL", gbp: "GB" };
 // שערי-דמו גסים מול דולר (בסיס משותף לחישוב חופשי בין כל זוג) — לא מקור אמיתי.
 const CURRENCY_TO_USD: Record<CurrencyCode, number> = { usd: 1, eur: 1.08, ils: 0.27, thb: 0.0276, gbp: 1.26 };
 
@@ -1208,7 +1220,6 @@ export function MobileHomeMock() {
   const [timerDetailOpen, setTimerDetailOpen] = useState(false);
   const [demoClock, setDemoClock] = useState(0);
 
-  const [currencyTab, setCurrencyTab] = useState<"usd" | "eur" | "ils" | "custom">("usd");
   const [customFrom, setCustomFrom] = useState<CurrencyCode>("usd");
   const [customTo, setCustomTo] = useState<CurrencyCode>("thb");
   const [customAmount, setCustomAmount] = useState("100");
@@ -1324,7 +1335,7 @@ export function MobileHomeMock() {
     const usd = amount * CURRENCY_TO_USD[from];
     return usd / CURRENCY_TO_USD[to];
   }
-  function rateToThb(code: "usd" | "eur" | "ils"): number {
+  function rateToThb(code: "usd" | "eur" | "ils" | "gbp"): number {
     if (currency.status === "success" && currency.data) {
       const rates = currency.data.ratesToILS;
       const thb = rates.THB;
@@ -1684,8 +1695,10 @@ export function MobileHomeMock() {
           </Card>
         </Link>
 
-        {/* כרטיס שערי-מטבעות — 3 זוגות קבועים מותאמים ליעד (תאילנד) + מחשבון
-            חופשי. נתוני-הדגמה בלבד (אין עדיין שירות-שערים אמיתי מחובר). */}
+        {/* כרטיס שערי-מטבעות — היה מלבן אחד עם טאבים שמחליפים תצוגה (רק שער
+            אחד גלוי בכל רגע). לפי בקשה מפורשת: עכשיו 4 ריבועים עם 4 שערים
+            גלויים בו-זמנית, כל אחד עם דגל, ומחשבון חופשי עם בחירת-מטבע
+            מבוססת-דגלים (CurrencyPickerButton המשותף) במקום <select> טקסטואלי. */}
         <Card>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
             <span style={{ fontWeight: 800, fontSize: "14px" }}>שערי מטבעות</span>
@@ -1697,94 +1710,56 @@ export function MobileHomeMock() {
               <span style={{ fontSize: "9.5px", fontWeight: 700, color: COLOR.warning, background: "rgba(245,165,68,0.14)", border: `1px solid ${COLOR.warning}40`, borderRadius: "999px", padding: "2px 7px" }}>נתוני הדגמה</span>
             )}
           </div>
-          <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto" }}>
-            {(["usd", "eur", "ils", "custom"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setCurrencyTab(tab)}
-                aria-pressed={currencyTab === tab}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "999px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  cursor: "pointer",
-                  background: currencyTab === tab ? COLOR.purple : "rgba(255,255,255,0.06)",
-                  border: `1px solid ${currencyTab === tab ? COLOR.purple : COLOR.cardBorder}`,
-                  color: "#fff",
-                }}
-              >
-                {tab === "custom" ? "מחשבון חופשי" : `${CURRENCY_SYMBOL[tab]} / ฿`}
-              </button>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginBottom: "14px" }}>
+            {(["usd", "eur", "gbp", "ils"] as const).map((code) => (
+              <div key={code} style={{ padding: "9px 10px", borderRadius: "12px", background: "rgba(255,255,255,0.04)", border: `1px solid ${COLOR.cardBorder}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
+                  <FlagIcon countryCode={RATE_FLAG_COUNTRY[code]} size={14} />
+                  <span style={{ fontSize: "10.5px", fontWeight: 700, color: COLOR.textMuted }}>{code.toUpperCase()} / ฿</span>
+                </div>
+                <div style={{ fontSize: "13px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
+                  {currency.status === "loading" ? "…" : `1 = ฿${rateToThb(code).toFixed(2)}`}
+                </div>
+              </div>
             ))}
           </div>
 
-          {currencyTab !== "custom" ? (
-            currency.status === "loading" ? (
-              <div style={{ fontSize: "13px", color: COLOR.textSecondary }}>טוען שער עדכני...</div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontSize: "11px", color: COLOR.textMuted }}>{CURRENCY_LABEL[currencyTab]} ← באט תאילנדי</div>
-                  <div style={{ fontSize: "22px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
-                    1 {CURRENCY_SYMBOL[currencyTab]} = ฿{rateToThb(currencyTab).toFixed(2)}
-                  </div>
-                </div>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: COLOR.textPrimary, marginBottom: "8px" }}>מחשבון חופשי</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              <input
+                type="number"
+                value={customAmount}
+                onChange={(e) => setCustomAmount(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                style={{ flex: 1, minWidth: 0, padding: "9px 10px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "14px" }}
+              />
+              <div style={{ width: "108px", flexShrink: 0 }}>
+                <CurrencyPickerButton selectedCode={customFrom.toUpperCase()} onSelect={(code) => setCustomFrom(code.toLowerCase() as CurrencyCode)} options={ALL_CURRENCIES.map((c) => c.toUpperCase())} />
               </div>
-            )
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <input
-                  type="number"
-                  value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  style={{ flex: 1, minWidth: 0, padding: "9px 10px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "14px" }}
-                />
-                <select
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value as CurrencyCode)}
-                  style={{ padding: "9px 6px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "13px" }}
-                >
-                  {ALL_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomFrom(customTo);
-                    setCustomTo(customFrom);
-                  }}
-                  aria-label="החלפת מטבעות"
-                  style={{ width: "34px", height: "34px", borderRadius: "10px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M7 10h13l-4-4M17 14H4l4 4" />
-                  </svg>
-                </button>
-                <select
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value as CurrencyCode)}
-                  style={{ padding: "9px 6px", borderRadius: "10px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "13px" }}
-                >
-                  {ALL_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ fontSize: "20px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
-                {(Number(customAmount) || 0).toLocaleString()} {customFrom.toUpperCase()} = {convert(Number(customAmount) || 0, customFrom, customTo).toLocaleString(undefined, { maximumFractionDigits: 2 })} {customTo.toUpperCase()}
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomFrom(customTo);
+                  setCustomTo(customFrom);
+                }}
+                aria-label="החלפת מטבעות"
+                style={{ width: "34px", height: "34px", borderRadius: "10px", background: "rgba(255,255,255,0.06)", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 10h13l-4-4M17 14H4l4 4" />
+                </svg>
+              </button>
+              <div style={{ width: "108px", flexShrink: 0 }}>
+                <CurrencyPickerButton selectedCode={customTo.toUpperCase()} onSelect={(code) => setCustomTo(code.toLowerCase() as CurrencyCode)} options={ALL_CURRENCIES.map((c) => c.toUpperCase())} />
               </div>
             </div>
-          )}
+            <div style={{ fontSize: "18px", fontWeight: 800, color: COLOR.turquoise, fontVariantNumeric: "tabular-nums" }}>
+              {(Number(customAmount) || 0).toLocaleString()} {customFrom.toUpperCase()} = {convert(Number(customAmount) || 0, customFrom, customTo).toLocaleString(undefined, { maximumFractionDigits: 2 })} {customTo.toUpperCase()}
+            </div>
+          </div>
+
           <div style={{ fontSize: "10px", color: COLOR.textMuted, marginTop: "10px" }}>
             {currency.status === "success" && currency.data
               ? `מקור: ${currency.data.source === "boi" ? "בנק ישראל" : "Frankfurter (ECB)"}${currency.data.asOf ? ` · נכון ל-${currency.data.asOf}` : ""}`
