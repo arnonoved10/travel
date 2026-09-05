@@ -80,6 +80,15 @@ function fmtRange(a: string, b: string): string {
   const fmt = (d: string) => new Date(d).toLocaleDateString("he-IL", { day: "numeric", month: "short" });
   return a === b ? fmt(a) : `${fmt(a)} – ${fmt(b)}`;
 }
+function fmtShortDate(d: string): string {
+  return new Date(d).toLocaleDateString("he-IL", { day: "numeric", month: "short" });
+}
+// UTC בכוונה — אותה הגנה כמו addDaysStr, לחלוקת-הימים לשבועות-לוח-שנה
+// (א'-ש') במצב-שבוע.
+function utcDow(dateISO: string): number {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+}
 
 interface PickedLocation {
   lat: number;
@@ -180,6 +189,29 @@ export default function MapPreviewScreen() {
     return days;
   }, [tripStart, tripEnd]);
 
+  // מצב-שבוע (חלק 7 בתוכנית): קיבוץ הימים לשבועות-לוח-שנה (א'-ש', כמו
+  // רצועת-הימים בכרטיס "מלונות" בדף הבית) — מוצג רק לטיולים ארוכים מ-7
+  // ימים, כי בטיול קצר תצוגת-יום-בודד כבר מספיקה ולא צריך עוד רמת-קיבוץ.
+  // מזוהה ב-mode דרך תחילית "week:" (לא state נפרד) כדי לא לשכפל את כל
+  // מנגנון-הבחירה/ה-effects הקיימים סביב mode.
+  const WEEK_MODE_PREFIX = "week:";
+  const weeks = useMemo(() => {
+    if (allDays.length <= 7) return [];
+    const groups: { start: string; end: string; days: string[] }[] = [];
+    let current: string[] = [];
+    for (const d of allDays) {
+      if (utcDow(d) === 0 && current.length > 0) {
+        groups.push({ start: current[0]!, end: current[current.length - 1]!, days: current });
+        current = [];
+      }
+      current.push(d);
+    }
+    if (current.length > 0) groups.push({ start: current[0]!, end: current[current.length - 1]!, days: current });
+    return groups;
+  }, [allDays]);
+  const isWeekMode = mode.startsWith(WEEK_MODE_PREFIX);
+  const currentWeek = isWeekMode ? weeks.find((w) => w.start === mode.slice(WEEK_MODE_PREFIX.length)) ?? null : null;
+
   const stopColorForDate = (date: string) => {
     const idx = sortedStops.findIndex((s) => date >= s.startDate && date <= s.endDate);
     return idx === -1 ? COLOR.cardBorder : STOP_COLORS[idx % STOP_COLORS.length]!;
@@ -196,11 +228,23 @@ export default function MapPreviewScreen() {
     order: i + 1,
   }));
 
-  const dayStop = mode !== "trip" ? sortedStops.find((s) => mode >= s.startDate && mode <= s.endDate) ?? null : null;
+  // יום-בודד אמיתי: לא "כל הטיול" ולא מצב-שבוע (שם mode הוא "week:..."
+  // ולא תאריך בכלל — השוואה ישירה מולו הייתה שקטה-אך-שגויה, לא תקולה).
+  const isSingleDayMode = mode !== "trip" && !isWeekMode;
+  const dayStop = isSingleDayMode ? sortedStops.find((s) => mode >= s.startDate && mode <= s.endDate) ?? null : null;
   // sortActivities מכבד order (אחרי מיטוב-סדר/גרירה ידנית) ונופל חזרה
   // למיון-לפי-שעה כשאין order בכלל — אותו מקור-אמת שמשמש גם את הרשימה למטה.
-  const dayActivitiesAll = mode !== "trip" ? sortActivities(activities[mode] ?? []) : [];
+  const dayActivitiesAll = isSingleDayMode ? sortActivities(activities[mode] ?? []) : [];
   const dayActivities = dayActivitiesAll.filter((a) => a.lat != null && a.lon != null);
+
+  // מצב-שבוע: כל התחנות שחופפות את השבוע + כל הפעילויות עם מיקום באותם
+  // ימים, ממוספרות ברצף כרונולוגי אחד (יום→שעה) — לפי הבקשה "כל הנקודות
+  // של הטווח... ממוספרות לפי יום". התחנות מוצגות כסימוני-בסיס בלי מספר
+  // (כמו dayStop), לא חלק מהרצף הממוספר עצמו.
+  const weekDays = currentWeek?.days ?? [];
+  const weekStopsWithCoords = weekDays.length > 0 ? sortedStops.filter((s) => s.lat != null && s.lon != null && weekDays.some((d) => d >= s.startDate && d <= s.endDate)) : [];
+  const weekActivitiesWithDate: (TripActivity & { date: string })[] = weekDays.flatMap((d) => sortActivities(activities[d] ?? []).map((a) => ({ ...a, date: d })));
+  const weekActivitiesWithCoords = weekActivitiesWithDate.filter((a) => a.lat != null && a.lon != null);
   const dayPoints: MapPoint3D[] = [
     ...(dayStop && dayStop.lat != null && dayStop.lon != null
       ? [{ id: `stop-${dayStop.id}`, lat: dayStop.lat, lon: dayStop.lon, label: dayStop.city, sublabel: "בסיס", color: STOP_COLORS[sortedStops.indexOf(dayStop) % STOP_COLORS.length]!, isSelected: selectedId === `stop-${dayStop.id}`, order: 1 }]
@@ -211,6 +255,28 @@ export default function MapPreviewScreen() {
   // נקודת-הייחוס למקומות-מומלצים ליום הנבחר: התחנה-הבסיסית של אותו יום,
   // ואם אין (עדיין לא אותרה) — הפעילות הראשונה עם מיקום, ואם גם זה אין —
   // מיקום-GPS אמיתי אם המשתמש הרשה.
+  const weekPoints: MapPoint3D[] = [
+    ...weekStopsWithCoords.map((s) => ({
+      id: `stop-${s.id}`,
+      lat: s.lat!,
+      lon: s.lon!,
+      label: s.city,
+      sublabel: `בסיס · ${fmtRange(s.startDate, s.endDate)}`,
+      color: STOP_COLORS[sortedStops.indexOf(s) % STOP_COLORS.length]!,
+      isSelected: selectedId === `stop-${s.id}`,
+    })),
+    ...weekActivitiesWithCoords.map((a, i) => ({
+      id: a.id,
+      lat: a.lat!,
+      lon: a.lon!,
+      label: a.title,
+      sublabel: `${fmtShortDate(a.date)} · ${a.time}`,
+      color: ACTIVITY_COLOR,
+      isSelected: selectedId === a.id,
+      order: i + 1,
+    })),
+  ];
+
   const recommendationCenter =
     dayStop?.lat != null && dayStop?.lon != null
       ? { lat: dayStop.lat, lon: dayStop.lon }
@@ -224,7 +290,7 @@ export default function MapPreviewScreen() {
   // משלה". מוגבל ל-2 לכל קטגוריה כאן (לא ה-10 של רשימת-הטופס המלאה) כי
   // זו מפה קטנה — יותר מזה היה מציף אותה.
   useEffect(() => {
-    if (!showRecommendations || mode === "trip" || !recommendationCenter) {
+    if (!showRecommendations || !isSingleDayMode || !recommendationCenter) {
       setRecommendedPlaces([]);
       return;
     }
@@ -246,10 +312,10 @@ export default function MapPreviewScreen() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showRecommendations, mode, recommendationCenter?.lat, recommendationCenter?.lon]);
+  }, [showRecommendations, isSingleDayMode, recommendationCenter?.lat, recommendationCenter?.lon]);
 
   const poiPoints: MapPoint3D[] =
-    showRecommendations && mode !== "trip"
+    showRecommendations && isSingleDayMode
       ? recommendedPlaces.map((p) => ({
           id: `poi-${p.id}`,
           lat: p.lat,
@@ -262,7 +328,7 @@ export default function MapPreviewScreen() {
         }))
       : [];
 
-  const basePoints = mode === "trip" ? tripPoints : dayPoints;
+  const basePoints = mode === "trip" ? tripPoints : isWeekMode ? weekPoints : dayPoints;
   const pickedPoint: MapPoint3D[] = pickedLocation
     ? [{ id: "picked", lat: pickedLocation.lat, lon: pickedLocation.lon, label: pickedLocation.city, sublabel: "מיקום נבחר", color: PICKED_COLOR, excludeFromRoute: true }]
     : [];
@@ -284,7 +350,7 @@ export default function MapPreviewScreen() {
   }
 
   function handleAddPoiAsActivity() {
-    if (!pendingPoiAdd || mode === "trip") return;
+    if (!pendingPoiAdd || !isSingleDayMode) return;
     const place = pendingPoiAdd;
     saveActivity(scopedTripId, mode, {
       id: nextId("act"),
@@ -330,14 +396,14 @@ export default function MapPreviewScreen() {
   // הפעילויות המאותרות של אותו יום בלבד — לא ניתוב-כבישים אמיתי (דורש
   // שירות חיצוני עם מפתח-API). פעילויות בלי מיקום נשארות בסוף, ללא שינוי.
   function handleOptimizeOrder() {
-    if (mode === "trip") return;
+    if (!isSingleDayMode) return;
     const orderedIds = optimizeActivityOrder(dayActivitiesAll);
     reorderActivitiesForDate(scopedTripId, mode, orderedIds);
     reload();
   }
 
   function handleMoveActivity(id: string, direction: -1 | 1) {
-    if (mode === "trip") return;
+    if (!isSingleDayMode) return;
     const ids = dayActivitiesAll.map((a) => a.id);
     const idx = ids.indexOf(id);
     const swapWith = idx + direction;
@@ -378,6 +444,24 @@ export default function MapPreviewScreen() {
           >
             כל הטיול
           </button>
+          {/* מצב-שבוע (חלק 7 בתוכנית): רק לטיולים ארוכים מ-7 ימים — לחיצה
+              על שבוע מציגה את כל הנקודות של אותו שבוע יחד, ממוספרות
+              כרונולוגית, בלי צורך לעבור יום-יום. */}
+          {weeks.map((w, i) => {
+            const weekMode = `${WEEK_MODE_PREFIX}${w.start}`;
+            const active = mode === weekMode;
+            return (
+              <button
+                key={w.start}
+                type="button"
+                onClick={() => setMode(weekMode)}
+                style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", padding: "6px 12px", borderRadius: "12px", background: active ? COLOR.purple : "#12213f", border: `1px solid ${active ? COLOR.purple : COLOR.cardBorder}`, cursor: "pointer" }}
+              >
+                <span style={{ fontSize: "9px", color: active ? "#fff" : COLOR.textSecondary }}>שבוע {i + 1}</span>
+                <span style={{ fontSize: "10px", fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>{fmtRange(w.start, w.end)}</span>
+              </button>
+            );
+          })}
           {allDays.map((d) => {
             const active = mode === d;
             const dd = new Date(d);
@@ -425,22 +509,22 @@ export default function MapPreviewScreen() {
           <button
             type="button"
             onClick={() => setShowRecommendations((v) => !v)}
-            disabled={mode === "trip"}
+            disabled={!isSingleDayMode}
             aria-label={showRecommendations ? "הסתרת המלצות מקומות" : "הצגת המלצות מקומות בקרבת מקום"}
-            title={mode === "trip" ? "בחרו יום ספציפי כדי לראות המלצות" : undefined}
+            title={!isSingleDayMode ? "בחרו יום ספציפי כדי לראות המלצות" : undefined}
             style={{
               width: "40px",
               height: "40px",
               borderRadius: "50%",
               background: showRecommendations ? COLOR.turquoise : COLOR.cardBg,
               border: `1px solid ${showRecommendations ? COLOR.turquoise : COLOR.cardBorder}`,
-              color: showRecommendations ? "#04241c" : mode === "trip" ? COLOR.textMuted : "#fff",
+              color: showRecommendations ? "#04241c" : !isSingleDayMode ? COLOR.textMuted : "#fff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              cursor: mode === "trip" ? "default" : "pointer",
+              cursor: !isSingleDayMode ? "default" : "pointer",
               fontSize: "16px",
-              opacity: mode === "trip" ? 0.5 : 1,
+              opacity: !isSingleDayMode ? 0.5 : 1,
             }}
           >
             ✨
@@ -544,6 +628,40 @@ export default function MapPreviewScreen() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : isWeekMode ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {weekDays.map((d) => {
+              const dayActs = sortActivities(activities[d] ?? []);
+              const stop = sortedStops.find((s) => d >= s.startDate && d <= s.endDate);
+              const dd = new Date(d);
+              return (
+                <div key={d}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px" }}>
+                    <button type="button" onClick={() => setMode(d)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "11.5px", fontWeight: 800, color: "#fff" }}>
+                      {dd.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "short" })} ←
+                    </button>
+                    {stop ? <span style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>· {stop.city}</span> : null}
+                  </div>
+                  {dayActs.length === 0 ? (
+                    <div style={{ fontSize: "11px", color: COLOR.textMuted, padding: "2px 8px" }}>אין פעילויות</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {dayActs.map((a) => (
+                        <div
+                          key={a.id}
+                          onClick={() => setSelectedId(a.id)}
+                          style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 10px", borderRadius: "10px", background: "#12213f", border: `1px solid ${selectedId === a.id ? COLOR.purple : COLOR.cardBorder}`, cursor: a.lat != null ? "pointer" : "default" }}
+                        >
+                          <span style={{ fontSize: "10.5px", fontWeight: 700, color: COLOR.purple, minWidth: "32px" }}>{a.time}</span>
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
