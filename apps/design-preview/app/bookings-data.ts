@@ -44,6 +44,12 @@ export interface Booking {
   /** שעת-איסוף אמיתית (HH:MM), category "transport" בלבד — מזינים אותה
    * כדי לקבל טיימר-אמיתי בדף הבית במקום ספירה-לאחור ברמת-יום בלבד. */
   pickupTime?: string;
+  /** הזמנה הלוך-חזור (category "transport" בלבד) — לפי בקשה מפורשת:
+   * "יש מצב שאנחנו מזמינים הלוך וחזור כבר באותה הזמנה". כשמופעל, checkOut
+   * הוא תאריך-החזרה ו-returnPickupTime שעת-האיסוף שלה; דף הבית מציג תמיד
+   * את הרגל הבאה-בזמן שעוד לא עברה (הלוך או חזור), לא רק את ההלוך. */
+  isRoundTrip?: boolean;
+  returnPickupTime?: string;
   /** מספר-טיסה, שעת-המראה (HH:MM) וסטטוס — category "flight" בלבד. */
   flightNumber?: string;
   departTime?: string;

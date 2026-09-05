@@ -194,11 +194,21 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
   // לפי העיקרון "תמיד עריכה, לא משהו קבוע" — גם השדות החדשים (שעת-איסוף/
   // מספר-טיסה/שעת-המראה/סטטוס) ניתנים לעריכה כאן, לא רק בעת יצירה.
   const [pickupTime, setPickupTime] = useState(booking.pickupTime ?? "");
+  // הלוך-חזור באותה הזמנה — ניתן-לעריכה גם כאן, אותו עיקרון.
+  const [isRoundTrip, setIsRoundTrip] = useState(booking.isRoundTrip ?? false);
+  const [returnPickupTime, setReturnPickupTime] = useState(booking.returnPickupTime ?? "");
   const [flightNumber, setFlightNumber] = useState(booking.flightNumber ?? "");
   const [departTime, setDepartTime] = useState(booking.departTime ?? "");
   const [flightStatus, setFlightStatus] = useState<FlightStatus>(booking.flightStatus ?? "on_time");
 
-  const canSave = title.trim().length > 0 && checkIn.length > 0;
+  // אותה דרישה בדיוק כמו ביצירה חדשה: בלי checkOut, מלון לא נספר ככיסוי
+  // אף לילה, והזמנה הלוך-חזור בלי תאריך-חזרה לא באמת "הלוך-חזור".
+  const canSave =
+    title.trim().length > 0 &&
+    checkIn.length > 0 &&
+    !(booking.category === "hotel" && !checkOut) &&
+    !(booking.category === "transport" && isRoundTrip && !checkOut) &&
+    !(checkOut && checkOut < checkIn);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -218,7 +228,7 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
             </Field>
           </div>
           <div style={{ flex: 1 }}>
-            <Field label="תאריך עזיבה (לא חובה)">
+            <Field label={booking.category === "hotel" ? "עד תאריך (מכסה את כל הלילות שביניהם)" : booking.category === "transport" && isRoundTrip ? "תאריך החזרה" : "תאריך עזיבה (לא חובה)"}>
               <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} style={inputStyle} />
             </Field>
           </div>
@@ -261,9 +271,26 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
         </Field>
 
         {booking.category === "transport" ? (
-          <Field label="שעת איסוף (לא חובה)">
-            <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} style={inputStyle} />
-          </Field>
+          <>
+            <Field label={isRoundTrip ? "שעת איסוף להלוך (לא חובה)" : "שעת איסוף (לא חובה)"}>
+              <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} style={inputStyle} />
+            </Field>
+            <button
+              type="button"
+              onClick={() => setIsRoundTrip((v) => !v)}
+              style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "10px", background: isRoundTrip ? `${COLOR.primary}22` : COLOR.cardElevated, border: `1px solid ${isRoundTrip ? COLOR.primary : COLOR.border}`, color: isRoundTrip ? COLOR.primaryLight : COLOR.textSecondary, fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+            >
+              <span aria-hidden style={{ width: "18px", height: "18px", borderRadius: "5px", border: `2px solid ${isRoundTrip ? COLOR.primary : COLOR.textSecondary}`, background: isRoundTrip ? COLOR.primary : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", color: "#fff", flexShrink: 0 }}>
+                {isRoundTrip ? "✓" : ""}
+              </span>
+              הזמנה הלוך-חזור (גם חזרה)
+            </button>
+            {isRoundTrip ? (
+              <Field label="שעת איסוף לחזרה (לא חובה)">
+                <input type="time" value={returnPickupTime} onChange={(e) => setReturnPickupTime(e.target.value)} style={inputStyle} />
+              </Field>
+            ) : null}
+          </>
         ) : null}
 
         {booking.category === "flight" ? (
@@ -299,6 +326,8 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
               totalPrice: booking.category !== "hotel" && totalPrice.trim() ? totalPrice.trim() : undefined,
               phone: phone.trim() || undefined,
               pickupTime: booking.category === "transport" && pickupTime ? pickupTime : undefined,
+              isRoundTrip: booking.category === "transport" && isRoundTrip ? true : undefined,
+              returnPickupTime: booking.category === "transport" && isRoundTrip && returnPickupTime ? returnPickupTime : undefined,
               flightNumber: booking.category === "flight" && flightNumber.trim() ? flightNumber.trim() : undefined,
               departTime: booking.category === "flight" && departTime ? departTime : undefined,
               flightStatus: booking.category === "flight" ? flightStatus : undefined,

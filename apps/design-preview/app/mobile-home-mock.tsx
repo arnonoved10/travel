@@ -1355,7 +1355,7 @@ export function MobileHomeMock() {
   function combineDateTime(dateStr: string, time?: string): string | null {
     return time ? `${dateStr}T${time}:00` : null;
   }
-  const [rideBookings, setRideBookings] = useState<(BookingCardInfo & { vehicleType: VehicleType; pickupTime?: string })[]>([]);
+  const [rideBookings, setRideBookings] = useState<(BookingCardInfo & { vehicleType: VehicleType; pickupTime?: string; leg: "outbound" | "return" | null })[]>([]);
   const [rideIndex, setRideIndex] = useState(0);
   const [flightBookings, setFlightBookings] = useState<(BookingCardInfo & { flightNumber?: string; flightStatus?: FlightStatus; departTime?: string })[]>([]);
   const [flightIndex, setFlightIndex] = useState(0);
@@ -1374,18 +1374,43 @@ export function MobileHomeMock() {
     }
     const todayStr = today();
     const all = loadBookings();
+    // (b.checkOut ?? b.checkIn) — לא רק checkIn: באג אמיתי שנמצא כשנוספה
+    // תמיכה בהסעה הלוך-חזור/כמה-ימים — הסעה שמתחילה היום אבל ה"חזרה"
+    // שלה רק בעוד כמה ימים הייתה נעלמת מ"הקרוב" ביום שאחרי ה-checkIn,
+    // למרות שרגל-החזרה עדיין לא קרתה בכלל.
     const upcoming = (category: "transport" | "flight") =>
       all
-        .filter((b) => b.category === category && b.status !== "cancelled" && b.checkIn >= todayStr)
+        .filter((b) => b.category === category && b.status !== "cancelled" && (b.checkOut ?? b.checkIn) >= todayStr)
         .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
-    const rides = upcoming("transport").map((b) => ({
-      id: b.id,
-      title: b.title,
-      countdownLabel: dayCountdownLabel(b.checkIn, todayStr),
-      scheduledAt: combineDateTime(b.checkIn, b.pickupTime),
-      vehicleType: b.vehicleType ?? DEFAULT_VEHICLE,
-      pickupTime: b.pickupTime,
-    }));
+    // הסעה הלוך-חזור (isRoundTrip+checkOut+returnPickupTime): שתי "רגליים"
+    // אפשריות — הלוך (checkIn+pickupTime) וחזור (checkOut+returnPickupTime).
+    // הכרטיס תמיד מציג את הרגל-הבאה-בזמן שעוד לא עברה, לא תמיד ההלוך, לפי
+    // בקשה מפורשת: "מזמינים הלוך וחזור באותה הזמנה".
+    function isPast(dt: string | null): boolean {
+      return dt != null && new Date(dt).getTime() < Date.now();
+    }
+    function pickLeg(b: (typeof all)[number]): { scheduledAt: string | null; pickupTime: string | undefined; leg: "outbound" | "return" | null } {
+      const outboundAt = combineDateTime(b.checkIn, b.pickupTime);
+      if (b.isRoundTrip && b.checkOut) {
+        const returnAt = combineDateTime(b.checkOut, b.returnPickupTime);
+        if (returnAt && (isPast(outboundAt) || !outboundAt)) return { scheduledAt: returnAt, pickupTime: b.returnPickupTime, leg: "return" };
+        if (outboundAt) return { scheduledAt: outboundAt, pickupTime: b.pickupTime, leg: "outbound" };
+        return { scheduledAt: returnAt, pickupTime: b.returnPickupTime, leg: returnAt ? "return" : null };
+      }
+      return { scheduledAt: outboundAt, pickupTime: b.pickupTime, leg: null };
+    }
+    const rides = upcoming("transport").map((b) => {
+      const { scheduledAt, pickupTime, leg } = pickLeg(b);
+      return {
+        id: b.id,
+        title: b.title,
+        countdownLabel: dayCountdownLabel(b.checkIn, todayStr),
+        scheduledAt,
+        vehicleType: b.vehicleType ?? DEFAULT_VEHICLE,
+        pickupTime,
+        leg,
+      };
+    });
     const flights = upcoming("flight").map((b) => ({
       id: b.id,
       title: b.title,
@@ -2153,6 +2178,11 @@ export function MobileHomeMock() {
                         const c = realCountdown(currentRide.scheduledAt, currentRide.countdownLabel, now);
                         return <div style={{ fontSize: "10px", fontWeight: 800, color: c.color }}>{c.text}</div>;
                       })()}
+                      {currentRide.leg ? (
+                        <span style={{ display: "inline-block", fontSize: "6.5px", fontWeight: 800, color: COLOR.purple, background: "rgba(138,90,223,0.16)", borderRadius: "999px", padding: "1px 5px", marginTop: "1px" }}>
+                          {currentRide.leg === "outbound" ? "הלוך" : "חזור"}
+                        </span>
+                      ) : null}
                       {currentRide.pickupTime ? <div style={{ fontSize: "7.5px", color: COLOR.textMuted }}>איסוף {currentRide.pickupTime}</div> : null}
                     </Link>
                     <button
