@@ -256,9 +256,18 @@ export function notifyStorageFailure(message?: string) {
   window.alert(message ?? "שמירת הנתונים נכשלה — נראה שיש בעיה באחסון של הדפדפן (למשל אין מקום פנוי). השינוי האחרון כנראה לא נשמר. נסו לרענן ולנסות שוב.");
 }
 
+/** נורה בכל כתיבה מוצלחת ל-localStorage דרך saveJSON — כדי שדפים ישנים-
+ * שכבר-נטענו (למשל דף הבית, אחרי חזרה-אחורה מ"הוספת הזמנה" ש-Next.js
+ * שומר כ-instance חי בלי mount מחדש ובלי אירועי-דפדפן אמיתיים) יוכלו
+ * להאזין ולרענן את עצמם לפי שינוי-נתון אמיתי, לא לפי ניחוש-מתי-ה-router
+ * מחליט למחזר עמוד. באג אמיתי שאומת בפרודקשן: הזמנת-טיסה חדשה (מספר-
+ * טיסה/שעת-המראה) לא הופיעה בכרטיס "הטיסה שלי" בדף הבית עד רענון-דף מלא. */
+export const LOCAL_DATA_CHANGED_EVENT = "design-preview-local-data-changed";
+
 export function saveJSON(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(LOCAL_DATA_CHANGED_EVENT, { detail: { key } }));
   } catch (err) {
     console.error(`saveJSON failed for key "${key}":`, err);
     notifyStorageFailure();

@@ -7,7 +7,7 @@ import { signOutCurrentUser, useCurrentUser } from "./auth-session";
 import { getDemoCurrencyRatesAction, type DemoWeatherResult, type DemoCurrencyResult } from "./actions";
 import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
-import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, addCustomCategory, categoryColor, type DocumentEntry } from "./wallet-data";
+import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, addCustomCategory, categoryColor, LOCAL_DATA_CHANGED_EVENT, type DocumentEntry } from "./wallet-data";
 import { CurrencyPickerButton } from "./pickers";
 import { activeTrip, allTrips, tripProgress as computeTripProgressFor, disambiguatedTripName, tripColor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
@@ -1168,17 +1168,43 @@ export function MobileHomeMock() {
   const [tripChecked, setTripChecked] = useState(false);
   // כל הטיולים — לצורך הבחנה בין טיולים בעלי שם זהה בצ'יפ למטה (disambiguatedTripName/tripColor).
   const [allTripsList, setAllTripsList] = useState<DemoTrip[]>([]);
+  // באג אמיתי שדווח ואומת בפרודקשן ("הזנתי מספר טיסה, בדף הבית הוא לא
+  // מופיע"): activeTripInfo (ולכן גם rideBookings/flightBookings/
+  // hotelNights/readinessItems, שכולם תלויים בו) נטען פעם אחת בלבד ב-mount.
+  // Next.js (ה-router הרגיל, בלי cacheComponents) שומר על ה-instance של
+  // הדף הזה כשעוברים ל"הוספת הזמנה" וחוזרים ב-back אמיתי, בלי mount מחדש
+  // ובלי אירועי דפדפן אמיתיים (visibilitychange/focus/pageshow לא נורים —
+  // זה ניווט-פנימי של ה-router, לא ניווט-מסמך אמיתי) — אז ה-effect הזה
+  // לא רץ שוב. הפתרון: כל כתיבה ל-localStorage משדרת אירוע גלובלי (ר'
+  // saveJSON ב-wallet-data.ts) וכל הדף מאזין לו ומרענן — תלוי בשינוי-
+  // נתון אמיתי, לא בניחוש לגבי מתי ה-router מחליט למחזר/למחוק instance.
+  // lastTripJsonRef מונע "רעש-רפרנס": activeTrip()/allTrips() תמיד מחזירים
+  // אובייקט חדש (JSON.parse טרי), אז בלי ההשוואה הזו כל כתיבה כלשהי לכל
+  // מקום באפליקציה (למשל שינוי-סוג-רכב בהסעה) הייתה יוצרת רפרנס-activeTripInfo
+  // חדש ומפעילה-מחדש כל effect שתלוי בו — כולל effects עם "איפוס" לגיטימי-
+  // רק-במעבר-טיול-אמיתי (כמו setRideIndex(0)). נמצא ונתפס בבדיקה: מעבר
+  // לרכב השני בקרוסלה ואז שינוי-סוג-הרכב שלו "קפץ" בחזרה לרכב הראשון.
+  const lastTripJsonRef = useRef<string>("");
   useEffect(() => {
-    const trip = activeTrip();
-    if (trip) {
-      setTripProgress(computeTripProgressFor(trip));
-      setActiveTripInfo(trip);
-    } else {
-      setTripProgress(null);
-      setActiveTripInfo(null);
+    function refreshActiveTripInfo() {
+      const trip = activeTrip();
+      const tripJson = trip ? JSON.stringify(trip) : "";
+      if (tripJson !== lastTripJsonRef.current) {
+        lastTripJsonRef.current = tripJson;
+        if (trip) {
+          setTripProgress(computeTripProgressFor(trip));
+          setActiveTripInfo(trip);
+        } else {
+          setTripProgress(null);
+          setActiveTripInfo(null);
+        }
+      }
+      setAllTripsList(allTrips());
+      setTripChecked(true);
     }
-    setAllTripsList(allTrips());
-    setTripChecked(true);
+    refreshActiveTripInfo();
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, refreshActiveTripInfo);
+    return () => window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, refreshActiveTripInfo);
   }, []);
 
   // "כמעט מוכנים לטיול" — לפני התיקון הזה כל הכרטיס היה מזויף לגמרי (מספרים
@@ -1186,7 +1212,12 @@ export function MobileHomeMock() {
   // הובילו לשום מקום אמיתי). עכשיו מחושב מנתונים אמיתיים של הטיול הפעיל,
   // ומציג רק את מה שבאמת חסר (אריח שהושלם בפועל פשוט לא מופיע יותר).
   const [readinessItems, setReadinessItems] = useState<ReadinessItem[]>([]);
-  useEffect(() => {
+  // מחושב-מחדש גם ב-LOCAL_DATA_CHANGED_EVENT (לא רק כש-activeTripInfo עצמו
+  // משתנה): תלוי בהזמנות/פעילויות/תחנות/מסמכים אמיתיים, לא רק בשדות-הטיול
+  // עצמו — כתיבה בכל אחד מהם (למשל הוספת הזמנת-מלון) חייבת לרענן את הכרטיס
+  // הזה גם בלי מעבר-טיול. בטוח להריץ שוב בלי תנאי (לא מאפס אינדקס/מצב-UI
+  // כלשהו, רק מחשב מחדש מערך שלם) — בניגוד ל-rideBookings/flightBookings.
+  function loadReadinessItems() {
     if (!activeTripInfo) {
       setReadinessItems([]);
       return;
@@ -1252,6 +1283,14 @@ export function MobileHomeMock() {
     }
 
     setReadinessItems(items);
+  }
+  useEffect(() => {
+    loadReadinessItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+  useEffect(() => {
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, loadReadinessItems);
+    return () => window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, loadReadinessItems);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
 
@@ -1259,7 +1298,7 @@ export function MobileHomeMock() {
   // משבצות: יום-בטיול (כמו קודם) + 3 תוספות אמיתיות (עיר נוכחית / הפעילות
   // הבאה היום / המעבר הבא במסלול), כל אחת מנתונים אמיתיים של הטיול הפעיל.
   const [routeStatus, setRouteStatus] = useState<{ currentCity: string; todayActivity: TripActivity | null; nextTransitionLabel: string } | null>(null);
-  useEffect(() => {
+  function loadRouteStatus() {
     if (!activeTripInfo) {
       setRouteStatus(null);
       return;
@@ -1291,6 +1330,14 @@ export function MobileHomeMock() {
     }
 
     setRouteStatus({ currentCity, todayActivity, nextTransitionLabel });
+  }
+  useEffect(() => {
+    loadRouteStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+  useEffect(() => {
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, loadRouteStatus);
+    return () => window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, loadRouteStatus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
 
@@ -1322,7 +1369,13 @@ export function MobileHomeMock() {
   const [flightBookings, setFlightBookings] = useState<(BookingCardInfo & { flightNumber?: string; flightStatus?: FlightStatus; departTime?: string })[]>([]);
   const [flightIndex, setFlightIndex] = useState(0);
   const [editingVehicleFor, setEditingVehicleFor] = useState<string | null>(null);
-  useEffect(() => {
+  // resetIndex=true רק כשהטיול-הפעיל עצמו השתנה (מעבר-טיול אמיתי — אז
+  // התחלה-מחדש של הקרוסלה הגיונית). resetIndex=false כשה"רענון" הוא
+  // בעקבות LOCAL_DATA_CHANGED_EVENT ממקור לא-קשור (למשל שינוי-סוג-רכב
+  // בהסעה אחרת): לפני התיקון, כל כתיבה כלשהי לכל מקום באפליקציה איפסה גם
+  // את rideIndex/flightIndex בטעות — נמצא ונתפס בבדיקה: מעבר לרכב השני
+  // בקרוסלה ואז שינוי-סוג-הרכב שלו "קפץ" בחזרה לרכב הראשון.
+  function loadRideFlightBookings(resetIndex: boolean) {
     if (!activeTripInfo) {
       setRideBookings([]);
       setFlightBookings([]);
@@ -1334,29 +1387,41 @@ export function MobileHomeMock() {
       all
         .filter((b) => b.category === category && b.status !== "cancelled" && b.checkIn >= todayStr)
         .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
-    setRideBookings(
-      upcoming("transport").map((b) => ({
-        id: b.id,
-        title: b.title,
-        countdownLabel: dayCountdownLabel(b.checkIn, todayStr),
-        scheduledAt: combineDateTime(b.checkIn, b.pickupTime),
-        vehicleType: b.vehicleType ?? DEFAULT_VEHICLE,
-        pickupTime: b.pickupTime,
-      })),
-    );
-    setFlightBookings(
-      upcoming("flight").map((b) => ({
-        id: b.id,
-        title: b.title,
-        countdownLabel: dayCountdownLabel(b.checkIn, todayStr),
-        scheduledAt: combineDateTime(b.checkIn, b.departTime),
-        flightNumber: b.flightNumber,
-        flightStatus: b.flightStatus,
-        departTime: b.departTime,
-      })),
-    );
-    setRideIndex(0);
-    setFlightIndex(0);
+    const rides = upcoming("transport").map((b) => ({
+      id: b.id,
+      title: b.title,
+      countdownLabel: dayCountdownLabel(b.checkIn, todayStr),
+      scheduledAt: combineDateTime(b.checkIn, b.pickupTime),
+      vehicleType: b.vehicleType ?? DEFAULT_VEHICLE,
+      pickupTime: b.pickupTime,
+    }));
+    const flights = upcoming("flight").map((b) => ({
+      id: b.id,
+      title: b.title,
+      countdownLabel: dayCountdownLabel(b.checkIn, todayStr),
+      scheduledAt: combineDateTime(b.checkIn, b.departTime),
+      flightNumber: b.flightNumber,
+      flightStatus: b.flightStatus,
+      departTime: b.departTime,
+    }));
+    setRideBookings(rides);
+    setFlightBookings(flights);
+    if (resetIndex) {
+      setRideIndex(0);
+      setFlightIndex(0);
+    } else {
+      setRideIndex((i) => (i >= rides.length ? 0 : i));
+      setFlightIndex((i) => (i >= flights.length ? 0 : i));
+    }
+  }
+  useEffect(() => {
+    loadRideFlightBookings(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+  useEffect(() => {
+    const onDataChanged = () => loadRideFlightBookings(false);
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, onDataChanged);
+    return () => window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, onDataChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
   function setRideVehicle(bookingId: string, vehicleType: VehicleType) {
@@ -1386,6 +1451,22 @@ export function MobileHomeMock() {
     const [y, m, d] = dateISO.split("-").map(Number);
     return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
   }
+  // תאריך קצר (יום+חודש) לתוויות-הקצוות של הרצועה הדחוסה של "מלונות".
+  function fmtHomeShortDate(dateISO: string): string {
+    const [y, m, d] = dateISO.split("-").map(Number);
+    return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("he-IL", { day: "numeric", month: "short", timeZone: "UTC" });
+  }
+  // מציג "נכון ל-" של השער בפורמט קריא (לא ISO גולמי עם שניות-שבר, כמו
+  // "2026-09-04T09:20:03.8709693Z") — באג אמיתי שנמצא תוך כדי בדיקת "ארנק
+  // ושערי מטבעות לא שווים ברוחב": מחרוזת-ISO ארוכה ובלי רווחים היא אסימון
+  // אחד בלתי-ניתן-לשבירה, ש"מכריחה" את רוחב-המינימום של המלבן הזה, בדיוק
+  // הבאג שגרם לחוסר-השוויון ברוחב מול "ארנק". נופל בחזרה למחרוזת הגולמית
+  // אם הפירסור נכשל, כדי לא להסתיר נתון אמיתי בגלל פורמט לא-צפוי.
+  function fmtRateAsOf(raw: string): string {
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleString("he-IL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
   // כל לילה בטיול מקבל גם דגל-טיסה וגם דגל-הסעה (לא רק כיסוי-מלון) — לפי
   // בקשה מפורשת: "בתאריכים גם שיש טיסה גם צבע שונה... וגם שיש הסעה צבע
   // שונה... וגם צבע שיש את הכל". נבדק מול *כל* ההזמנות בטיול (לא רק
@@ -1398,7 +1479,7 @@ export function MobileHomeMock() {
     ride: boolean;
   }
   const [hotelNights, setHotelNights] = useState<NightStatus[]>([]);
-  useEffect(() => {
+  function loadHotelNights() {
     if (!activeTripInfo) {
       setHotelNights([]);
       return;
@@ -1416,13 +1497,26 @@ export function MobileHomeMock() {
         d = addDaysStrUTC(d, 1);
       }
     }
+    // כולל גם את יום-הסיום עצמו (לא רק לילות עד-לפני-הסוף): באג אמיתי
+    // שדווח — "פתחתי טיול עד 19 באוקטובר ובמלונות לא רשום ה-19", מהטעם
+    // ש"אם הטיסה חוזרת באותו היום כנראה שנצטרך מלון" — יום-הסיום עדיין
+    // עשוי לדרוש מלון (טיסה מאוחרת/לילה אחרון), אז חייב להיות ניתן-לסימון
+    // גם הוא, לא רק "לילות" במובן הצר (checkOut-exclusive).
     const nights: NightStatus[] = [];
     let d = trip.startDate;
-    while (d < trip.endDate && nights.length < 60) {
+    while (d <= trip.endDate && nights.length < 60) {
       nights.push({ date: d, hotel: coveredSet.has(d), flight: flightSet.has(d), ride: rideSet.has(d) });
       d = addDaysStrUTC(d, 1);
     }
     setHotelNights(nights);
+  }
+  useEffect(() => {
+    loadHotelNights();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripInfo]);
+  useEffect(() => {
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, loadHotelNights);
+    return () => window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, loadHotelNights);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripInfo]);
   const hotelNightsCoveredCount = hotelNights.filter((n) => n.hotel).length;
@@ -1437,6 +1531,15 @@ export function MobileHomeMock() {
   const [nightColors, setNightColors] = useState(DEFAULT_NIGHT_COLORS);
   const [nightColorsLoaded, setNightColorsLoaded] = useState(false);
   const [editingNightColors, setEditingNightColors] = useState(false);
+  // עיצוב-קומפקטי לרצועת "מלונות": טיולים ארוכים (יותר מ-14 יום) מתחילים
+  // מכווצים — פס-חום דחוס (יום=פס דק אחד, לא ריבוע גדול) שתופס שורה אחת
+  // בלבד במקום 7-8 שורות — לפי בקשה מפורשת "תופס כל כך הרבה מקום... תמצא
+  // דרך יפה ושלא תופס מקום". לחיצה על "הצגת כל הימים" פותחת את הרשת
+  // המלאה-לחיצה (ללא שינוי בהתנהגות-הלחיצה הקיימת שם).
+  const [hotelsExpanded, setHotelsExpanded] = useState(false);
+  // מ-15 יום ומעלה מתחילים מכווצים כברירת-מחדל — טיולים קצרים (עד 14 יום,
+  // כמו רוב הטיולים) נשארים תמיד ברשת המלאה כי היא כבר קומפקטית מספיק שם.
+  const hotelsShowFullGrid = hotelsExpanded || hotelNights.length <= 14;
   useEffect(() => {
     setNightColors(loadJSON(SK_HOME_NIGHT_COLORS, DEFAULT_NIGHT_COLORS));
     setNightColorsLoaded(true);
@@ -2195,7 +2298,7 @@ export function MobileHomeMock() {
               <span style={{ fontWeight: 800, fontSize: "14px" }}>מלונות</span>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <span style={{ fontSize: "11px", fontWeight: 700, color: hotelNightsCoveredCount === hotelNights.length ? nightColors.hotel : COLOR.warning }}>
-                  {hotelNightsCoveredCount} מתוך {hotelNights.length} לילות מוזמנים
+                  {hotelNightsCoveredCount} מתוך {hotelNights.length} ימים עם מלון
                 </span>
                 <button
                   type="button"
@@ -2254,71 +2357,124 @@ export function MobileHomeMock() {
               </div>
             ) : null}
 
-            {/* רשת-לוח-שנה (7 עמודות, יום א׳ ראשון) במקום רצועה גוללת — לפי
-                בקשה מפורשת: "כל התאריכים יופיעו באותו חלון בלי להזיז ימינה
-                ושמאלה". עמודות מרופדות (pad) לפני הלילה הראשון כדי שכל תאריך
-                יישב בעמודת-יום-השבוע הנכונה שלו, בדיוק כמו לוח-שנה אמיתי. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px", marginBottom: "4px" }}>
-              {WEEKDAY_LETTERS.map((l, i) => (
-                <div key={i} style={{ textAlign: "center", fontSize: "8px", fontWeight: 700, color: COLOR.textMuted }}>
-                  {l}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
-              {Array.from({ length: utcDow(hotelNights[0]!.date) }).map((_, i) => (
-                <div key={`pad-${i}`} />
-              ))}
-              {hotelNights.map((n) => {
-                const dayNum = Number(n.date.slice(8, 10));
-                const stateColor = n.hotel ? nightColors.hotel : nightColors.none;
-                const isToday = n.date === today();
-                return (
-                  <Link
-                    key={n.date}
-                    href={n.hotel ? "/bookings" : `/bookings/new?category=hotel&date=${n.date}`}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "3px",
-                      aspectRatio: "1",
-                      borderRadius: "10px",
-                      textDecoration: "none",
-                      background: `linear-gradient(160deg, ${stateColor}33, ${stateColor}14)`,
-                      border: isToday ? `1.5px solid ${stateColor}` : `1px solid ${stateColor}55`,
-                      boxShadow: isToday ? `0 0 8px ${stateColor}55` : "none",
-                    }}
-                  >
-                    <span style={{ fontSize: "13px", fontWeight: 800, color: stateColor, lineHeight: 1 }}>{dayNum}</span>
-                    <div style={{ display: "flex", gap: "2px" }}>
-                      <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: n.hotel ? nightColors.hotel : "rgba(255,255,255,0.15)" }} />
-                      <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: n.flight ? nightColors.flight : "rgba(255,255,255,0.15)" }} />
-                      <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: n.ride ? nightColors.ride : "rgba(255,255,255,0.15)" }} />
+            {hotelsShowFullGrid ? (
+              <>
+                {/* רשת-לוח-שנה (7 עמודות, יום א׳ ראשון) — לפי בקשה מפורשת: "כל
+                    התאריכים יופיעו באותו חלון בלי להזיז ימינה ושמאלה". עמודות
+                    מרופדות (pad) לפני היום הראשון כדי שכל תאריך יישב בעמודת-
+                    יום-השבוע הנכונה שלו, בדיוק כמו לוח-שנה אמיתי. מוצגת תמיד
+                    בטיול קצר (עד 14 יום); בטיול ארוך יותר רק אחרי "הצגת כל
+                    הימים", כי לתצוגת ברירת-המחדל שלו יש את הרצועה הדחוסה למטה. */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px", marginBottom: "4px" }}>
+                  {WEEKDAY_LETTERS.map((l, i) => (
+                    <div key={i} style={{ textAlign: "center", fontSize: "8px", fontWeight: 700, color: COLOR.textMuted }}>
+                      {l}
                     </div>
-                  </Link>
-                );
-              })}
-            </div>
-
-            <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" }}>
-              {(
-                [
-                  { key: "hotel" as const, label: "מלון" },
-                  { key: "flight" as const, label: "טיסה" },
-                  { key: "ride" as const, label: "הסעה" },
-                ]
-              ).map((row) => (
-                <div key={row.key} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <span aria-hidden style={{ width: "6px", height: "6px", borderRadius: "50%", background: nightColors[row.key] }} />
-                  <span style={{ fontSize: "9.5px", color: COLOR.textMuted }}>{row.label}</span>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
+                  {Array.from({ length: utcDow(hotelNights[0]!.date) }).map((_, i) => (
+                    <div key={`pad-${i}`} />
+                  ))}
+                  {hotelNights.map((n) => {
+                    const dayNum = Number(n.date.slice(8, 10));
+                    const stateColor = n.hotel ? nightColors.hotel : nightColors.none;
+                    const isToday = n.date === today();
+                    return (
+                      <Link
+                        key={n.date}
+                        href={n.hotel ? "/bookings" : `/bookings/new?category=hotel&date=${n.date}`}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "3px",
+                          aspectRatio: "1",
+                          borderRadius: "10px",
+                          textDecoration: "none",
+                          background: `linear-gradient(160deg, ${stateColor}33, ${stateColor}14)`,
+                          border: isToday ? `1.5px solid ${stateColor}` : `1px solid ${stateColor}55`,
+                          boxShadow: isToday ? `0 0 8px ${stateColor}55` : "none",
+                        }}
+                      >
+                        <span style={{ fontSize: "13px", fontWeight: 800, color: stateColor, lineHeight: 1 }}>{dayNum}</span>
+                        <div style={{ display: "flex", gap: "2px" }}>
+                          <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: n.hotel ? nightColors.hotel : "rgba(255,255,255,0.15)" }} />
+                          <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: n.flight ? nightColors.flight : "rgba(255,255,255,0.15)" }} />
+                          <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: n.ride ? nightColors.ride : "rgba(255,255,255,0.15)" }} />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
 
-            {hotelNightsCoveredCount < hotelNights.length ? (
-              <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "8px" }}>לחצו על יום ללא מלון כדי להזמין לו אחד</div>
+                <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" }}>
+                  {(
+                    [
+                      { key: "hotel" as const, label: "מלון" },
+                      { key: "flight" as const, label: "טיסה" },
+                      { key: "ride" as const, label: "הסעה" },
+                    ]
+                  ).map((row) => (
+                    <div key={row.key} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span aria-hidden style={{ width: "6px", height: "6px", borderRadius: "50%", background: nightColors[row.key] }} />
+                      <span style={{ fontSize: "9.5px", color: COLOR.textMuted }}>{row.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {hotelNightsCoveredCount < hotelNights.length ? (
+                  <div style={{ fontSize: "10.5px", color: COLOR.textSecondary, marginTop: "8px" }}>לחצו על יום ללא מלון כדי להזמין לו אחד</div>
+                ) : null}
+              </>
+            ) : (
+              /* רצועה דחוסה: יום אחד = פס דק אחד (לא ריבוע-לוח-שנה גדול) —
+                 שורה בודדת במקום 7-8 שורות לטיול ארוך. מציגה רק כיסוי-מלון
+                 (המדד שהכרטיס כותרתו) ולא את שלושת הנקודות — הפירוט המלא
+                 עדיין זמין דרך "הצגת כל הימים". לחיצה על הרצועה עצמה (לא כל
+                 פס בנפרד — צר מדי למגע מדויק) פותחת את הרשת המלאה. */
+              <button
+                type="button"
+                onClick={() => setHotelsExpanded(true)}
+                aria-label="הצגת כל ימי הטיול"
+                style={{ display: "block", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "start" }}
+              >
+                <div style={{ display: "flex", gap: "1.5px", height: "30px", borderRadius: "8px", overflow: "hidden" }}>
+                  {hotelNights.map((n) => {
+                    const stateColor = n.hotel ? nightColors.hotel : nightColors.none;
+                    const isToday = n.date === today();
+                    return (
+                      <div
+                        key={n.date}
+                        style={{
+                          flex: 1,
+                          minWidth: "2px",
+                          background: stateColor,
+                          opacity: n.hotel ? 0.85 : 0.3,
+                          outline: isToday ? `2px solid #fff` : "none",
+                          outlineOffset: isToday ? "-2px" : undefined,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
+                  <span style={{ fontSize: "9.5px", color: COLOR.textMuted }}>{fmtHomeShortDate(hotelNights[0]!.date)}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 700, color: COLOR.purple }}>הצגת כל הימים ←</span>
+                  <span style={{ fontSize: "9.5px", color: COLOR.textMuted }}>{fmtHomeShortDate(hotelNights[hotelNights.length - 1]!.date)}</span>
+                </div>
+              </button>
+            )}
+
+            {hotelsExpanded && hotelNights.length > 14 ? (
+              <button
+                type="button"
+                onClick={() => setHotelsExpanded(false)}
+                style={{ marginTop: "10px", padding: "7px 12px", borderRadius: "8px", background: "rgba(255,255,255,0.05)", border: `1px solid ${COLOR.cardBorder}`, color: COLOR.textSecondary, fontSize: "10.5px", fontWeight: 700, cursor: "pointer" }}
+              >
+                הצגה מצומצמת ↑
+              </button>
             ) : null}
           </Card>
         ) : null}
@@ -2326,14 +2482,18 @@ export function MobileHomeMock() {
         {/* ארנק + שערי מטבעות — שתי מסגרות נפרדות בגודל שווה (1fr/1fr) לפי
             בקשה מפורשת, לא עוד ריבועים פנימיים בתוך כרטיס אחד משותף. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", alignItems: "start" }}>
-          {/* ארנק */}
-          <Card style={{ padding: "10px" }}>
+          {/* ארנק — minWidth:0 בשתי המסגרות: בלי זה, CSS Grid נותן ל-1fr
+              רוחב-מינימום = min-content של התוכן (לא 0), אז תוכן רחב-בלי-
+              גלישה בכרטיס אחד יכול "לגנוב" רוחב מהשני ולשבור את החלוקה
+              השווה — באג אמיתי שדווח ("עדיין לא שווים ברוחב") גם אחרי
+              ששני הכרטיסים כבר בעמודות 1fr/1fr זהות. */}
+          <Card style={{ padding: "10px", minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: "14px", marginBottom: "8px" }}>ארנק</div>
             <WalletCurrencyStack walletStore={walletStore} />
           </Card>
 
           {/* שערי מטבעות */}
-          <Card style={{ padding: "10px", position: "relative" }}>
+          <Card style={{ padding: "10px", position: "relative", minWidth: 0 }}>
             <button
               type="button"
               aria-label="עריכת המטבעות"
@@ -2460,9 +2620,9 @@ export function MobileHomeMock() {
                   </div>
                 </div>
 
-                <div style={{ fontSize: "9px", color: COLOR.textMuted, marginTop: "8px" }}>
+                <div style={{ fontSize: "9px", color: COLOR.textMuted, marginTop: "8px", overflowWrap: "anywhere" }}>
                   {currency.status === "success" && currency.data
-                    ? `מקור: ${currency.data.source === "boi" ? "בנק ישראל" : "Frankfurter (ECB)"}${currency.data.asOf ? ` · נכון ל-${currency.data.asOf}` : ""}`
+                    ? `מקור: ${currency.data.source === "boi" ? "בנק ישראל" : "Frankfurter (ECB)"}${currency.data.asOf ? ` · נכון ל-${fmtRateAsOf(currency.data.asOf)}` : ""}`
                     : currency.status === "loading"
                       ? "טוען שער מבנק ישראל..."
                       : "אין חיבור לשער חי · נתוני הדגמה"}
