@@ -4,6 +4,18 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+// באג אמיתי שדווח ("כתוב ערים הפוך") ואומת בצילום-מסך: שמות-מקומות בעברית
+// (נתניה, רמלה, אשדוד, ירושלים...) הוצגו הפוכים לגמרי על המפה, בעוד שמות
+// בערבית הוצגו נכון — בדיוק התופעה המתועדת ב-MapLibre GL: בלי RTL text
+// plugin, הספרייה לא מיישמת את אלגוריתם ה-bidi הרגיל לעברית (יש לה טיפול
+// מובנה חלקי לצורות-חיבור בערבית, אין מקביל לעברית). התיקון הרשמי-
+// המתועד: maplibregl.setRTLTextPlugin עם ה-plugin החיצוני. נרשם פעם אחת
+// בלבד ברמת-המודול (לא בכל מאונט-רכיב) — קריאה שנייה אחרי שכבר "loaded"
+// זורקת שגיאה.
+if (typeof window !== "undefined" && maplibregl.getRTLTextPluginStatus() === "unavailable") {
+  maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js", true).catch(() => {});
+}
+
 /**
  * מפה תלת-ממדית אמיתית ואינטראקטיבית (design-preview בלבד) — MapLibre GL
  * JS (ספרייה חופשית, קוד-פתוח, ללא מפתח API) על אריחי-וקטור של
