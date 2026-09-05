@@ -233,22 +233,6 @@ export default function MapPreviewScreen() {
       <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px 4px", flexShrink: 0 }}>
         <h1 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>המסלול על המפה</h1>
         <TripSwitcherPill />
-        <button
-          type="button"
-          onClick={() => setPitch((p) => (p > 20 ? 0 : 55))}
-          aria-label={pitch > 20 ? "מעבר לתצוגה דו-ממדית" : "מעבר לתצוגה תלת-ממדית"}
-          style={{ padding: "7px 12px", borderRadius: "999px", background: pitch > 20 ? COLOR.purple : COLOR.cardBg, border: `1px solid ${pitch > 20 ? COLOR.purple : COLOR.cardBorder}`, color: "#fff", fontSize: "11px", fontWeight: 800, cursor: "pointer", flexShrink: 0 }}
-        >
-          {pitch > 20 ? "תלת-ממד" : "דו-ממד"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setEditingStop({ mode: "add", stop: null })}
-          aria-label="הוספת יעד"
-          style={{ width: "34px", height: "34px", borderRadius: "50%", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", fontSize: "18px" }}
-        >
-          +
-        </button>
       </div>
 
       {!tripId ? (
@@ -293,8 +277,36 @@ export default function MapPreviewScreen() {
         </div>
       ) : null}
 
-      <div style={{ flex: 1, minHeight: 0, padding: "0 16px", position: "relative" }}>
-        <div style={{ position: "relative", height: "100%", borderRadius: "18px", overflow: "hidden", border: `1px solid ${COLOR.cardBorder}` }}>
+      {/* המפה עצמה קטנה יותר עכשיו (גובה קבוע, לא כל מסך) + טור-כפתורים
+          בצדה — לפי בקשה מפורשת: "צריך להקטין אותה ומסביבה יהיה כל מיני
+          סוגי כפתורים שנחליט מאוחר יותר מה כל כפתור יעשה". כפתורי דו-ממד/
+          תלת-ממד והוספת-יעד עברו לכאן מהכותרת העליונה (שימושיים כבר עכשיו,
+          לא רק placeholder), עם מקום-פנוי אחד נוסף לכפתור עתידי. מסגרת-
+          זוהרת בגוון-הסגול של האפליקציה במקום מסגרת שטוחה — פחות "עוד
+          מלבן אפור", יותר "מיוחד", לפי הבקשה. */}
+      <div style={{ display: "flex", gap: "8px", padding: "0 16px", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setPitch((p) => (p > 20 ? 0 : 55))}
+            aria-label={pitch > 20 ? "מעבר לתצוגה דו-ממדית" : "מעבר לתצוגה תלת-ממדית"}
+            style={{ width: "40px", height: "40px", borderRadius: "50%", background: pitch > 20 ? COLOR.purple : COLOR.cardBg, border: `1px solid ${pitch > 20 ? COLOR.purple : COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "10.5px", fontWeight: 800 }}
+          >
+            {pitch > 20 ? "3D" : "2D"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditingStop({ mode: "add", stop: null })}
+            aria-label="הוספת יעד"
+            style={{ width: "40px", height: "40px", borderRadius: "50%", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "20px" }}
+          >
+            +
+          </button>
+          <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: `1px dashed ${COLOR.cardBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: "8px", color: COLOR.textMuted, textAlign: "center", lineHeight: 1 }}>מקום פנוי</span>
+          </div>
+        </div>
+        <div style={{ position: "relative", flex: 1, minWidth: 0, height: "230px", borderRadius: "18px", overflow: "hidden", border: `1px solid ${COLOR.purple}40`, boxShadow: `0 0 0 1px rgba(138,90,223,0.12), 0 0 24px rgba(138,90,223,0.18), 0 10px 24px rgba(0,0,0,0.35)` }}>
           <MapLibreMap points={points} routeColor={routeColor} pitch={pitch} onSelect={setSelectedId} onMapClick={handleMapClick} fitSignal={fitSignal} initialCenter={initialCenter} />
           {backfilling ? (
             <div style={{ position: "absolute", top: "10px", insetInlineStart: "10px", background: "rgba(10,20,40,0.85)", border: `1px solid ${COLOR.cardBorder}`, borderRadius: "10px", padding: "6px 10px", fontSize: "11px", color: COLOR.textSecondary, zIndex: 5 }}>
@@ -328,7 +340,9 @@ export default function MapPreviewScreen() {
         </div>
       ) : null}
 
-      <div style={{ padding: "10px 16px", flexShrink: 0, maxHeight: "30%", overflowY: "auto" }}>
+      {/* ה"תופס" האנכי הראשי בעמוד עכשיו (במקום המפה, שקטנה בגובה קבוע
+          למעלה) — flex:1 כדי למלא את שאר הגובה הפנוי ולגלול פנימית. */}
+      <div style={{ padding: "10px 16px", flex: 1, minHeight: 0, overflowY: "auto" }}>
         {stops.length === 0 ? (
           <div style={{ fontSize: "12px", color: COLOR.textSecondary, textAlign: "center", padding: "6px 2px" }}>
             אין עדיין מסלול — לחצו על המפה כדי לבחור מקום, או על + כדי להוסיף יעד ישירות
