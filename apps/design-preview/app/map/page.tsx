@@ -4,10 +4,27 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { LEGACY_COLOR as COLOR, LegacyBottomNav as BottomNav, LEGACY_NAV_HEIGHT as NAV_HEIGHT } from "../route/legacy-shared";
-import { loadStops, loadActivities, addStop, updateStop, deleteStop, saveActivity, sortActivities, reorderActivitiesForDate, optimizeActivityOrder, type TripStop, type TripActivity } from "../trip-content";
+import {
+  loadStops,
+  loadActivities,
+  addStop,
+  updateStop,
+  deleteStop,
+  saveActivity,
+  sortActivities,
+  reorderActivitiesForDate,
+  optimizeActivityOrder,
+  loadCustomMarkers,
+  addCustomMarker,
+  deleteCustomMarker,
+  loadMarkerCategories,
+  type TripStop,
+  type TripActivity,
+  type CustomMarker,
+} from "../trip-content";
 import { activeTrip, currentScopeTripId } from "../trips-data";
 import { geocodeQueryAction, reverseGeocodePlaceAction, nearbyPlacesAction, type NearbyPlace } from "../actions";
-import { nextId, nowTime } from "../wallet-data";
+import { nextId, nowTime, categoryColor } from "../wallet-data";
 import { StopEditSheet } from "../route/stop-edit-sheet";
 import { TripSwitcherPill } from "../trip-switcher";
 import type { MapPoint3D } from "./maplibre-map-inner";
@@ -119,6 +136,15 @@ export default function MapPreviewScreen() {
   const [recommendedPlaces, setRecommendedPlaces] = useState<NearbyPlace[]>([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [pendingPoiAdd, setPendingPoiAdd] = useState<NearbyPlace | null>(null);
+  // סימוני-מפה מותאמים-אישית (חלק 7 בתוכנית: "משתמש מוסיף קטגוריות-POI
+  // משלו") — קבועים על המפה (לא toggle כמו המלצות-Overpass, כי אלה
+  // סימונים אמיתיים שהמשתמש יצר בכוונה, לא הצעות-זמניות).
+  const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
+  const [markerCategories, setMarkerCategories] = useState<string[]>([]);
+  const [addingCustomMarker, setAddingCustomMarker] = useState(false);
+  const [customMarkerLabel, setCustomMarkerLabel] = useState("");
+  const [customMarkerCategory, setCustomMarkerCategory] = useState("");
+  const [selectedCustomMarker, setSelectedCustomMarker] = useState<CustomMarker | null>(null);
   // נפרד מ-tripId (nullable — לתצוגת "אין טיול פעיל" ולבניית קישור): ה-scope
   // שממנו נטענות/נשמרות התחנות/הפעילויות עצמן, שתמיד מחזיר ערך קונקרטי.
   const [scopedTripId] = useState(() => currentScopeTripId());
@@ -126,6 +152,8 @@ export default function MapPreviewScreen() {
   function reload() {
     setStops(loadStops(scopedTripId));
     setActivities(loadActivities(scopedTripId));
+    setCustomMarkers(loadCustomMarkers(scopedTripId));
+    setMarkerCategories(loadMarkerCategories());
   }
 
   useEffect(() => {
@@ -175,6 +203,7 @@ export default function MapPreviewScreen() {
     setFitSignal((v) => v + 1);
     setSelectedId(null);
     setPendingPoiAdd(null);
+    setSelectedCustomMarker(null);
   }, [mode]);
 
   const sortedStops = useMemo(() => [...stops].sort((a, b) => (a.startDate < b.startDate ? -1 : 1)), [stops]);
@@ -328,16 +357,32 @@ export default function MapPreviewScreen() {
         }))
       : [];
 
+  // סימוני-מפה מותאמים-אישית — תמיד מוצגים (לא toggle), בכל מצב (טיול/
+  // שבוע/יום), כי אלה סימונים קבועים שהמשתמש יצר בכוונה, לא הצעות-זמניות
+  // כמו המלצות-Overpass. צבע נגזר-דטרמיניסטית מהקטגוריה (categoryColor),
+  // כך שאותה קטגוריה תמיד מקבלת את אותו צבע.
+  const customMarkerPoints: MapPoint3D[] = customMarkers.map((m) => ({
+    id: `custom-${m.id}`,
+    lat: m.lat,
+    lon: m.lon,
+    label: m.label,
+    sublabel: m.category,
+    color: categoryColor(m.category, {}),
+    isSelected: selectedId === `custom-${m.id}`,
+    excludeFromRoute: true,
+  }));
+
   const basePoints = mode === "trip" ? tripPoints : isWeekMode ? weekPoints : dayPoints;
   const pickedPoint: MapPoint3D[] = pickedLocation
     ? [{ id: "picked", lat: pickedLocation.lat, lon: pickedLocation.lon, label: pickedLocation.city, sublabel: "מיקום נבחר", color: PICKED_COLOR, excludeFromRoute: true }]
     : [];
-  const points = [...basePoints, ...poiPoints, ...pickedPoint];
+  const points = [...basePoints, ...poiPoints, ...customMarkerPoints, ...pickedPoint];
   const routeColor = mode === "trip" ? STOP_COLORS[0]! : ACTIVITY_COLOR;
   const initialCenter = userLocation ? { lat: userLocation.lat, lon: userLocation.lon, zoom: 11 } : undefined;
 
-  // בחירת-נקודה על המפה: סימון-המלצה פותח הצעה-להוספה-כפעילות (לא רק
-  // מדגיש שורה ברשימה למטה, כמו תחנה/פעילות רגילה).
+  // בחירת-נקודה על המפה: סימון-המלצה פותח הצעה-להוספה-כפעילות, וסימון-
+  // מותאם-אישית פותח חלונית עריכה/מחיקה — לא רק מדגיש שורה ברשימה למטה,
+  // כמו תחנה/פעילות רגילה.
   function handleSelectPoint(id: string | null) {
     if (id?.startsWith("poi-")) {
       const place = recommendedPlaces.find((p) => `poi-${p.id}` === id);
@@ -346,7 +391,22 @@ export default function MapPreviewScreen() {
         return;
       }
     }
+    if (id?.startsWith("custom-")) {
+      const marker = customMarkers.find((m) => `custom-${m.id}` === id);
+      if (marker) {
+        setSelectedCustomMarker(marker);
+        return;
+      }
+    }
     setSelectedId(id);
+  }
+
+  function handleDeleteCustomMarker() {
+    if (!selectedCustomMarker) return;
+    if (!confirm(`למחוק את הסימון "${selectedCustomMarker.label}"?`)) return;
+    deleteCustomMarker(scopedTripId, selectedCustomMarker.id);
+    setSelectedCustomMarker(null);
+    reload();
   }
 
   function handleAddPoiAsActivity() {
@@ -370,11 +430,27 @@ export default function MapPreviewScreen() {
   async function handleMapClick(lat: number, lon: number) {
     setSelectedId(null);
     setPendingPoiAdd(null);
+    setSelectedCustomMarker(null);
     setPickingLoading(true);
     const place = await reverseGeocodePlaceAction(lat, lon);
     setPickingLoading(false);
     if (!place) return;
     setPickedLocation({ lat, lon, city: place.city, countryCode: place.countryCode, displayName: place.displayName });
+  }
+
+  function handleSaveCustomMarker() {
+    if (!pickedLocation || !customMarkerCategory.trim()) return;
+    addCustomMarker(scopedTripId, {
+      lat: pickedLocation.lat,
+      lon: pickedLocation.lon,
+      label: customMarkerLabel.trim() || pickedLocation.displayName,
+      category: customMarkerCategory.trim(),
+    });
+    setAddingCustomMarker(false);
+    setCustomMarkerLabel("");
+    setCustomMarkerCategory("");
+    setPickedLocation(null);
+    reload();
   }
 
   function handleSaveStop(patch: Omit<TripStop, "id">) {
@@ -583,19 +659,95 @@ export default function MapPreviewScreen() {
       ) : null}
 
       {pickedLocation ? (
-        <div style={{ margin: "10px 16px 0", padding: "12px", borderRadius: "14px", background: "#12213f", border: `1px solid ${COLOR.purple}55`, display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>מיקום נבחר</div>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pickedLocation.displayName}</div>
+        <div style={{ margin: "10px 16px 0", padding: "12px", borderRadius: "14px", background: "#12213f", border: `1px solid ${COLOR.purple}55`, display: "flex", flexDirection: "column", gap: "10px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>מיקום נבחר</div>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pickedLocation.displayName}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPickedLocation(null);
+                setAddingCustomMarker(false);
+                setCustomMarkerLabel("");
+                setCustomMarkerCategory("");
+              }}
+              aria-label="ביטול הבחירה"
+              style={{ width: "28px", height: "28px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", cursor: "pointer", flexShrink: 0 }}
+            >
+              ✕
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setEditingStop({ mode: "add", stop: null })}
-            style={{ padding: "8px 14px", borderRadius: "10px", background: COLOR.purple, border: "none", color: "#fff", fontSize: "11.5px", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
-          >
-            + הוספה כתחנה
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setEditingStop({ mode: "add", stop: null })}
+              style={{ flex: 1, padding: "9px", borderRadius: "10px", background: COLOR.purple, border: "none", color: "#fff", fontSize: "11.5px", fontWeight: 800, cursor: "pointer" }}
+            >
+              + הוספה כתחנה
+            </button>
+            {/* סימון-מותאם-אישית (חלק 7 בתוכנית) — קטגוריה חופשית שהמשתמש
+                מקליד, לא רק חמשת הקטגוריות הקבועות של המלצות-Overpass. */}
+            <button
+              type="button"
+              onClick={() => setAddingCustomMarker((v) => !v)}
+              style={{ flex: 1, padding: "9px", borderRadius: "10px", background: addingCustomMarker ? COLOR.turquoise : "rgba(255,255,255,0.06)", border: `1px solid ${addingCustomMarker ? COLOR.turquoise : COLOR.cardBorder}`, color: addingCustomMarker ? "#04241c" : "#fff", fontSize: "11.5px", fontWeight: 800, cursor: "pointer" }}
+            >
+              + סימון מותאם אישית
+            </button>
+          </div>
+          {addingCustomMarker ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <input
+                value={customMarkerLabel}
+                onChange={(e) => setCustomMarkerLabel(e.target.value)}
+                placeholder={pickedLocation.displayName}
+                style={{ padding: "9px 10px", borderRadius: "8px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "12px" }}
+              />
+              <input
+                value={customMarkerCategory}
+                onChange={(e) => setCustomMarkerCategory(e.target.value)}
+                placeholder="קטגוריה (למשל: פארק ילדים)"
+                style={{ padding: "9px 10px", borderRadius: "8px", background: "#0e1930", border: `1px solid ${COLOR.cardBorder}`, color: "#fff", fontSize: "12px" }}
+              />
+              {markerCategories.length > 0 ? (
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {markerCategories.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCustomMarkerCategory(c)}
+                      style={{ padding: "4px 9px", borderRadius: "999px", background: `${categoryColor(c, {})}22`, border: `1px solid ${categoryColor(c, {})}55`, color: categoryColor(c, {}), fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleSaveCustomMarker}
+                disabled={!customMarkerCategory.trim()}
+                style={{ padding: "9px", borderRadius: "10px", background: customMarkerCategory.trim() ? COLOR.turquoise : "rgba(255,255,255,0.08)", border: "none", color: customMarkerCategory.trim() ? "#04241c" : COLOR.textMuted, fontSize: "12px", fontWeight: 800, cursor: customMarkerCategory.trim() ? "pointer" : "default" }}
+              >
+                שמירת הסימון
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {selectedCustomMarker ? (
+        <div style={{ margin: "10px 16px 0", padding: "12px", borderRadius: "14px", background: "#12213f", border: `1px solid ${categoryColor(selectedCustomMarker.category, {})}55`, display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>{selectedCustomMarker.category} · סימון מותאם אישית</div>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCustomMarker.label}</div>
+          </div>
+          <button type="button" onClick={handleDeleteCustomMarker} style={{ padding: "8px 14px", borderRadius: "10px", background: "none", border: `1px solid ${COLOR.danger}55`, color: COLOR.danger, fontSize: "11.5px", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            מחיקה
           </button>
-          <button type="button" onClick={() => setPickedLocation(null)} aria-label="ביטול הבחירה" style={{ width: "28px", height: "28px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", cursor: "pointer", flexShrink: 0 }}>
+          <button type="button" onClick={() => setSelectedCustomMarker(null)} aria-label="סגירה" style={{ width: "28px", height: "28px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", cursor: "pointer", flexShrink: 0 }}>
             ✕
           </button>
         </div>

@@ -240,3 +240,63 @@ export function countDatesWithoutActivity(tripId: string, startDate: string, end
   }
   return count;
 }
+
+/**
+ * סימוני-מפה מותאמים-אישית — לפי בקשה מפורשת (חלק 7 בתוכנית): "משתמש
+ * מוסיף קטגוריות-POI משלו", לא רק חמשת הקטגוריות הקבועות של nearbyPlacesAction
+ * (שמגיעות מ-Overpass ולא ניתנות להרחבה בלי תמיכה בתגיות-OSM נוספות).
+ * במקום זה, סימון-מקום ידני (מלחיצה חופשית על המפה) עם קטגוריה חופשית
+ * שהמשתמש מקליד בעצמו — "פארק ילדים", "מסלול הליכה" וכו'. הצבע נגזר
+ * דטרמיניסטית מהקטגוריה (categoryColor הקיים ב-wallet-data.ts, אותו
+ * עיקרון-בדיוק כמו קטגוריות-הוצאה מותאמות-אישית), לא צבע-אקראי ולא בורר-
+ * צבעים נפרד — כל קטגוריה מקבלת את אותו צבע תמיד, גם בין טיולים.
+ */
+export interface CustomMarker {
+  id: string;
+  lat: number;
+  lon: number;
+  label: string;
+  category: string;
+}
+const SK_CUSTOM_MARKERS = "design-preview-trip-custom-markers-v1";
+// לא tripScopedKey בכוונה: רשימת-הקטגוריות עצמה (לא הסימונים) משותפת בין
+// טיולים, כדי שקטגוריה שהוגדרה פעם ("מסלול הליכה") תוצע-לבחירה-חוזרת גם
+// בטיול אחר — אותו עיקרון כמו loadCustomCategories של הוצאות.
+const SK_MARKER_CATEGORIES = "design-preview-marker-categories-v1";
+
+export function loadCustomMarkers(tripId: string): CustomMarker[] {
+  return loadJSON(tripScopedKey(SK_CUSTOM_MARKERS, tripId), []);
+}
+function saveCustomMarkers(tripId: string, markers: CustomMarker[]) {
+  saveJSON(tripScopedKey(SK_CUSTOM_MARKERS, tripId), markers);
+}
+export function loadMarkerCategories(): string[] {
+  return loadJSON(SK_MARKER_CATEGORIES, []);
+}
+function rememberMarkerCategory(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const existing = loadMarkerCategories();
+  if (existing.includes(trimmed)) return;
+  saveJSON(SK_MARKER_CATEGORIES, [...existing, trimmed]);
+}
+export function addCustomMarker(tripId: string, marker: Omit<CustomMarker, "id">): CustomMarker {
+  const full: CustomMarker = { ...marker, id: nextId("mk") };
+  saveCustomMarkers(tripId, [...loadCustomMarkers(tripId), full]);
+  rememberMarkerCategory(marker.category);
+  return full;
+}
+export function updateCustomMarker(tripId: string, id: string, patch: Partial<Omit<CustomMarker, "id">>): CustomMarker | null {
+  const markers = loadCustomMarkers(tripId);
+  const idx = markers.findIndex((m) => m.id === id);
+  if (idx === -1) return null;
+  const updated = { ...markers[idx]!, ...patch };
+  const arr = [...markers];
+  arr[idx] = updated;
+  saveCustomMarkers(tripId, arr);
+  if (patch.category) rememberMarkerCategory(patch.category);
+  return updated;
+}
+export function deleteCustomMarker(tripId: string, id: string) {
+  saveCustomMarkers(tripId, loadCustomMarkers(tripId).filter((m) => m.id !== id));
+}
