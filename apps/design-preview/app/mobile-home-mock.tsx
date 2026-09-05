@@ -9,11 +9,12 @@ import { fetchWeather } from "./weather-client";
 import { useWalletStore } from "./wallet-store";
 import { formatMoney, today, loadJSON, saveJSON, SK, primaryCountryForCurrency, allCategories, addCustomCategory, categoryColor, LOCAL_DATA_CHANGED_EVENT, type DocumentEntry } from "./wallet-data";
 import { CurrencyPickerButton } from "./pickers";
-import { activeTrip, allTrips, tripProgress as computeTripProgressFor, disambiguatedTripName, tripColor, type DemoTrip } from "./trips-data";
+import { activeTrip, tripProgress as computeTripProgressFor, type DemoTrip } from "./trips-data";
 import { loadStops, countDatesWithoutActivity, firstDateWithoutActivity, cityForDate, activitiesForDate, type TripActivity } from "./trip-content";
 import { loadBookings, updateBooking, FLIGHT_STATUS_LABEL, type VehicleType, type FlightStatus } from "./bookings-data";
 import { FlagIcon } from "./country-currency-data";
 import { DonutChart } from "./donut-chart";
+import { TripSwitcherPill } from "./trip-switcher";
 
 // עוטפת קריאה ל-API חיצוני בכמה ניסיונות עם השהיה עולה — ראו הערה בשימוש
 // למטה. נצפה בפועל מול production: גם Route Handler רגיל (לא רק server
@@ -1153,8 +1154,6 @@ export function MobileHomeMock() {
   const [tripProgress, setTripProgress] = useState<{ dayIndex: number; totalDays: number; daysRemaining: number; percent: number } | null>(null);
   const [activeTripInfo, setActiveTripInfo] = useState<DemoTrip | null>(null);
   const [tripChecked, setTripChecked] = useState(false);
-  // כל הטיולים — לצורך הבחנה בין טיולים בעלי שם זהה בצ'יפ למטה (disambiguatedTripName/tripColor).
-  const [allTripsList, setAllTripsList] = useState<DemoTrip[]>([]);
   // באג אמיתי שדווח ואומת בפרודקשן ("הזנתי מספר טיסה, בדף הבית הוא לא
   // מופיע"): activeTripInfo (ולכן גם rideBookings/flightBookings/
   // hotelNights/readinessItems, שכולם תלויים בו) נטען פעם אחת בלבד ב-mount.
@@ -1186,7 +1185,6 @@ export function MobileHomeMock() {
           setActiveTripInfo(null);
         }
       }
-      setAllTripsList(allTrips());
       setTripChecked(true);
     }
     refreshActiveTripInfo();
@@ -2074,19 +2072,12 @@ export function MobileHomeMock() {
           </Card>
         </div>
 
-        {/* שם הטיול הפעיל + מעבר-מהיר למסך "הטיולים שלי" להחלפת טיול —
-            צ'יפ נפרד מחוץ ל-Link של כרטיס-ההתקדמות (לא ניתן לקנן קישורים). */}
+        {/* שם הטיול הפעיל + מעבר-מהיר להחלפת טיול — לפי בקשה מפורשת: זה היה
+            Link שמנווט לדף "הטיולים שלי" בשלמותו; עכשיו פותח את אותה
+            חלונית-בחירה-מהירה (TripSwitcherPill) שכבר קיימת במסך המפה, עם
+            קיבוץ פעיל/עתידיים/היסטוריה, בלי לעזוב את דף הבית בכלל. */}
         {activeTripInfo ? (
-          <Link href="/trips" style={{ display: "flex", alignItems: "center", gap: "6px", textDecoration: "none", fontSize: "11.5px", fontWeight: 700, color: COLOR.textSecondary, padding: "0 2px" }}>
-            <div style={{ position: "relative", flexShrink: 0, display: "flex" }}>
-              <FlagIcon countryCode={activeTripInfo.countryCode} size={14} />
-              {allTripsList.filter((t) => t.name === activeTripInfo.name).length > 1 ? (
-                <span aria-hidden style={{ position: "absolute", bottom: -2, insetInlineEnd: -2, width: "7px", height: "7px", borderRadius: "50%", background: tripColor(activeTripInfo.id), border: "1.5px solid #0a0f20" }} />
-              ) : null}
-            </div>
-            <span>{disambiguatedTripName(activeTripInfo, allTripsList)}</span>
-            <span style={{ color: COLOR.purple }}>· החלפת טיול</span>
-          </Link>
+          <TripSwitcherPill color={COLOR.textSecondary} background="transparent" border="transparent" />
         ) : null}
 
         {/* תזכורת פיקדונות שהגיע/עבר הזמן להחזרתם — לפי בקשה מפורשת

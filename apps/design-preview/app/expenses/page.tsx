@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LegacyCard as Card, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR, LegacyPlusIcon, LegacyExpenseIcon } from "../route/legacy-shared";
+import { LegacyCard as Card, LegacyScreenHeader as ScreenHeader, LegacyScreenShell as ScreenShell, LegacyBottomNav as BottomNav, LEGACY_COLOR as COLOR, LegacyPlusIcon } from "../route/legacy-shared";
 import { CameraIcon } from "../ui-kit";
 import { TripSwitcherPill } from "../trip-switcher";
 import { useWalletStore } from "../wallet-store";
@@ -84,22 +84,19 @@ export default function ExpensesScreen() {
         )}
       </Card>
 
+      {/* לפי בקשה מפורשת: היו כאן "הוספה" ו"הוספה מרובה" — כפל מיותר, כי
+          "הוספה מרובה" (/wallet/expense/batch) כבר מציעה "+ הוספת הוצאה
+          נוספת" בסוף כל הוצאה, ומסיימת אם לא מוסיפים עוד — כך שהיא מכסה
+          גם את מקרה ההוספה הבודדת. נשאר כפתור אחד בשם "הוספה" שמוביל
+          לאותו מסך-הוספה-מרובה. */}
       <div style={{ display: "flex", gap: "8px" }}>
-        <button
-          type="button"
-          onClick={() => router.push("/wallet/expense/new")}
-          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "5px", padding: "10px 4px", borderRadius: "14px", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", cursor: "pointer" }}
-        >
-          <LegacyPlusIcon size={16} />
-          <span style={{ fontSize: "10.5px", fontWeight: 700 }}>הוספה</span>
-        </button>
         <button
           type="button"
           onClick={() => router.push("/wallet/expense/batch")}
           style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "5px", padding: "10px 4px", borderRadius: "14px", background: COLOR.cardBg, border: `1px solid ${COLOR.cardBorder}`, color: "#fff", cursor: "pointer" }}
         >
-          <LegacyExpenseIcon size={16} />
-          <span style={{ fontSize: "10.5px", fontWeight: 700 }}>הוספה מרובה</span>
+          <LegacyPlusIcon size={16} />
+          <span style={{ fontSize: "10.5px", fontWeight: 700 }}>הוספה</span>
         </button>
         <button
           type="button"
