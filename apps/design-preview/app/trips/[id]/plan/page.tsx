@@ -4,11 +4,11 @@ import { useEffect, useRef, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, PlusIcon, ChevronIcon, COLOR, SPACE, RADIUS } from "../../../design-system";
 import { LegacyBottomNav } from "../../../route/legacy-shared";
-import { activitiesForDate, cityForDate, loadStops, type TripActivity } from "../../../trip-content";
+import { activitiesForDate, loadActivities, cityForDate, loadStops, type TripActivity } from "../../../trip-content";
 import { findAnyTrip, type DemoTrip } from "../../../trips-data";
 import type { DemoWeatherResult } from "../../../actions";
 import { fetchWeather } from "../../../weather-client";
-import { today } from "../../../wallet-data";
+import { today, LOCAL_DATA_CHANGED_EVENT } from "../../../wallet-data";
 
 const CATEGORY_LABEL: Record<TripActivity["category"], string> = { אתר: "אתר היסטורי", אוכל: "קולינרי", קניות: "שופינג", טיול: "סיור עירוני", עוד: "פעילות" };
 
@@ -128,6 +128,42 @@ function weatherIconFor(condition: string | null, isNight: boolean) {
   if (c.includes("בהיר")) return isNight ? WeatherMoonIcon : WeatherSunIcon;
   return isNight ? WeatherMoonIcon : WeatherSunIcon;
 }
+// ---------- ציר-זמן אנכי ליום הנבחר (חלק 8 בתוכנית): "שעות כסולם,
+// פעילויות ממוקמות-לפי-שעה לאורכו" — נתון אמיתי מ-a.time (לא ממציא
+// שעות). ממוקם לפי יחס-שעה-לפיקסלים אמיתי, עם "עוקב" שדוחף פעילויות
+// צפופות-בזמן מטה כדי שלא יתחפפו חזותית, בלי לשבור את היחס לפעילויות
+// רחוקות-בזמן יותר. ----------
+const PX_PER_HOUR = 64;
+const TIMELINE_CARD_MIN_HEIGHT = 56;
+
+function timelineMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function buildTimelineLayout(activities: TripActivity[]): {
+  rangeStartHour: number;
+  rangeEndHour: number;
+  totalHeight: number;
+  positioned: { activity: TripActivity; top: number }[];
+} {
+  if (activities.length === 0) {
+    return { rangeStartHour: 8, rangeEndHour: 20, totalHeight: 12 * PX_PER_HOUR, positioned: [] };
+  }
+  const times = activities.map((a) => timelineMinutes(a.time));
+  const rangeStartHour = Math.max(0, Math.floor(Math.min(...times) / 60) - 1);
+  const rangeEndHour = Math.min(24, Math.ceil(Math.max(...times) / 60) + 1);
+  let cursor = 0;
+  const positioned = activities.map((a) => {
+    const idealTop = ((timelineMinutes(a.time) - rangeStartHour * 60) / 60) * PX_PER_HOUR;
+    const top = Math.max(idealTop, cursor);
+    cursor = top + TIMELINE_CARD_MIN_HEIGHT;
+    return { activity: a, top };
+  });
+  const totalHeight = Math.max((rangeEndHour - rangeStartHour) * PX_PER_HOUR, cursor) + 24;
+  return { rangeStartHour, rangeEndHour, totalHeight, positioned };
+}
+
 function ChevronDownIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -249,7 +285,19 @@ function DailyPlanContent() {
   const [city, setCity] = useState("");
   const [trip, setTrip] = useState<DemoTrip | null>(null);
   const [weather, setWeather] = useState<{ status: "loading" | "success" | "error"; data: DemoWeatherResult | null }>({ status: "loading", data: null });
+  // כמות-פעילויות ליום, לתצוגת-הסקירה ברצועת-הימים למעלה (חלק 8 בתוכנית:
+  // "רצועת-ימים עם כמות-פעילויות ליום, לחיצה על יום קופצת לציר המפורט
+  // שלו"). נטען פעם אחת דרך loadActivities (כל הימים במפה אחת), לא N
+  // קריאות נפרדות של activitiesForDate לכל יום ברצועה.
+  const [activityCounts, setActivityCounts] = useState<Record<string, number>>({});
   const dayButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  function reloadActivityCounts() {
+    const map = loadActivities(params.id);
+    const counts: Record<string, number> = {};
+    for (const [d, list] of Object.entries(map)) counts[d] = list.length;
+    setActivityCounts(counts);
+  }
 
   useEffect(() => {
     const loaded = findAnyTrip(params.id);
@@ -265,6 +313,20 @@ function DailyPlanContent() {
   useEffect(() => {
     setActivities(activitiesForDate(params.id, date));
     setCity(cityForDate(params.id, date));
+    reloadActivityCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  // מרענן פעילויות+ספירות כשחוזרים לדף הזה אחרי "הוספת פעילות" — אותו באג
+  // בדיוק כמו בדף הבית (Next.js לא ממחזר mount בניווט-back), אותו פתרון
+  // (ר' mobile-home-mock.tsx): מאזינים לאירוע-שינוי-נתונים הגלובלי.
+  useEffect(() => {
+    function reload() {
+      setActivities(activitiesForDate(params.id, date));
+      reloadActivityCounts();
+    }
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, reload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
@@ -289,6 +351,7 @@ function DailyPlanContent() {
   const monthLabel = new Date(date).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
   const dayLabel = new Date(date).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" });
   const strip = trip ? dateRange(trip.startDate, trip.endDate) : [date];
+  const timeline = buildTimelineLayout(activities);
 
   return (
     <ScreenShell>
@@ -298,6 +361,7 @@ function DailyPlanContent() {
         {strip.map((d) => {
           const active = d === date;
           const dd = new Date(d);
+          const count = activityCounts[d] ?? 0;
           return (
             <button
               key={d}
@@ -312,6 +376,15 @@ function DailyPlanContent() {
             >
               <span style={{ fontSize: "10px", color: active ? "#fff" : COLOR.textSecondary }}>{dd.toLocaleDateString("he-IL", { weekday: "short" })}</span>
               <span style={{ fontSize: "14px", fontWeight: 700, color: active ? "#fff" : COLOR.textPrimary }}>{dd.getDate()}</span>
+              {/* תצוגת-סקירה לכל הטיול: כמות-פעילויות אמיתית ליום (חלק 8
+                  בתוכנית) — נקודה ריקה ליום-בלי-תוכנית, לא רק שקט מוחלט. */}
+              {count > 0 ? (
+                <span style={{ fontSize: "8px", fontWeight: 800, color: active ? "#fff" : COLOR.primaryLight, background: active ? "rgba(255,255,255,0.22)" : `${COLOR.primary}22`, borderRadius: "999px", padding: "1px 5px", minWidth: "14px", textAlign: "center" }}>
+                  {count}
+                </span>
+              ) : (
+                <span aria-hidden style={{ width: "4px", height: "4px", borderRadius: "50%", background: active ? "rgba(255,255,255,0.4)" : COLOR.border }} />
+              )}
             </button>
           );
         })}
@@ -324,23 +397,37 @@ function DailyPlanContent() {
 
       <WeatherCard weather={weather} cityLabel={city} />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm, position: "relative" }}>
-        {activities.length === 0 ? (
-          <Card style={{ textAlign: "center", color: COLOR.textSecondary, fontSize: "12.5px" }}>אין פעילויות מתוכננות ליום זה</Card>
-        ) : (
-          activities.map((a) => (
-            <Card key={a.id} onClick={() => router.push(`/activities/${a.id}`)} style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: "12px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: COLOR.primaryLight, minWidth: "40px" }}>{a.time}</div>
-              <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: COLOR.cardElevated, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "13.5px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
-                <div style={{ fontSize: "11px", color: COLOR.textSecondary }}>{CATEGORY_LABEL[a.category]}</div>
-              </div>
-              <ChevronIcon />
-            </Card>
-          ))
-        )}
-      </div>
+      {activities.length === 0 ? (
+        <Card style={{ textAlign: "center", color: COLOR.textSecondary, fontSize: "12.5px" }}>אין פעילויות מתוכננות ליום זה</Card>
+      ) : (
+        <div style={{ position: "relative", height: `${timeline.totalHeight}px` }}>
+          {/* קו-הציר האנכי */}
+          <div style={{ position: "absolute", top: 0, bottom: 0, insetInlineEnd: "46px", width: "2px", background: COLOR.border }} />
+          {/* סימוני-שעה, לפי טווח-הזמן האמיתי של פעילויות היום */}
+          {Array.from({ length: timeline.rangeEndHour - timeline.rangeStartHour + 1 }).map((_, i) => (
+            <div
+              key={timeline.rangeStartHour + i}
+              style={{ position: "absolute", top: `${i * PX_PER_HOUR}px`, insetInlineEnd: 0, transform: "translateY(-50%)", fontSize: "10px", color: COLOR.textSecondary, width: "38px", textAlign: "end" }}
+            >
+              {String(timeline.rangeStartHour + i).padStart(2, "0")}:00
+            </div>
+          ))}
+          {timeline.positioned.map(({ activity: a, top }) => (
+            <div key={a.id} style={{ position: "absolute", top: `${top}px`, insetInlineEnd: "58px", insetInlineStart: 0 }}>
+              <span aria-hidden style={{ position: "absolute", insetInlineEnd: "-16px", top: "18px", width: "11px", height: "11px", borderRadius: "50%", background: COLOR.primary, border: `2px solid ${COLOR.bg}`, zIndex: 1 }} />
+              <Card onClick={() => router.push(`/activities/${a.id}`)} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: "10px 12px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
+                  <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>
+                    {a.time} · {CATEGORY_LABEL[a.category]}
+                  </div>
+                </div>
+                <ChevronIcon />
+              </Card>
+            </div>
+          ))}
+        </div>
+      )}
 
       <button
         type="button"
