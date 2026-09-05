@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { LEGACY_COLOR as COLOR, LegacyBottomNav as BottomNav, LEGACY_NAV_HEIGHT as NAV_HEIGHT } from "../route/legacy-shared";
-import { loadStops, loadActivities, addStop, updateStop, deleteStop, sortActivities, reorderActivitiesForDate, optimizeActivityOrder, type TripStop, type TripActivity } from "../trip-content";
+import { loadStops, loadActivities, addStop, updateStop, deleteStop, saveActivity, sortActivities, reorderActivitiesForDate, optimizeActivityOrder, type TripStop, type TripActivity } from "../trip-content";
 import { activeTrip, currentScopeTripId } from "../trips-data";
-import { geocodeQueryAction, reverseGeocodePlaceAction } from "../actions";
+import { geocodeQueryAction, reverseGeocodePlaceAction, nearbyPlacesAction, type NearbyPlace } from "../actions";
+import { nextId, nowTime } from "../wallet-data";
 import { StopEditSheet } from "../route/stop-edit-sheet";
 import { TripSwitcherPill } from "../trip-switcher";
 import type { MapPoint3D } from "./maplibre-map-inner";
@@ -36,6 +37,33 @@ const MapLibreMap = dynamic(() => import("./maplibre-map-inner").then((m) => m.D
 const STOP_COLORS = ["#8a5adf", "#4f8fe0", "#43d6aa", "#f5a544", "#ef6f61", "#e0699a"];
 const ACTIVITY_COLOR = "#43d6aa";
 const PICKED_COLOR = "#f4f6fb";
+// המלצות-מקומות אמיתיות (nearbyPlacesAction, Overpass) כסימונים על המפה
+// עצמה — לא רק בתוך רשימת-הטופס של StopEditSheet כמו קודם. חלק 7 בתוכנית:
+// "כל קטגוריה בצבע/סימון משלה". כל קטגוריה מקבלת צבע נבדל מ-STOP_COLORS/
+// ACTIVITY_COLOR כדי שיהיה ברור חזותית שאלה המלצות, לא תחנות/פעילויות
+// שכבר קיימות במסלול.
+const POI_CATEGORY_COLOR: Record<NearbyPlace["category"], string> = {
+  cafe: "#c9a227",
+  restaurant: "#f5a544",
+  bar: "#e0699a",
+  viewpoint: "#4f8fe0",
+  attraction: "#8a5adf",
+};
+const POI_CATEGORY_LABEL: Record<NearbyPlace["category"], string> = {
+  cafe: "בית קפה",
+  restaurant: "מסעדה",
+  bar: "בר",
+  viewpoint: "תצפית",
+  attraction: "אטרקציה",
+};
+// קטגוריית-פעילות מתאימה לכל סוג-מקום, כשמוסיפים המלצה כפעילות אמיתית.
+const POI_ACTIVITY_CATEGORY: Record<NearbyPlace["category"], TripActivity["category"]> = {
+  cafe: "אוכל",
+  restaurant: "אוכל",
+  bar: "אוכל",
+  viewpoint: "אתר",
+  attraction: "אתר",
+};
 
 // בנוי כולו על UTC (לא זמן-מקומי) בכוונה: `new Date(iso + "T00:00:00")`
 // מתפרש כזמן-מקומי, ואז המרה חזרה ל-toISOString (שתמיד UTC) יכולה
@@ -76,6 +104,12 @@ export default function MapPreviewScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
   const [pickingLoading, setPickingLoading] = useState(false);
+  // המלצות-מקומות אמיתיות ליום הנבחר — כבויות כברירת-מחדל (לא לעמוס את
+  // המפה הקטנה בעשרות סימונים בלי שהמשתמש ביקש), עם toggle בטור-הכפתורים.
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [recommendedPlaces, setRecommendedPlaces] = useState<NearbyPlace[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [pendingPoiAdd, setPendingPoiAdd] = useState<NearbyPlace | null>(null);
   // נפרד מ-tripId (nullable — לתצוגת "אין טיול פעיל" ולבניית קישור): ה-scope
   // שממנו נטענות/נשמרות התחנות/הפעילויות עצמן, שתמיד מחזיר ערך קונקרטי.
   const [scopedTripId] = useState(() => currentScopeTripId());
@@ -131,6 +165,7 @@ export default function MapPreviewScreen() {
   useEffect(() => {
     setFitSignal((v) => v + 1);
     setSelectedId(null);
+    setPendingPoiAdd(null);
   }, [mode]);
 
   const sortedStops = useMemo(() => [...stops].sort((a, b) => (a.startDate < b.startDate ? -1 : 1)), [stops]);
@@ -173,16 +208,102 @@ export default function MapPreviewScreen() {
     ...dayActivities.map((a, i) => ({ id: a.id, lat: a.lat!, lon: a.lon!, label: a.title, sublabel: a.time, color: ACTIVITY_COLOR, isSelected: selectedId === a.id, order: (dayStop ? 2 : 1) + i })),
   ];
 
+  // נקודת-הייחוס למקומות-מומלצים ליום הנבחר: התחנה-הבסיסית של אותו יום,
+  // ואם אין (עדיין לא אותרה) — הפעילות הראשונה עם מיקום, ואם גם זה אין —
+  // מיקום-GPS אמיתי אם המשתמש הרשה.
+  const recommendationCenter =
+    dayStop?.lat != null && dayStop?.lon != null
+      ? { lat: dayStop.lat, lon: dayStop.lon }
+      : dayActivities[0]?.lat != null && dayActivities[0]?.lon != null
+        ? { lat: dayActivities[0]!.lat!, lon: dayActivities[0]!.lon! }
+        : userLocation;
+
+  // המלצות-מקומות אמיתיות (Overpass, אותה תשתית בדיוק כמו StopEditSheet) —
+  // רק כשמופעל (כבוי כברירת-מחדל) וביום ספציפי (לא "כל הטיול"). חלק 7
+  // בתוכנית: "המערכת מציעה מקומות שכדאי להוסיף למסלול... כל קטגוריה בצבע
+  // משלה". מוגבל ל-2 לכל קטגוריה כאן (לא ה-10 של רשימת-הטופס המלאה) כי
+  // זו מפה קטנה — יותר מזה היה מציף אותה.
+  useEffect(() => {
+    if (!showRecommendations || mode === "trip" || !recommendationCenter) {
+      setRecommendedPlaces([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingRecommendations(true);
+    nearbyPlacesAction(recommendationCenter.lat, recommendationCenter.lon).then((places) => {
+      if (cancelled) return;
+      const perCategory = new Map<string, number>();
+      const capped = places.filter((p) => {
+        const n = perCategory.get(p.category) ?? 0;
+        if (n >= 2) return false;
+        perCategory.set(p.category, n + 1);
+        return true;
+      });
+      setRecommendedPlaces(capped);
+      setLoadingRecommendations(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecommendations, mode, recommendationCenter?.lat, recommendationCenter?.lon]);
+
+  const poiPoints: MapPoint3D[] =
+    showRecommendations && mode !== "trip"
+      ? recommendedPlaces.map((p) => ({
+          id: `poi-${p.id}`,
+          lat: p.lat,
+          lon: p.lon,
+          label: p.name,
+          sublabel: POI_CATEGORY_LABEL[p.category],
+          color: POI_CATEGORY_COLOR[p.category],
+          isSelected: selectedId === `poi-${p.id}`,
+          excludeFromRoute: true,
+        }))
+      : [];
+
   const basePoints = mode === "trip" ? tripPoints : dayPoints;
   const pickedPoint: MapPoint3D[] = pickedLocation
     ? [{ id: "picked", lat: pickedLocation.lat, lon: pickedLocation.lon, label: pickedLocation.city, sublabel: "מיקום נבחר", color: PICKED_COLOR, excludeFromRoute: true }]
     : [];
-  const points = [...basePoints, ...pickedPoint];
+  const points = [...basePoints, ...poiPoints, ...pickedPoint];
   const routeColor = mode === "trip" ? STOP_COLORS[0]! : ACTIVITY_COLOR;
   const initialCenter = userLocation ? { lat: userLocation.lat, lon: userLocation.lon, zoom: 11 } : undefined;
 
+  // בחירת-נקודה על המפה: סימון-המלצה פותח הצעה-להוספה-כפעילות (לא רק
+  // מדגיש שורה ברשימה למטה, כמו תחנה/פעילות רגילה).
+  function handleSelectPoint(id: string | null) {
+    if (id?.startsWith("poi-")) {
+      const place = recommendedPlaces.find((p) => `poi-${p.id}` === id);
+      if (place) {
+        setPendingPoiAdd(place);
+        return;
+      }
+    }
+    setSelectedId(id);
+  }
+
+  function handleAddPoiAsActivity() {
+    if (!pendingPoiAdd || mode === "trip") return;
+    const place = pendingPoiAdd;
+    saveActivity(scopedTripId, mode, {
+      id: nextId("act"),
+      time: nowTime(),
+      durationLabel: "שעה",
+      title: place.name,
+      category: POI_ACTIVITY_CATEGORY[place.category],
+      location: POI_CATEGORY_LABEL[place.category],
+      notes: "",
+      lat: place.lat,
+      lon: place.lon,
+    });
+    setPendingPoiAdd(null);
+    reload();
+  }
+
   async function handleMapClick(lat: number, lon: number) {
     setSelectedId(null);
+    setPendingPoiAdd(null);
     setPickingLoading(true);
     const place = await reverseGeocodePlaceAction(lat, lon);
     setPickingLoading(false);
@@ -281,9 +402,8 @@ export default function MapPreviewScreen() {
           בצדה — לפי בקשה מפורשת: "צריך להקטין אותה ומסביבה יהיה כל מיני
           סוגי כפתורים שנחליט מאוחר יותר מה כל כפתור יעשה". כפתורי דו-ממד/
           תלת-ממד והוספת-יעד עברו לכאן מהכותרת העליונה (שימושיים כבר עכשיו,
-          לא רק placeholder), עם מקום-פנוי אחד נוסף לכפתור עתידי. מסגרת-
-          זוהרת בגוון-הסגול של האפליקציה במקום מסגרת שטוחה — פחות "עוד
-          מלבן אפור", יותר "מיוחד", לפי הבקשה. */}
+          לא רק placeholder); ה"מקום פנוי" הוחלט עכשיו — כפתור-המלצות
+          אמיתי (חלק 7 בתוכנית). מסגרת-זוהרת בגוון-הסגול במקום מסגרת שטוחה. */}
       <div style={{ display: "flex", gap: "8px", padding: "0 16px", flexShrink: 0 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", flexShrink: 0 }}>
           <button
@@ -302,12 +422,32 @@ export default function MapPreviewScreen() {
           >
             +
           </button>
-          <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: `1px dashed ${COLOR.cardBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "8px", color: COLOR.textMuted, textAlign: "center", lineHeight: 1 }}>מקום פנוי</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowRecommendations((v) => !v)}
+            disabled={mode === "trip"}
+            aria-label={showRecommendations ? "הסתרת המלצות מקומות" : "הצגת המלצות מקומות בקרבת מקום"}
+            title={mode === "trip" ? "בחרו יום ספציפי כדי לראות המלצות" : undefined}
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "50%",
+              background: showRecommendations ? COLOR.turquoise : COLOR.cardBg,
+              border: `1px solid ${showRecommendations ? COLOR.turquoise : COLOR.cardBorder}`,
+              color: showRecommendations ? "#04241c" : mode === "trip" ? COLOR.textMuted : "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: mode === "trip" ? "default" : "pointer",
+              fontSize: "16px",
+              opacity: mode === "trip" ? 0.5 : 1,
+            }}
+          >
+            ✨
+          </button>
         </div>
         <div style={{ position: "relative", flex: 1, minWidth: 0, height: "230px", borderRadius: "18px", overflow: "hidden", border: `1px solid ${COLOR.purple}40`, boxShadow: `0 0 0 1px rgba(138,90,223,0.12), 0 0 24px rgba(138,90,223,0.18), 0 10px 24px rgba(0,0,0,0.35)` }}>
-          <MapLibreMap points={points} routeColor={routeColor} pitch={pitch} onSelect={setSelectedId} onMapClick={handleMapClick} fitSignal={fitSignal} initialCenter={initialCenter} />
+          <MapLibreMap points={points} routeColor={routeColor} pitch={pitch} onSelect={handleSelectPoint} onMapClick={handleMapClick} fitSignal={fitSignal} initialCenter={initialCenter} />
           {backfilling ? (
             <div style={{ position: "absolute", top: "10px", insetInlineStart: "10px", background: "rgba(10,20,40,0.85)", border: `1px solid ${COLOR.cardBorder}`, borderRadius: "10px", padding: "6px 10px", fontSize: "11px", color: COLOR.textSecondary, zIndex: 5 }}>
               מאתר מיקומים אמיתיים לתחנות...
@@ -318,8 +458,45 @@ export default function MapPreviewScreen() {
               מזהה את המקום שנבחר...
             </div>
           ) : null}
+          {loadingRecommendations ? (
+            <div style={{ position: "absolute", top: "10px", insetInlineStart: "10px", background: "rgba(10,20,40,0.85)", border: `1px solid ${COLOR.cardBorder}`, borderRadius: "10px", padding: "6px 10px", fontSize: "11px", color: COLOR.textSecondary, zIndex: 5 }}>
+              מחפש המלצות בקרבת מקום...
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {showRecommendations && mode !== "trip" && recommendedPlaces.length > 0 ? (
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", padding: "6px 16px 0", flexShrink: 0 }}>
+          {(Object.keys(POI_CATEGORY_LABEL) as (keyof typeof POI_CATEGORY_LABEL)[])
+            .filter((cat) => recommendedPlaces.some((p) => p.category === cat))
+            .map((cat) => (
+              <div key={cat} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span aria-hidden style={{ width: "7px", height: "7px", borderRadius: "50%", background: POI_CATEGORY_COLOR[cat] }} />
+                <span style={{ fontSize: "9.5px", color: COLOR.textMuted }}>{POI_CATEGORY_LABEL[cat]}</span>
+              </div>
+            ))}
+        </div>
+      ) : null}
+
+      {pendingPoiAdd ? (
+        <div style={{ margin: "10px 16px 0", padding: "12px", borderRadius: "14px", background: "#12213f", border: `1px solid ${POI_CATEGORY_COLOR[pendingPoiAdd.category]}55`, display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "10.5px", color: COLOR.textSecondary }}>{POI_CATEGORY_LABEL[pendingPoiAdd.category]} · המלצה בקרבת מקום</div>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingPoiAdd.name}</div>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddPoiAsActivity}
+            style={{ padding: "8px 14px", borderRadius: "10px", background: POI_CATEGORY_COLOR[pendingPoiAdd.category], border: "none", color: "#fff", fontSize: "11.5px", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+          >
+            + הוספה כפעילות
+          </button>
+          <button type="button" onClick={() => setPendingPoiAdd(null)} aria-label="ביטול" style={{ width: "28px", height: "28px", borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", cursor: "pointer", flexShrink: 0 }}>
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       {pickedLocation ? (
         <div style={{ margin: "10px 16px 0", padding: "12px", borderRadius: "14px", background: "#12213f", border: `1px solid ${COLOR.purple}55`, display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
