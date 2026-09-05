@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ScreenShell, ScreenHeader, Card, Badge, DangerButton, PrimaryButton, SecondaryButton, Field, Money, CheckIcon, PillTabs, COLOR, SPACE, inputStyle } from "../../design-system";
-import { findBooking, updateBooking, deleteBooking, FLIGHT_STATUS_LABEL, type Booking, type FlightStatus } from "../../bookings-data";
-import { formatMoney } from "../../wallet-data";
+import { findBooking, updateBooking, deleteBooking, syncHotelExpense, FLIGHT_STATUS_LABEL, type Booking, type FlightStatus } from "../../bookings-data";
+import { formatMoney, defaultCurrencyPriority, type PaymentMethod } from "../../wallet-data";
+import { CurrencyPickerButton } from "../../pickers";
 import { useWalletStore } from "../../wallet-store";
 import { ToastBar } from "../../toast-bar";
 
@@ -41,6 +42,10 @@ export default function BookingDetailsScreen() {
   function handleDelete() {
     if (!booking) return;
     if (!confirm(`למחוק לצמיתות את ההזמנה "${booking.title}"? לא ניתן לבטל פעולה זו.`)) return;
+    // מחיקת הזמנת-מלון מוחקת גם את ההוצאה שנוצרה אוטומטית ממחיר המלון שלה
+    // (אם יש) — אחרת נשארת הוצאה "יתומה" בארנק בלי הזמנה מקושרת.
+    const linkedExpense = store.expenses.find((e) => e.bookingId === booking.id);
+    if (linkedExpense) store.deleteExpense(linkedExpense.id);
     deleteBooking(booking.id);
     router.push("/bookings");
   }
@@ -82,7 +87,11 @@ export default function BookingDetailsScreen() {
         <Row label="תאריך הגעה" value={fmt(booking.checkIn)} />
         {booking.checkOut ? <Row label="תאריך עזיבה" value={fmt(booking.checkOut)} /> : null}
         {booking.guests ? <Row label="אורחים" value={String(booking.guests)} /> : null}
-        {booking.totalPrice ? <Row label="סכום כולל" value={<Money text={booking.totalPrice} />} badge="שולם במלואו" last /> : null}
+        {booking.category === "hotel" && booking.hotelPriceAmount != null ? (
+          <Row label="מחיר המלון" value={<Money text={formatMoney(booking.hotelPriceAmount, booking.hotelPriceCurrency ?? "ILS")} />} badge="נוסף כהוצאה" last />
+        ) : booking.totalPrice ? (
+          <Row label="סכום כולל" value={<Money text={booking.totalPrice} />} badge="שולם במלואו" last />
+        ) : null}
       </Card>
 
       {canHaveDeposit && booking.status !== "cancelled" ? (
@@ -153,7 +162,10 @@ export default function BookingDetailsScreen() {
           onClose={() => setEditing(false)}
           onSave={(patch) => {
             const updated = updateBooking(booking.id, patch);
-            if (updated) setBooking(updated);
+            if (updated) {
+              setBooking(updated);
+              if (updated.category === "hotel") syncHotelExpense(updated, store.expenses, store.saveExpense, store.deleteExpense);
+            }
             setEditing(false);
           }}
         />
@@ -166,6 +178,7 @@ export default function BookingDetailsScreen() {
 const FLIGHT_STATUS_TABS: { key: FlightStatus; label: string }[] = (Object.keys(FLIGHT_STATUS_LABEL) as FlightStatus[]).map((key) => ({ key, label: FLIGHT_STATUS_LABEL[key] }));
 
 function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onClose: () => void; onSave: (patch: Partial<Omit<Booking, "id">>) => void }) {
+  const store = useWalletStore();
   const [title, setTitle] = useState(booking.title);
   const [address, setAddress] = useState(booking.address ?? "");
   const [checkIn, setCheckIn] = useState(booking.checkIn.slice(0, 10));
@@ -173,6 +186,11 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
   const [guests, setGuests] = useState(booking.guests ? String(booking.guests) : "");
   const [totalPrice, setTotalPrice] = useState(booking.totalPrice ?? "");
   const [phone, setPhone] = useState(booking.phone ?? "");
+  // מחיר-מלון אמיתי (סכום+מטבע+אמצעי-תשלום), ניתן-לעריכה גם כאן — לא רק
+  // ביצירה — לפי אותו עיקרון "תמיד עריכה, לא משהו קבוע".
+  const [hotelAmount, setHotelAmount] = useState(booking.hotelPriceAmount != null ? String(booking.hotelPriceAmount) : "");
+  const [hotelCurrency, setHotelCurrency] = useState(booking.hotelPriceCurrency ?? (store.hydrated ? store.localCurrency.currencyCode : "usd"));
+  const [hotelMethod, setHotelMethod] = useState<PaymentMethod>(booking.hotelPriceMethod ?? "cash");
   // לפי העיקרון "תמיד עריכה, לא משהו קבוע" — גם השדות החדשים (שעת-איסוף/
   // מספר-טיסה/שעת-המראה/סטטוס) ניתנים לעריכה כאן, לא רק בעת יצירה.
   const [pickupTime, setPickupTime] = useState(booking.pickupTime ?? "");
@@ -208,9 +226,36 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
         <Field label="מספר אורחים (לא חובה)">
           <input type="number" min={1} value={guests} onChange={(e) => setGuests(e.target.value)} style={inputStyle} />
         </Field>
-        <Field label="סכום כולל (לא חובה)">
-          <input value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} placeholder="לדוגמה: ₪1,850" style={inputStyle} />
-        </Field>
+        {booking.category === "hotel" ? (
+          <Field label="מחיר המלון (לא חובה) — נכנס אוטומטית כהוצאה">
+            <div style={{ display: "flex", gap: SPACE.sm }}>
+              <div style={{ width: "120px", flexShrink: 0 }}>
+                <CurrencyPickerButton selectedCode={hotelCurrency} onSelect={setHotelCurrency} priorityCodes={defaultCurrencyPriority(store.hydrated ? store.localCurrency.currencyCode : undefined)} />
+              </div>
+              <input type="number" value={hotelAmount} onChange={(e) => setHotelAmount(e.target.value)} onFocus={(e) => e.target.select()} placeholder="סכום" style={{ ...inputStyle, flex: 1, textAlign: "left" }} />
+            </div>
+            <div style={{ display: "flex", gap: SPACE.sm, marginTop: SPACE.sm }}>
+              <button
+                type="button"
+                onClick={() => setHotelMethod("cash")}
+                style={{ flex: 1, padding: "8px", borderRadius: "10px", background: hotelMethod === "cash" ? `${COLOR.primary}22` : COLOR.cardElevated, border: `1px solid ${hotelMethod === "cash" ? COLOR.primary : COLOR.border}`, color: hotelMethod === "cash" ? COLOR.primaryLight : COLOR.textSecondary, fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
+              >
+                מזומן
+              </button>
+              <button
+                type="button"
+                onClick={() => setHotelMethod("credit")}
+                style={{ flex: 1, padding: "8px", borderRadius: "10px", background: hotelMethod === "credit" ? `${COLOR.primary}22` : COLOR.cardElevated, border: `1px solid ${hotelMethod === "credit" ? COLOR.primary : COLOR.border}`, color: hotelMethod === "credit" ? COLOR.primaryLight : COLOR.textSecondary, fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
+              >
+                כרטיס אשראי
+              </button>
+            </div>
+          </Field>
+        ) : (
+          <Field label="סכום כולל (לא חובה)">
+            <input value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} placeholder="לדוגמה: ₪1,850" style={inputStyle} />
+          </Field>
+        )}
         <Field label="טלפון (לא חובה)">
           <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
         </Field>
@@ -251,12 +296,15 @@ function EditBookingSheet({ booking, onClose, onSave }: { booking: Booking; onCl
               checkIn,
               checkOut: checkOut || undefined,
               guests: guests ? Number(guests) : undefined,
-              totalPrice: totalPrice.trim() || undefined,
+              totalPrice: booking.category !== "hotel" && totalPrice.trim() ? totalPrice.trim() : undefined,
               phone: phone.trim() || undefined,
               pickupTime: booking.category === "transport" && pickupTime ? pickupTime : undefined,
               flightNumber: booking.category === "flight" && flightNumber.trim() ? flightNumber.trim() : undefined,
               departTime: booking.category === "flight" && departTime ? departTime : undefined,
               flightStatus: booking.category === "flight" ? flightStatus : undefined,
+              hotelPriceAmount: booking.category === "hotel" && Number(hotelAmount) > 0 ? Number(hotelAmount) : undefined,
+              hotelPriceCurrency: booking.category === "hotel" && Number(hotelAmount) > 0 ? hotelCurrency : undefined,
+              hotelPriceMethod: booking.category === "hotel" && Number(hotelAmount) > 0 ? hotelMethod : undefined,
             })
           }
         >

@@ -1,4 +1,4 @@
-import { loadJSON, saveJSON, nextId, tripScopedKey } from "./wallet-data";
+import { loadJSON, saveJSON, nextId, tripScopedKey, type PaymentMethod, type Expense } from "./wallet-data";
 import { currentScopeTripId } from "./trips-data";
 
 /**
@@ -48,6 +48,14 @@ export interface Booking {
   flightNumber?: string;
   departTime?: string;
   flightStatus?: FlightStatus;
+  /** מחיר-מלון אמיתי (category "hotel" בלבד) — נפרד מ-totalPrice הכללי
+   * (מחרוזת חופשית, כל הקטגוריות) כי זה חייב להיות סכום+מטבע+אמצעי-תשלום
+   * אמיתיים כדי שיהיה אפשר לרשום אותו אוטומטית כהוצאה אמיתית בארנק (ר'
+   * bookings/new ו-bookings/[id] — סנכרון עם Expense.bookingId). לפי בקשה
+   * מפורשת: "לא משנה אם ארשום את זה בהוצאה או במלון, זה יכנס כהוצאה". */
+  hotelPriceAmount?: number;
+  hotelPriceCurrency?: string;
+  hotelPriceMethod?: PaymentMethod;
 }
 
 export const CATEGORY_LABEL: Record<BookingCategory, string> = {
@@ -96,4 +104,38 @@ export function bookingsByCategory(): Record<BookingCategory, Booking[]> {
   const result: Record<BookingCategory, Booking[]> = { hotel: [], flight: [], transport: [], car: [], attraction: [] };
   for (const b of all) result[b.category].push(b);
   return result;
+}
+
+/** מסנכרן את ההוצאה המקושרת (Expense.bookingId) עם מחיר-המלון של ההזמנה —
+ * לפי בקשה מפורשת: "לא משנה אם ארשום את זה ישירות בהוצאה או בתאריך של
+ * מלון, זה יכנס כהוצאה" (לא כפול). נקרא מ-bookings/new ומ-bookings/[id],
+ * ששניהם כבר מחזיקים useWalletStore() משלהם — מקבל את הפעולות/המצב שלו
+ * כפרמטרים (לא מייבא את ה-hook כאן, כדי לא ליצור תלות מעגלית/כפולה).
+ * מחיר ריק/0 מוחק את ההוצאה המקושרת אם קיימת (המשתמש הסיר את המחיר).
+ */
+export function syncHotelExpense(
+  booking: Booking,
+  expenses: Expense[],
+  saveExpense: (patch: Omit<Expense, "id">, receiptDataUrl: null, existingId?: string) => void,
+  deleteExpense: (id: string) => void,
+) {
+  const linked = expenses.find((e) => e.bookingId === booking.id);
+  const hasPrice = booking.category === "hotel" && booking.hotelPriceAmount != null && booking.hotelPriceAmount > 0 && !!booking.hotelPriceCurrency;
+  if (!hasPrice) {
+    if (linked) deleteExpense(linked.id);
+    return;
+  }
+  saveExpense(
+    {
+      title: booking.title,
+      category: "מלון",
+      currency: booking.hotelPriceCurrency!,
+      amount: booking.hotelPriceAmount!,
+      date: booking.checkIn,
+      paymentMethod: booking.hotelPriceMethod ?? "cash",
+      bookingId: booking.id,
+    },
+    null,
+    linked?.id,
+  );
 }
