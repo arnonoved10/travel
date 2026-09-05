@@ -489,18 +489,24 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 // ותג-CTA עם חץ קטן בקצה — כל האריח "נראה לחיץ" (cursor+hover-ready), עדיין
 // visual-only בשלב הזה (בלי href אמיתי). המידע עצמו (2 לילות/1 יום) לא השתנה
 // ולא הוסר — רק העיצוב, לפי בקשת המשתמש המפורשת.
+// עוצב-מחדש (המשתמש: "פשוט דוחה ולא יפה") — פחות "קופסה סגולה בתוך כרטיס
+// סגול" (כל שורה הייתה עוד ריבוע עם רקע+מסגרת, ועוד כפתור-CTA כבד בגרדיאנט
+// משלו, על רקע-כרטיס שכבר סגול-גרדיאנט — הרבה שכבות-סגול חוזרות). עכשיו
+// רשימה קלה עם קו-מפריד דק בין שורות (אותו עיקרון כמו WalletCurrencyStack
+// בדף הזה), אייקון קטן יותר, ובלי כפתור-CTA נפרד — כל השורה לחיצה, עם
+// שברון (‹) עדין בקצה במקום פיל צבעוני.
 function ActionTile({
   icon,
   title,
   subtitle,
-  cta,
   onClick,
+  isFirst,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle: string;
-  cta: string;
   onClick: () => void;
+  isFirst?: boolean;
 }) {
   return (
     <button
@@ -512,39 +518,21 @@ function ActionTile({
         gap: "10px",
         width: "100%",
         textAlign: "start",
-        padding: "10px",
-        borderRadius: "16px",
-        background: COLOR.readinessTileBg,
-        border: `1px solid ${COLOR.readinessTileBorder}`,
+        padding: "10px 2px",
+        background: "none",
+        border: "none",
+        borderTop: isFirst ? "none" : `1px solid ${COLOR.readinessTileBorder}`,
         cursor: "pointer",
       }}
     >
       {icon}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: "13px", color: COLOR.readinessTextPrimary, marginBottom: "2px" }}>{title}</div>
-        <div style={{ fontSize: "11px", color: COLOR.readinessTextSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
+        <div style={{ fontWeight: 700, fontSize: "12.5px", color: COLOR.readinessTextPrimary, marginBottom: "1px" }}>{title}</div>
+        <div style={{ fontSize: "10.5px", color: COLOR.readinessTextSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
       </div>
-      <span
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          flexShrink: 0,
-          background: `linear-gradient(135deg, ${COLOR.readinessAccent}, ${COLOR.purpleDeep})`,
-          borderRadius: "999px",
-          padding: "6px 10px",
-          fontSize: "11px",
-          fontWeight: 700,
-          color: COLOR.readinessTextPrimary,
-          whiteSpace: "nowrap",
-          boxShadow: `0 3px 10px ${COLOR.readinessCtaShadow}`,
-        }}
-      >
-        {cta}
-        <svg width="6" height="10" viewBox="0 0 6 10" fill="none" stroke="#fff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M4.5 1 1 5l3.5 4" />
-        </svg>
-      </span>
+      <svg width="7" height="12" viewBox="0 0 6 10" fill="none" stroke={COLOR.readinessTextSecondary} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
+        <path d="M4.5 1 1 5l3.5 4" />
+      </svg>
     </button>
   );
 }
@@ -1152,7 +1140,6 @@ interface ReadinessItem {
   icon: React.ReactNode;
   title: string;
   subtitle: string;
-  cta: string;
   onClick: () => void;
 }
 
@@ -1212,6 +1199,10 @@ export function MobileHomeMock() {
   // הובילו לשום מקום אמיתי). עכשיו מחושב מנתונים אמיתיים של הטיול הפעיל,
   // ומציג רק את מה שבאמת חסר (אריח שהושלם בפועל פשוט לא מופיע יותר).
   const [readinessItems, setReadinessItems] = useState<ReadinessItem[]>([]);
+  // כמה בדיקות-מוכנות בסך הכול רלוונטיות לטיול הזה (לא קבוע 4 — "תחבורה
+  // בין יעדים" רלוונטית רק לטיול עם יותר מתחנה אחת) — לצורך אחוז-מוכנות
+  // כן/לא-מדויק בטבעת ההתקדמות, לא ניחוש.
+  const [readinessTotal, setReadinessTotal] = useState(0);
   // מחושב-מחדש גם ב-LOCAL_DATA_CHANGED_EVENT (לא רק כש-activeTripInfo עצמו
   // משתנה): תלוי בהזמנות/פעילויות/תחנות/מסמכים אמיתיים, לא רק בשדות-הטיול
   // עצמו — כתיבה בכל אחד מהם (למשל הוספת הזמנת-מלון) חייבת לרענן את הכרטיס
@@ -1224,6 +1215,7 @@ export function MobileHomeMock() {
     }
     const trip = activeTripInfo;
     const items: ReadinessItem[] = [];
+    let total = 0;
 
     const hotelBookings = loadBookings().filter((b) => b.category === "hotel" && b.status !== "cancelled");
     let hotelNightsCovered = 0;
@@ -1233,56 +1225,57 @@ export function MobileHomeMock() {
       if (nights > 0) hotelNightsCovered += nights;
     }
     const missingHotelNights = Math.max(0, trip.nights - hotelNightsCovered);
+    total += 1;
     if (missingHotelNights > 0) {
       items.push({
         key: "hotel",
-        icon: <HotelBedIcon size={42} badge={missingHotelNights} />,
+        icon: <HotelBedIcon size={32} badge={missingHotelNights} />,
         title: missingHotelNights === 1 ? "נותר לילה אחד ללא מלון" : `נותרו ${missingHotelNights} לילות ללא מלון`,
         subtitle: "השלימו את מקומות הלינה החסרים",
-        cta: "להוספת הזמנה",
         onClick: () => router.push("/bookings/new"),
       });
     }
 
     const emptyDays = countDatesWithoutActivity(trip.id, trip.startDate, trip.endDate);
+    total += 1;
     if (emptyDays > 0) {
       const firstEmptyDay = firstDateWithoutActivity(trip.id, trip.startDate, trip.endDate);
       items.push({
         key: "plan",
-        icon: <CalendarPlanIcon size={42} badge={emptyDays} />,
+        icon: <CalendarPlanIcon size={32} badge={emptyDays} />,
         title: emptyDays === 1 ? "נותר יום אחד ללא תוכנית" : `נותרו ${emptyDays} ימים ללא תוכנית`,
         subtitle: "הוסיפו פעילויות לימים הפנויים",
-        cta: "לתכנון היום",
         onClick: () => router.push(`/trips/${trip.id}/plan${firstEmptyDay ? `?day=${firstEmptyDay}` : ""}`),
       });
     }
 
     const stops = loadStops(trip.id);
     const missingTransport = stops.slice(0, -1).filter((s) => !s.transportToNext.trim()).length;
+    if (stops.length > 1) total += 1;
     if (stops.length > 1 && missingTransport > 0) {
       items.push({
         key: "transport",
-        icon: <TransferAlertIcon size={42} badge={missingTransport} />,
+        icon: <TransferAlertIcon size={32} badge={missingTransport} />,
         title: missingTransport === 1 ? "מעבר אחד בין יעדים ללא תחבורה" : `${missingTransport} מעברים בין יעדים ללא תחבורה`,
         subtitle: "הוסיפו איך אתם עוברים בין התחנות",
-        cta: "לעריכת המסלול",
         onClick: () => router.push("/route"),
       });
     }
 
     const documents = loadJSON<DocumentEntry[]>(SK.documents, []);
+    total += 1;
     if (!documents.some((d) => d.kind === "insurance")) {
       items.push({
         key: "insurance",
-        icon: <InsuranceAlertIcon size={42} badge={1} />,
+        icon: <InsuranceAlertIcon size={32} badge={1} />,
         title: "חסר מסמך ביטוח",
         subtitle: "העלו את פוליסת הביטוח לפני הטיסה",
-        cta: "להעלאת מסמך",
         onClick: () => router.push("/documents"),
       });
     }
 
     setReadinessItems(items);
+    setReadinessTotal(total);
   }
   useEffect(() => {
     loadReadinessItems();
@@ -2653,13 +2646,18 @@ export function MobileHomeMock() {
               boxShadow: `0 0 0 1px rgba(168,128,245,0.12), 0 0 26px ${COLOR.readinessGlow}, 0 14px 30px rgba(0,0,0,0.4)`,
             }}
           >
-            <div style={{ fontWeight: 800, fontSize: "16px", color: COLOR.readinessTextPrimary, marginBottom: "3px" }}>כמעט מוכנים לטיול ✨</div>
-            <div style={{ fontSize: "12px", color: COLOR.readinessTextSecondary, marginBottom: "10px" }}>
-              {readinessItems.length === 1 ? "נותרה השלמה חשובה אחת" : `נותרו ${readinessItems.length} השלמות חשובות`}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "6px" }}>
+              <Ring percent={readinessTotal > 0 ? Math.round(((readinessTotal - readinessItems.length) / readinessTotal) * 100) : 0} size={46} color={COLOR.readinessAccent} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: "16px", color: COLOR.readinessTextPrimary }}>כמעט מוכנים לטיול ✨</div>
+                <div style={{ fontSize: "12px", color: COLOR.readinessTextSecondary }}>
+                  {readinessItems.length === 1 ? "נותרה השלמה חשובה אחת" : `נותרו ${readinessItems.length} השלמות חשובות`}
+                </div>
+              </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {readinessItems.map((item) => (
-                <ActionTile key={item.key} icon={item.icon} title={item.title} subtitle={item.subtitle} cta={item.cta} onClick={item.onClick} />
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {readinessItems.map((item, i) => (
+                <ActionTile key={item.key} icon={item.icon} title={item.title} subtitle={item.subtitle} onClick={item.onClick} isFirst={i === 0} />
               ))}
             </div>
           </Card>
